@@ -1,7 +1,7 @@
 {
   "name": "diesel-dashboard",
-  "version": "2.0.0",
-  "description": "Diesel Generator Monitoring System with Email Alerts",
+  "version": "3.0.0",
+  "description": "Optimized Diesel Generator Monitoring System with Hourly Logging and Performance Enhancements",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,6 +9,7 @@
     "test-email": "node test-email.js"
   },
   "dependencies": {
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
