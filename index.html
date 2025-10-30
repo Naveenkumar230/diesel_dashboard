@@ -1,924 +1,546 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DG Monitoring System - Professional Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-     :root {
-    --primary: #2563eb;
-    --primary-dark: #1e40af;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --border: #334155;
-    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Inter', sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    line-height: 1.6;
-    overflow-x: hidden;
-}
-
-/* PAGE CONTAINER */
-.page-container {
-    display: none;
-}
-
-.page-container.active {
-    display: block;
-}
-
-/* SIDEBAR - HIDDEN BY DEFAULT, SLIDES IN ON CLICK */
-.sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 260px;
-    height: 100vh;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border);
-    z-index: 1000;
-    transform: translateX(-260px);
-    transition: transform 0.3s ease;
-    overflow-y: auto;
-}
-
-.sidebar.active {
-    transform: translateX(0);
-}
-
-.sidebar-header {
-    padding: 24px 20px;
-    border-bottom: 1px solid var(--border);
-}
-
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.logo-icon {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, var(--primary), #3b82f6);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-}
-
-.sidebar-nav {
-    padding: 20px 0;
-}
-
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-    font-weight: 500;
-    border-left: 3px solid transparent;
-}
-
-.nav-item:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-}
-
-.nav-item.active {
-    background: var(--bg-tertiary);
-    color: var(--primary);
-    border-left-color: var(--primary);
-}
-
-/* MAIN CONTENT - FULL WIDTH, NO MARGIN */
-main {
-    margin-left: 0;
-    min-height: 100vh;
-    width: 100%;
-}
-
-.main-content {
-    margin-left: 0;
-    min-height: 100vh;
-    width: 100%;
-}
-
-/* HEADER */
-.header {
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border);
-    padding: 0 32px;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-
-.breadcrumb {
-    font-size: 14px;
-    color: var(--text-muted);
-}
-
-.breadcrumb .active {
-    color: var(--text-primary);
-    font-weight: 600;
-}
-
-.status-badge {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    border-radius: 20px;
-    color: var(--success);
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--success);
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-/* CONTENT */
-.content {
-    padding: 32px;
-}
-
-.page-title {
-    font-size: 32px;
-    font-weight: 700;
-    margin-bottom: 8px;
-}
-
-.page-description {
-    font-size: 15px;
-    color: var(--text-secondary);
-    margin-bottom: 32px;
-}
-
-/* FILTER BAR */
-.filter-bar {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 32px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-}
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.form-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.form-select, .form-input {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 12px 16px;
-    font-size: 14px;
-    border-radius: 8px;
-    font-family: inherit;
-    transition: all 0.2s;
-}
-
-.form-select:focus, .form-input:focus {
-    outline: none;
-    border-color: var(--primary);
-    background: var(--bg-secondary);
-}
-
-/* BUTTONS */
-.btn {
-    padding: 12px 24px;
-    font-size: 14px;
-    font-weight: 600;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-.btn-primary {
-    background: var(--primary);
-    color: white;
-}
-
-.btn-primary:hover {
-    background: var(--primary-dark);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
-}
-
-.btn-secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-}
-
-.btn-secondary:hover {
-    background: var(--bg-secondary);
-}
-
-/* METRICS GRID */
-.metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-    margin-bottom: 32px;
-}
-
-.metric-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s;
-}
-
-.metric-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    border-color: var(--primary);
-}
-
-.metric-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-}
-
-.metric-card.blue::before { background: #3b82f6; }
-.metric-card.green::before { background: var(--success); }
-.metric-card.yellow::before { background: var(--warning); }
-.metric-card.gradient::before { 
-    background: linear-gradient(180deg, var(--primary), #3b82f6); 
-}
-
-.metric-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 20px;
-}
-
-.metric-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.metric-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    background: var(--bg-tertiary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-}
-
-.metric-value {
-    font-size: 48px;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
-    margin-bottom: 16px;
-}
-
-.metric-unit {
-    font-size: 20px;
-    font-weight: 500;
-    color: var(--text-muted);
-    margin-left: 4px;
-}
-
-.metric-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    font-size: 13px;
-}
-
-.metric-capacity {
-    color: var(--text-muted);
-}
-
-.metric-change {
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.metric-change.positive { color: var(--success); }
-.metric-change.negative { color: var(--danger); }
-
-/* CHARTS */
-.charts-container {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 20px;
-    margin-bottom: 32px;
-}
-
-.chart-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-}
-
-.chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-}
-
-.chart-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.chart-wrapper {
-    position: relative;
-    height: 350px;
-}
-
-/* TABLES */
-.table-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 32px;
-}
-
-.table-header {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.table-title {
-    font-size: 18px;
-    font-weight: 700;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th {
-    padding: 16px 24px;
-    text-align: left;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border);
-}
-
-td {
-    padding: 16px 24px;
-    font-size: 14px;
-    border-bottom: 1px solid var(--border);
-}
-
-tbody tr {
-    transition: background 0.2s;
-}
-
-tbody tr:hover {
-    background: var(--bg-tertiary);
-}
-
-/* ANALYTICS */
-.analytics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 24px;
-    margin-bottom: 32px;
-}
-
-.analytics-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-}
-
-.analytics-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-}
-
-.analytics-title {
-    font-size: 18px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.analytics-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-}
-
-.analytics-icon.blue { background: rgba(59, 130, 246, 0.2); }
-.analytics-icon.green { background: rgba(16, 185, 129, 0.2); }
-.analytics-icon.yellow { background: rgba(245, 158, 11, 0.2); }
-
-.stat-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.stat-row:last-child {
-    border-bottom: none;
-}
-
-.stat-label {
-    font-size: 14px;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.stat-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.stat-trend {
-    font-size: 12px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-weight: 600;
-    margin-left: 8px;
-}
-
-.stat-trend.up {
-    background: rgba(239, 68, 68, 0.2);
-    color: var(--danger);
-}
-
-.stat-trend.down {
-    background: rgba(16, 185, 129, 0.2);
-    color: var(--success);
-}
-
-/* TIMELINE */
-.timeline-item {
-    padding: 16px;
-    background: var(--bg-tertiary);
-    border-radius: 8px;
-    margin-bottom: 12px;
-    border-left: 3px solid var(--primary);
-}
-
-.timeline-date {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.timeline-content {
-    font-size: 14px;
-    color: var(--text-primary);
-}
-
-.timeline-value {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--primary);
-}
-
-/* STATES */
-.loading {
-    text-align: center;
-    padding: 40px;
-    color: var(--text-muted);
-}
-
-.empty-state {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--text-muted);
-}
-
-.empty-state-icon {
-    font-size: 64px;
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-/* HAMBURGER MENU - ALWAYS VISIBLE */
-.hamburger {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    cursor: pointer;
-    padding: 8px;
-    background: var(--bg-tertiary);
-    border-radius: 8px;
-    transition: all 0.3s;
-}
-
-.hamburger:hover {
-    background: var(--bg-primary);
-}
-
-.hamburger span {
-    width: 24px;
-    height: 3px;
-    background: var(--text-primary);
-    border-radius: 2px;
-    transition: all 0.3s;
-}
-
-.hamburger.active span:nth-child(1) {
-    transform: rotate(45deg) translate(8px, 8px);
-}
-
-.hamburger.active span:nth-child(2) {
-    opacity: 0;
-}
-
-.hamburger.active span:nth-child(3) {
-    transform: rotate(-45deg) translate(7px, -7px);
-}
-
-/* SIDEBAR OVERLAY */
-.sidebar-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    opacity: 0;
-    transition: opacity 0.3s;
-}
-
-.sidebar-overlay.active {
-    display: block;
-    opacity: 1;
-}
-
-/* RESPONSIVE - TABLET */
-@media (max-width: 1024px) {
-    .charts-container {
-        grid-template-columns: 1fr;
-    }
-    
-    .analytics-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* RESPONSIVE - MOBILE */
-@media (max-width: 768px) {
-    .content {
-        padding: 16px;
-    }
-    
-    .metrics-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .header {
-        padding: 0 16px;
-    }
-
-    .status-badge {
-        font-size: 11px;
-        padding: 6px 12px;
-    }
-
-    .status-badge span:last-child {
-        display: none;
-    }
-
-    .status-dot {
-        margin: 0;
-    }
-
-    .filter-bar {
-        grid-template-columns: 1fr;
-    }
-
-    .page-title {
-        font-size: 24px;
-    }
-
-    .page-description {
-        font-size: 14px;
-    }
-
-    .metric-value {
-        font-size: 36px;
-    }
-
-    .chart-wrapper {
-        height: 300px;
-    }
-
-    .analytics-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .table-header {
-        flex-direction: column;
-        gap: 12px;
-        align-items: flex-start;
-    }
-
-    .table-header .btn {
-        width: 100%;
-    }
-}
-
-/* EXTRA SMALL DEVICES */
-@media (max-width: 480px) {
-    .content {
-        padding: 12px;
-    }
-
-    .page-title {
-        font-size: 20px;
-    }
-
-    .filter-bar {
-        padding: 16px;
-    }
-
-    .metric-card {
-        padding: 20px;
-    }
-
-    .metric-value {
-        font-size: 32px;
-    }
-
-    .breadcrumb {
-        font-size: 12px;
-    }
-}</style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1e40af;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .page-container {
+            display: none;
+        }
+
+        .page-container.active {
+            display: block;
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            z-index: 1000;
+            transform: translateX(-260px);
+            transition: transform 0.3s ease;
+            overflow-y: auto;
+        }
+
+        .sidebar.active {
+            transform: translateX(0);
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), #3b82f6);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .sidebar-nav {
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--primary);
+            border-left-color: var(--primary);
+        }
+
+        main {
+            margin-left: 0;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .menu-toggle {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 20px;
+            color: var(--success);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .content {
+            padding: 32px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .page-description {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            border-color: var(--primary);
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+        }
+
+        .metric-card.blue::before { background: #3b82f6; }
+        .metric-card.green::before { background: var(--success); }
+        .metric-card.yellow::before { background: var(--warning); }
+        .metric-card.red::before { background: var(--danger); }
+        .metric-card.gradient::before { background: linear-gradient(180deg, var(--primary), #3b82f6); }
+
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+            margin-bottom: 16px;
+        }
+
+        .metric-unit {
+            font-size: 20px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-left: 4px;
+        }
+
+        .metric-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .charts-container {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .chart-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 350px;
+        }
+
+        .table-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 32px;
+        }
+
+        .table-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            padding: 16px 24px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 16px 24px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border);
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        tbody tr {
+            transition: background 0.2s;
+        }
+
+        tbody tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .tabs {
+            margin-bottom: 24px;
+        }
+
+        .tab-list {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 12px 24px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-button.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .electrical-params-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .param-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .param-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--primary);
+        }
+
+        .param-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .param-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .param-unit {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-left: 6px;
+        }
+
+        .last-update {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 768px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                transform: translateX(-260px);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+        }
+    </style>
 </head>
 <body>
-    
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-        <div class="logo">
-            <div class="logo-icon">⚡</div>
-            <span>DG Monitor Pro</span>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">⚡</div>
+                <div>
+                    <div>DG Monitor</div>
+                    <div style="font-size: 11px; color: var(--text-muted)">v3.0</div>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar-nav">
+            <div class="nav-item active" onclick="showPage('dashboard')">
+                📊 Dashboard
+            </div>
+            <div class="nav-item" onclick="showPage('electrical')">
+                ⚡ Electrical Parameters
+            </div>
+            <div class="nav-item" onclick="showPage('diesel')">
+                ⛽ Diesel Monitoring
+            </div>
+            <div class="nav-item" onclick="showPage('reports')">
+                📄 Reports
+            </div>
+            <div class="nav-item" onclick="showPage('analytics')">
+                📈 Analytics
+            </div>
         </div>
     </div>
-    <nav class="sidebar-nav">
-        <div class="nav-item active" data-page="dashboard">
-            <span>📊</span>
-            <span>Dashboard</span>
-        </div>
-        <div class="nav-item" data-page="analytics">
-            <span>📈</span>
-            <span>Analytics</span>
-        </div>
-        <div class="nav-item" data-page="reports">
-            <span>📋</span>
-            <span>Reports</span>
-        </div>
-        <div class="nav-item" data-page="settings">
-            <span>⚙️</span>
-            <span>Settings</span>
-        </div>
-    </nav>
-</aside>
 
-    <header class="header">
-    <div style="display: flex; align-items: center; gap: 16px;">
-        <div class="hamburger" id="hamburger">
-            <span></span>
-            <span></span>
-            <span></span>
+    <main>
+        <div class="header">
+            <button class="menu-toggle" onclick="toggleSidebar()">
+                ☰
+            </button>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                <span>System Operational</span>
+            </div>
         </div>
-        <div class="breadcrumb">
-            <span>Home</span>
-            <span> › </span>
-            <span class="active" id="breadcrumb-active">Dashboard</span>
-        </div>
-    </div>
-    <div class="status-badge">
-        <div class="status-dot"></div>
-        <span>System Online</span>
-    </div>
-</header>
 
         <!-- DASHBOARD PAGE -->
-        <div class="page-container active" id="dashboard-page">
+        <div class="page-container active" id="dashboard">
             <div class="content">
                 <h1 class="page-title">Dashboard</h1>
-                <p class="page-description">Real-time diesel generator monitoring and insights</p>
+                <p class="page-description">Real-time diesel generator monitoring and analytics</p>
 
-                <div class="filter-bar">
-                    <div class="form-group">
-                        <label class="form-label">Time Range</label>
-                        <select class="form-select" id="timeRange">
-                            <option value="1h">Last Hour</option>
-                            <option value="24h" selected>Last 24 Hours</option>
-                            <option value="7d">Last 7 Days</option>
-                            <option value="30d">Last 30 Days</option>
-                            <option value="custom">Custom Range</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Generator</label>
-                        <select class="form-select" id="generatorFilter">
-                            <option value="all">All Generators</option>
-                            <option value="dg1">DG-1 Only</option>
-                            <option value="dg2">DG-2 Only</option>
-                            <option value="dg3">DG-3 Only</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="customFromGroup" style="display: none;">
-                        <label class="form-label">From Date</label>
-                        <input type="datetime-local" class="form-input" id="fromDate">
-                    </div>
-                    <div class="form-group" id="customToGroup" style="display: none;">
-                        <label class="form-label">To Date</label>
-                        <input type="datetime-local" class="form-input" id="toDate">
-                    </div>
-                    <button class="btn btn-primary" onclick="applyFilters()">
-                        <span>🔄</span>
-                        Apply Filters
-                    </button>
-                </div>
-
-                <div class="metrics-grid">
-                    <div class="metric-card blue">
-                        <div class="metric-header">
-                            <span class="metric-label">DG-1 Level</span>
-                            <div class="metric-icon">🔵</div>
-                        </div>
-                        <div class="metric-value" id="dg1-value">
-                            --<span class="metric-unit">L</span>
-                        </div>
-                        <div class="metric-footer">
-                            <span class="metric-capacity">Capacity: 500L</span>
-                            <span class="metric-change" id="dg1-change">--</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card green">
-                        <div class="metric-header">
-                            <span class="metric-label">DG-2 Level</span>
-                            <div class="metric-icon">🟢</div>
-                        </div>
-                        <div class="metric-value" id="dg2-value">
-                            --<span class="metric-unit">L</span>
-                        </div>
-                        <div class="metric-footer">
-                            <span class="metric-capacity">Capacity: 500L</span>
-                            <span class="metric-change" id="dg2-change">--</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card yellow">
-                        <div class="metric-header">
-                            <span class="metric-label">DG-3 Level</span>
-                            <div class="metric-icon">🟡</div>
-                        </div>
-                        <div class="metric-value" id="dg3-value">
-                            --<span class="metric-unit">L</span>
-                        </div>
-                        <div class="metric-footer">
-                            <span class="metric-capacity">Capacity: 500L</span>
-                            <span class="metric-change" id="dg3-change">--</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card gradient">
-                        <div class="metric-header">
-                            <span class="metric-label">Total Diesel</span>
-                            <div class="metric-icon">⚡</div>
-                        </div>
-                        <div class="metric-value" id="total-value">
-                            --<span class="metric-unit">L</span>
-                        </div>
-                        <div class="metric-footer">
-                            <span class="metric-capacity">Total: 1500L</span>
-                            <span class="metric-change" id="total-change">--</span>
-                        </div>
-                    </div>
+                <div class="metrics-grid" id="diesel-metrics">
+                    <!-- Diesel metrics will be inserted here -->
                 </div>
 
                 <div class="charts-container">
                     <div class="chart-card">
                         <div class="chart-header">
-                            <div class="chart-title">Diesel Level Trends</div>
+                            <h3 class="chart-title">Diesel Consumption Trend</h3>
                         </div>
                         <div class="chart-wrapper">
-                            <canvas id="trendChart"></canvas>
+                            <canvas id="consumptionChart"></canvas>
                         </div>
                     </div>
-
                     <div class="chart-card">
                         <div class="chart-header">
-                            <div class="chart-title">Distribution</div>
+                            <h3 class="chart-title">Generator Distribution</h3>
                         </div>
                         <div class="chart-wrapper">
                             <canvas id="distributionChart"></canvas>
@@ -928,198 +550,509 @@ tbody tr:hover {
 
                 <div class="table-card">
                     <div class="table-header">
-                        <div class="table-title">Recent Activity</div>
-                        <button class="btn btn-secondary" onclick="exportData()">
-                            <span>📥</span>
-                            Export CSV
-                        </button>
+                        <h3 class="table-title">Recent Hourly Readings</h3>
                     </div>
-                    <div style="overflow-x: auto;">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>DG-1 (L)</th>
-                                    <th>DG-2 (L)</th>
-                                    <th>DG-3 (L)</th>
-                                    <th>Total (L)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="activityLog">
-                                <tr>
-                                    <td colspan="5" class="loading">Loading data...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>DG-1 (L)</th>
+                                <th>DG-2 (L)</th>
+                                <th>DG-3 (L)</th>
+                                <th>Total (L)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-readings">
+                            <!-- Recent readings will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ELECTRICAL PARAMETERS PAGE -->
+        <div class="page-container" id="electrical">
+            <div class="content">
+                <h1 class="page-title">Electrical Parameters</h1>
+                <p class="page-description">Comprehensive 3-phase electrical measurements</p>
+
+                <div class="tabs">
+                    <div class="tab-list">
+                        <button class="tab-button active" onclick="showTab('voltage')">Voltage</button>
+                        <button class="tab-button" onclick="showTab('current')">Current</button>
+                        <button class="tab-button" onclick="showTab('power')">Power</button>
+                        <button class="tab-button" onclick="showTab('frequency')">Frequency & PF</button>
+                    </div>
+
+                    <div class="tab-content active" id="voltage-tab">
+                        <div class="electrical-params-grid" id="voltage-params">
+                            <!-- Voltage parameters will be inserted here -->
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="current-tab">
+                        <div class="electrical-params-grid" id="current-params">
+                            <!-- Current parameters will be inserted here -->
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="power-tab">
+                        <div class="electrical-params-grid" id="power-params">
+                            <!-- Power parameters will be inserted here -->
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="frequency-tab">
+                        <div class="electrical-params-grid" id="frequency-params">
+                            <!-- Frequency parameters will be inserted here -->
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ANALYTICS PAGE -->
-        <div class="page-container" id="analytics-page">
+        <!-- DIESEL MONITORING PAGE -->
+        <div class="page-container" id="diesel">
             <div class="content">
-                <h1 class="page-title">Analytics</h1>
-                <p class="page-description">Detailed consumption analysis for each generator</p>
+                <h1 class="page-title">Diesel Monitoring</h1>
+                <p class="page-description">Real-time diesel level tracking</p>
 
-                <div class="filter-bar">
-                    <div class="form-group">
-                        <label class="form-label">Analysis Period</label>
-                        <select class="form-select" id="analyticsPeriod">
-                            <option value="24h" selected>Last 24 Hours</option>
-                            <option value="7d">Last 7 Days</option>
-                            <option value="30d">Last 30 Days</option>
-                            <option value="custom">Custom Range</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="analyticsFromGroup" style="display: none;">
-                        <label class="form-label">From Date</label>
-                        <input type="datetime-local" class="form-input" id="analyticsFromDate">
-                    </div>
-                    <div class="form-group" id="analyticsToGroup" style="display: none;">
-                        <label class="form-label">To Date</label>
-                        <input type="datetime-local" class="form-input" id="analyticsToDate">
-                    </div>
-                    <button class="btn btn-primary" onclick="loadAnalytics()">
-                        <span>🔍</span>
-                        Analyze
-                    </button>
+                <div class="metrics-grid" id="diesel-detailed-metrics">
+                    <!-- Detailed diesel metrics -->
                 </div>
 
-                <div class="analytics-grid">
-                    <div class="analytics-card">
-                        <div class="analytics-header">
-                            <div class="analytics-title">
-                                <div class="analytics-icon blue">🔵</div>
-                                <span>DG-1 Analysis</span>
-                            </div>
-                        </div>
-                        <div id="dg1-analytics">
-                            <div class="loading">Calculating...</div>
-                        </div>
-                    </div>
-
-                    <div class="analytics-card">
-                        <div class="analytics-header">
-                            <div class="analytics-title">
-                                <div class="analytics-icon green">🟢</div>
-                                <span>DG-2 Analysis</span>
-                            </div>
-                        </div>
-                        <div id="dg2-analytics">
-                            <div class="loading">Calculating...</div>
-                        </div>
-                    </div>
-
-                    <div class="analytics-card">
-                        <div class="analytics-header">
-                            <div class="analytics-title">
-                                <div class="analytics-icon yellow">🟡</div>
-                                <span>DG-3 Analysis</span>
-                            </div>
-                        </div>
-                        <div id="dg3-analytics">
-                            <div class="loading">Calculating...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="chart-card" style="margin-bottom: 32px;">
+                <div class="chart-card" style="margin-top: 32px;">
                     <div class="chart-header">
-                        <div class="chart-title">Consumption Comparison</div>
+                        <h3 class="chart-title">All Generators Trend</h3>
                     </div>
                     <div class="chart-wrapper">
-                        <canvas id="consumptionChart"></canvas>
+                        <canvas id="allDieselChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- REPORTS PAGE -->
-        <div class="page-container" id="reports-page">
+        <div class="page-container" id="reports">
             <div class="content">
                 <h1 class="page-title">Reports</h1>
-                <p class="page-description">Generate comprehensive system reports</p>
-                <div class="analytics-card">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📋</div>
-                        <h3>Reports Coming Soon</h3>
-                        <p>Advanced reporting features will be available here.</p>
+                <p class="page-description">Hourly data reports with diesel and electrical parameters</p>
+
+                <button class="btn btn-primary" onclick="exportToExcel()" style="margin-bottom: 24px;">
+                    📥 Export to Excel
+                </button>
+
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3 class="table-title">Hourly Data Report (8AM - 8PM)</h3>
                     </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Hour</th>
+                                <th>DG-1</th>
+                                <th>DG-2</th>
+                                <th>DG-3</th>
+                                <th>Total</th>
+                                <th>Voltage</th>
+                                <th>Current</th>
+                                <th>Power</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hourly-report">
+                            <!-- Report data will be inserted here -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- SETTINGS PAGE -->
-        <div class="page-container" id="settings-page">
+        <!-- ANALYTICS PAGE -->
+        <div class="page-container" id="analytics">
             <div class="content">
-                <h1 class="page-title">Settings</h1>
-                <p class="page-description">System configuration and information</p>
-                <div class="analytics-card">
-                    <div class="analytics-header">
-                        <div class="analytics-title">
-                            <span>System Information</span>
-                        </div>
+                <h1 class="page-title">Analytics</h1>
+                <p class="page-description">Power BI-style visualizations and insights</p>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Power Consumption Analytics</h3>
                     </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Server Address</span>
-                        <span class="stat-value" id="serverAddress">Loading...</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Database Status</span>
-                        <span class="stat-value" id="dbStatus">Checking...</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Last Update</span>
-                        <span class="stat-value" id="lastUpdate">--</span>
+                    <div class="chart-wrapper">
+                        <canvas id="powerAnalyticsChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
     </main>
 
-    <script>
-        let trendChart, distributionChart, consumptionChart;
-        let previousValues = { dg1: null, dg2: null, dg3: null, total: null };
-        let currentFilters = { 
-            timeRange: '24h', 
-            generator: 'all', 
-            fromDate: null, 
-            toDate: null 
-        };
-        let historicalData = [];
+    <div class="last-update" id="last-update">
+        Last updated: --:--:--
+    </div>
 
-        // Initialize Charts
+    <script>
+        // Global variables
+        let charts = {};
+        let updateInterval;
+        let currentData = {
+            diesel: { dg1: 0, dg2: 0, dg3: 0, total: 0 },
+            electrical: {},
+            history: []
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            fetchData();
+            updateInterval = setInterval(fetchData, 5000); // Update every 5 seconds
+        });
+
+        // Sidebar toggle
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+        }
+
+        // Page navigation
+        function showPage(pageName) {
+            // Hide all pages
+            document.querySelectorAll('.page-container').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // Show selected page
+            document.getElementById(pageName).classList.add('active');
+            
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        // Tab navigation
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+
+        // Fetch data from server
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/current-data');
+                const data = await response.json();
+                
+                currentData = data;
+                updateDashboard(data);
+                updateElectricalParams(data);
+                updateLastUpdate();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // Update dashboard
+        function updateDashboard(data) {
+            // Update diesel metrics
+            const metricsHtml = `
+                <div class="metric-card blue">
+                    <div class="metric-header">
+                        <div class="metric-label">DG-1 Diesel Level</div>
+                    </div>
+                    <div>
+                        <span class="metric-value">${data.diesel.dg1}</span>
+                        <span class="metric-unit">L</span>
+                    </div>
+                    <div class="metric-footer">
+                        <span style="color: var(--text-muted)">Capacity: 500L</span>
+                    </div>
+                </div>
+                <div class="metric-card green">
+                    <div class="metric-header">
+                        <div class="metric-label">DG-2 Diesel Level</div>
+                    </div>
+                    <div>
+                        <span class="metric-value">${data.diesel.dg2}</span>
+                        <span class="metric-unit">L</span>
+                    </div>
+                    <div class="metric-footer">
+                        <span style="color: var(--text-muted)">Capacity: 500L</span>
+                    </div>
+                </div>
+                <div class="metric-card ${data.diesel.dg3 < 200 ? 'red' : 'yellow'}">
+                    <div class="metric-header">
+                        <div class="metric-label">DG-3 Diesel Level</div>
+                    </div>
+                    <div>
+                        <span class="metric-value">${data.diesel.dg3}</span>
+                        <span class="metric-unit">L</span>
+                    </div>
+                    <div class="metric-footer">
+                        <span style="color: var(--text-muted)">Capacity: 500L</span>
+                    </div>
+                </div>
+                <div class="metric-card gradient">
+                    <div class="metric-header">
+                        <div class="metric-label">Total Diesel</div>
+                    </div>
+                    <div>
+                        <span class="metric-value">${data.diesel.total}</span>
+                        <span class="metric-unit">L</span>
+                    </div>
+                    <div class="metric-footer">
+                        <span style="color: var(--text-muted)">Total: 1500L</span>
+                    </div>
+                </div>
+            `;
+            document.getElementById('diesel-metrics').innerHTML = metricsHtml;
+            document.getElementById('diesel-detailed-metrics').innerHTML = metricsHtml;
+
+            // Update recent readings
+            if (data.history && data.history.length > 0) {
+                const readingsHtml = data.history.slice(0, 5).map(reading => `
+                    <tr>
+                        <td>${new Date(reading.timestamp).toLocaleTimeString()}</td>
+                        <td>${reading.dg1}</td>
+                        <td>${reading.dg2}</td>
+                        <td>${reading.dg3}</td>
+                        <td><strong>${reading.total}</strong></td>
+                    </tr>
+                `).join('');
+                document.getElementById('recent-readings').innerHTML = readingsHtml;
+            }
+
+            // Update charts
+            if (data.history && data.history.length > 0 && charts.consumption) {
+                const labels = data.history.map(h => new Date(h.timestamp).toLocaleTimeString());
+                const values = data.history.map(h => h.total);
+                
+                charts.consumption.data.labels = labels;
+                charts.consumption.data.datasets[0].data = values;
+                charts.consumption.update('none');
+            }
+        }
+
+        // Update electrical parameters
+        function updateElectricalParams(data) {
+            if (!data.electrical) return;
+
+            // Voltage parameters
+            if (data.electrical.voltage) {
+                const voltageHtml = `
+                    <div class="param-card">
+                        <div class="param-label">L1-N Voltage</div>
+                        <div>
+                            <span class="param-value">${data.electrical.voltage.l1n || 0}</span>
+                            <span class="param-unit">V</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">L2-N Voltage</div>
+                        <div>
+                            <span class="param-value">${data.electrical.voltage.l2n || 0}</span>
+                            <span class="param-unit">V</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">L3-N Voltage</div>
+                        <div>
+                            <span class="param-value">${data.electrical.voltage.l3n || 0}</span>
+                            <span class="param-unit">V</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Avg Voltage</div>
+                        <div>
+                            <span class="param-value">${data.electrical.voltage.avg || 0}</span>
+                            <span class="param-unit">V</span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('voltage-params').innerHTML = voltageHtml;
+            }
+
+            // Current parameters
+            if (data.electrical.current) {
+                const currentHtml = `
+                    <div class="param-card">
+                        <div class="param-label">L1 Current</div>
+                        <div>
+                            <span class="param-value">${data.electrical.current.l1 || 0}</span>
+                            <span class="param-unit">A</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">L2 Current</div>
+                        <div>
+                            <span class="param-value">${data.electrical.current.l2 || 0}</span>
+                            <span class="param-unit">A</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">L3 Current</div>
+                        <div>
+                            <span class="param-value">${data.electrical.current.l3 || 0}</span>
+                            <span class="param-unit">A</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Avg Current</div>
+                        <div>
+                            <span class="param-value">${data.electrical.current.avg || 0}</span>
+                            <span class="param-unit">A</span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('current-params').innerHTML = currentHtml;
+            }
+
+            // Power parameters
+            if (data.electrical.power) {
+                const powerHtml = `
+                    <div class="param-card">
+                        <div class="param-label">Active Power L1</div>
+                        <div>
+                            <span class="param-value">${data.electrical.power.activeL1 || 0}</span>
+                            <span class="param-unit">kW</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Active Power L2</div>
+                        <div>
+                            <span class="param-value">${data.electrical.power.activeL2 || 0}</span>
+                            <span class="param-unit">kW</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Active Power L3</div>
+                        <div>
+                            <span class="param-value">${data.electrical.power.activeL3 || 0}</span>
+                            <span class="param-unit">kW</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Total Active Power</div>
+                        <div>
+                            <span class="param-value">${data.electrical.power.totalActive || 0}</span>
+                            <span class="param-unit">kW</span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('power-params').innerHTML = powerHtml;
+            }
+
+            // Frequency parameters
+            if (data.electrical.frequency || data.electrical.powerFactor) {
+                const freqHtml = `
+                    <div class="param-card">
+                        <div class="param-label">Frequency</div>
+                        <div>
+                            <span class="param-value">${data.electrical.frequency || 0}</span>
+                            <span class="param-unit">Hz</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Power Factor L1</div>
+                        <div>
+                            <span class="param-value">${data.electrical.powerFactor?.l1 || 0}</span>
+                            <span class="param-unit">PF</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Power Factor L2</div>
+                        <div>
+                            <span class="param-value">${data.electrical.powerFactor?.l2 || 0}</span>
+                            <span class="param-unit">PF</span>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-label">Power Factor L3</div>
+                        <div>
+                            <span class="param-value">${data.electrical.powerFactor?.l3 || 0}</span>
+                            <span class="param-unit">PF</span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('frequency-params').innerHTML = freqHtml;
+            }
+        }
+
+        // Update last update time
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('last-update').textContent = 
+                `Last updated: ${now.toLocaleTimeString()}`;
+        }
+
+        // Initialize charts
         function initCharts() {
-            const chartOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'bottom',
-                        labels: {
-                            color: '#cbd5e1',
-                            font: { family: 'Inter', size: 12 },
-                            usePointStyle: true,
-                            padding: 16
+            // Consumption trend chart
+            const consumptionCtx = document.getElementById('consumptionChart').getContext('2d');
+            charts.consumption = new Chart(consumptionCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Total Diesel',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
                         }
-                    },
-                    tooltip: {
-                        backgroundColor: '#1e293b',
-                        titleColor: '#f1f5f9',
-                        bodyColor: '#cbd5e1',
-                        borderColor: '#334155',
-                        borderWidth: 1,
-                        padding: 12,
-                        displayColors: true
                     }
                 }
-            };
+            });
 
-            // Trend Chart
-            const ctx1 = document.getElementById('trendChart').getContext('2d');
-            trendChart = new Chart(ctx1, {
+            // Distribution chart
+            const distributionCtx = document.getElementById('distributionChart').getContext('2d');
+            charts.distribution = new Chart(distributionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['DG-1', 'DG-2', 'DG-3'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+
+            // All diesel chart
+            const allDieselCtx = document.getElementById('allDieselChart').getContext('2d');
+            charts.allDiesel = new Chart(allDieselCtx, {
                 type: 'line',
                 data: {
                     labels: [],
@@ -1129,564 +1062,150 @@ tbody tr:hover {
                             data: [],
                             borderColor: '#3b82f6',
                             backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            tension: 0.4,
-                            fill: true,
                             borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            fill: false,
+                            tension: 0.4
                         },
                         {
                             label: 'DG-2',
                             data: [],
                             borderColor: '#10b981',
                             backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            tension: 0.4,
-                            fill: true,
                             borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            fill: false,
+                            tension: 0.4
                         },
                         {
                             label: 'DG-3',
                             data: [],
                             borderColor: '#f59e0b',
                             backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                            tension: 0.4,
-                            fill: true,
                             borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            fill: false,
+                            tension: 0.4
                         }
                     ]
                 },
                 options: {
-                    ...chartOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            grid: { color: '#334155' },
-                            ticks: { 
-                                color: '#94a3b8',
-                                font: { family: 'Inter' }
-                            }
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
                         },
                         x: {
-                            grid: { color: '#334155' },
-                            ticks: { 
-                                color: '#94a3b8',
-                                font: { family: 'Inter' },
-                                maxRotation: 45,
-                                minRotation: 45
-                            }
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
                         }
                     }
                 }
             });
 
-            // Distribution Chart
-            const ctx2 = document.getElementById('distributionChart').getContext('2d');
-            distributionChart = new Chart(ctx2, {
-                type: 'doughnut',
-                data: {
-                    labels: ['DG-1', 'DG-2', 'DG-3'],
-                    datasets: [{
-                        data: [0, 0, 0],
-                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
-                        borderWidth: 0,
-                        hoverOffset: 10
-                    }]
-                },
-                options: {
-                    ...chartOptions,
-                    cutout: '70%'
-                }
-            });
-
-            // Consumption Chart (Analytics)
-            const ctx3 = document.getElementById('consumptionChart').getContext('2d');
-            consumptionChart = new Chart(ctx3, {
+            // Power analytics chart
+            const powerAnalyticsCtx = document.getElementById('powerAnalyticsChart').getContext('2d');
+            charts.powerAnalytics = new Chart(powerAnalyticsCtx, {
                 type: 'bar',
                 data: {
-                    labels: ['DG-1', 'DG-2', 'DG-3'],
+                    labels: [],
                     datasets: [{
-                        label: 'Consumption (L)',
-                        data: [0, 0, 0],
-                        backgroundColor: ['rgba(59, 130, 246, 0.8)', 'rgba(16, 185, 129, 0.8)', 'rgba(245, 158, 11, 0.8)'],
-                        borderColor: ['#3b82f6', '#10b981', '#f59e0b'],
-                        borderWidth: 2,
-                        borderRadius: 8
+                        label: 'Power (kW)',
+                        data: [],
+                        backgroundColor: '#10b981',
+                        borderWidth: 0
                     }]
                 },
                 options: {
-                    ...chartOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            grid: { color: '#334155' },
-                            ticks: { 
-                                color: '#94a3b8',
-                                font: { family: 'Inter' }
-                            }
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
                         },
                         x: {
-                            grid: { display: false },
-                            ticks: { 
-                                color: '#94a3b8',
-                                font: { family: 'Inter' }
-                            }
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8' }
                         }
                     }
                 }
             });
         }
 
-        // Navigation
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', function() {
-                const page = this.getAttribute('data-page');
-                switchPage(page);
-                closeSidebar(); // Close sidebar on mobile after navigation
+        // Export to Excel
+        async function exportToExcel() {
+            try {
+                const response = await fetch('/api/export-excel');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `DG_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (error) {
+                console.error('Error exporting to Excel:', error);
+                alert('Error exporting data');
+            }
+        }
+
+        // Fetch hourly report
+        async function fetchHourlyReport() {
+            try {
+                const response = await fetch('/api/hourly-data');
+                const data = await response.json();
+                
+                if (data.readings && data.readings.length > 0) {
+                    const reportHtml = data.readings.map(reading => `
+                        <tr>
+                            <td>${reading.date}</td>
+                            <td>${reading.hour}:00</td>
+                            <td>${reading.dg1}</td>
+                            <td>${reading.dg2}</td>
+                            <td>${reading.dg3}</td>
+                            <td><strong>${reading.total}</strong></td>
+                            <td>${reading.voltage || 'N/A'}</td>
+                            <td>${reading.current || 'N/A'}</td>
+                            <td>${reading.power || 'N/A'}</td>
+                        </tr>
+                    `).join('');
+                    document.getElementById('hourly-report').innerHTML = reportHtml;
+                }
+            } catch (error) {
+                console.error('Error fetching hourly report:', error);
+            }
+        }
+
+        // Load hourly report when reports page is shown
+        const reportsObserver = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.target.id === 'reports' && mutation.target.classList.contains('active')) {
+                    fetchHourlyReport();
+                }
             });
         });
 
-        function switchPage(pageName) {
-            document.querySelectorAll('.page-container').forEach(page => {
-                page.classList.remove('active');
-            });
-            
-            document.getElementById(`${pageName}-page`).classList.add('active');
-            
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.classList.remove('active');
-                if (item.getAttribute('data-page') === pageName) {
-                    item.classList.add('active');
-                }
-            });
-            
-            document.getElementById('breadcrumb-active').textContent = 
-                pageName.charAt(0).toUpperCase() + pageName.slice(1);
-
-            if (pageName === 'analytics') {
-                loadAnalytics();
-            } else if (pageName === 'settings') {
-                loadSettings();
-            }
-        }
-
-        // Fetch Live Data
-        function fetchLiveData() {
-            fetch('/api/data')
-                .then(res => res.json())
-                .then(data => {
-                    updateMetrics(data);
-                    updateDistribution(data);
-                })
-                .catch(err => console.error('Live data error:', err));
-        }
-
-        function updateMetrics(data) {
-            document.getElementById('dg1-value').innerHTML = 
-                `${data.dg1}<span class="metric-unit">L</span>`;
-            document.getElementById('dg2-value').innerHTML = 
-                `${data.dg2}<span class="metric-unit">L</span>`;
-            document.getElementById('dg3-value').innerHTML = 
-                `${data.dg3}<span class="metric-unit">L</span>`;
-            document.getElementById('total-value').innerHTML = 
-                `${data.total}<span class="metric-unit">L</span>`;
-
-            updateChange('dg1', data.dg1);
-            updateChange('dg2', data.dg2);
-            updateChange('dg3', data.dg3);
-            updateChange('total', data.total);
-        }
-
-        function updateChange(key, current) {
-            const el = document.getElementById(`${key}-change`);
-            if (previousValues[key] !== null) {
-                const change = current - previousValues[key];
-                const sign = change >= 0 ? '+' : '';
-                el.textContent = `${sign}${change}L`;
-                el.className = change >= 0 ? 'metric-change positive' : 'metric-change negative';
-            }
-            previousValues[key] = current;
-        }
-
-        function updateDistribution(data) {
-            distributionChart.data.datasets[0].data = [data.dg1, data.dg2, data.dg3];
-            distributionChart.update('none');
-        }
-
-        // Fetch Historical Data
-        function fetchHistoricalData() {
-            const params = new URLSearchParams();
-            
-            if (currentFilters.timeRange) params.append('timeRange', currentFilters.timeRange);
-            if (currentFilters.generator) params.append('generator', currentFilters.generator);
-            if (currentFilters.fromDate && currentFilters.timeRange === 'custom') 
-                params.append('fromDate', currentFilters.fromDate);
-            if (currentFilters.toDate && currentFilters.timeRange === 'custom') 
-                params.append('toDate', currentFilters.toDate);
-            
-            fetch(`/api/historical?${params.toString()}`)
-                .then(res => res.json())
-                .then(result => {
-                    if (result.success && result.data.length > 0) {
-                        historicalData = result.data;
-                        updateTrendChart(result.data);
-                        updateActivityLog(result.data);
-                    }
-                })
-                .catch(err => console.error('Historical data error:', err));
-        }
-
-        function updateTrendChart(data) {
-            const labels = [];
-            const dg1Data = [];
-            const dg2Data = [];
-            const dg3Data = [];
-
-            const maxPoints = 50;
-            const step = Math.max(1, Math.floor(data.length / maxPoints));
-            
-            for (let i = 0; i < data.length; i += step) {
-                const record = data[i];
-                const date = new Date(record.timestamp);
-                const timeFormat = date.toLocaleString('en-US', { 
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-                
-                labels.push(timeFormat);
-                dg1Data.push(record.dg1);
-                dg2Data.push(record.dg2);
-                dg3Data.push(record.dg3);
-            }
-
-            trendChart.data.labels = labels;
-            trendChart.data.datasets[0].data = dg1Data;
-            trendChart.data.datasets[1].data = dg2Data;
-            trendChart.data.datasets[2].data = dg3Data;
-            trendChart.update();
-        }
-
-        function updateActivityLog(data) {
-            const log = document.getElementById('activityLog');
-            log.innerHTML = '';
-            
-            const records = data.slice(-20).reverse();
-            
-            if (records.length === 0) {
-                log.innerHTML = '<tr><td colspan="5" class="empty-state">No data available</td></tr>';
-                return;
-            }
-            
-            records.forEach(record => {
-                const row = log.insertRow();
-                const date = new Date(record.timestamp);
-                const dateStr = date.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                });
-                const timeStr = date.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-                
-                row.innerHTML = `
-                    <td>
-                        <div style="font-weight: 600;">${dateStr}</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">${timeStr}</div>
-                    </td>
-                    <td>${record.dg1}L</td>
-                    <td>${record.dg2}L</td>
-                    <td>${record.dg3}L</td>
-                    <td><strong>${record.total}L</strong></td>
-                `;
+        if (document.getElementById('reports')) {
+            reportsObserver.observe(document.getElementById('reports'), {
+                attributes: true,
+                attributeFilter: ['class']
             });
         }
-
-        // Analytics
-        function loadAnalytics() {
-            const period = document.getElementById('analyticsPeriod').value;
-            let fromDate, toDate;
-
-            if (period === 'custom') {
-                fromDate = document.getElementById('analyticsFromDate').value;
-                toDate = document.getElementById('analyticsToDate').value;
-                
-                if (!fromDate || !toDate) {
-                    alert('Please select both dates');
-                    return;
-                }
-            }
-
-            const params = new URLSearchParams();
-            params.append('timeRange', period);
-            if (fromDate) params.append('fromDate', fromDate);
-            if (toDate) params.append('toDate', toDate);
-            
-            fetch(`/api/historical?${params.toString()}`)
-                .then(res => res.json())
-                .then(result => {
-                    if (result.success && result.data.length > 0) {
-                        calculateAnalytics(result.data);
-                    }
-                })
-                .catch(err => console.error('Analytics error:', err));
-        }
-
-        function calculateAnalytics(data) {
-            if (data.length < 2) return;
-
-            const dgs = ['dg1', 'dg2', 'dg3'];
-            const analysis = {};
-
-            dgs.forEach(dg => {
-                const firstReading = data[0][dg];
-                const lastReading = data[data.length - 1][dg];
-                const consumption = firstReading - lastReading;
-                const avgLevel = data.reduce((sum, r) => sum + r[dg], 0) / data.length;
-                const maxLevel = Math.max(...data.map(r => r[dg]));
-                const minLevel = Math.min(...data.map(r => r[dg]));
-
-                // Find refill events (significant increases)
-                const refills = [];
-                for (let i = 1; i < data.length; i++) {
-                    const diff = data[i][dg] - data[i-1][dg];
-                    if (diff > 50) {
-                        refills.push({
-                            date: new Date(data[i].timestamp),
-                            amount: diff,
-                            from: data[i-1][dg],
-                            to: data[i][dg]
-                        });
-                    }
-                }
-
-                analysis[dg] = {
-                    startLevel: firstReading,
-                    endLevel: lastReading,
-                    consumption: Math.abs(consumption),
-                    avgLevel: avgLevel.toFixed(1),
-                    maxLevel,
-                    minLevel,
-                    refills
-                };
-            });
-
-            displayAnalytics(analysis);
-            updateConsumptionChart(analysis);
-        }
-
-        function displayAnalytics(analysis) {
-            const dgs = [
-                { key: 'dg1', name: 'DG-1', container: 'dg1-analytics' },
-                { key: 'dg2', name: 'DG-2', container: 'dg2-analytics' },
-                { key: 'dg3', name: 'DG-3', container: 'dg3-analytics' }
-            ];
-
-            dgs.forEach(dg => {
-                const data = analysis[dg.key];
-                const container = document.getElementById(dg.container);
-                
-                const trend = data.startLevel > data.endLevel ? 'down' : 'up';
-                const trendText = data.startLevel > data.endLevel ? 
-                    `↓ ${data.consumption}L consumed` : 
-                    `↑ ${data.consumption}L added`;
-
-                let html = `
-                    <div class="stat-row">
-                        <span class="stat-label">Starting Level</span>
-                        <span class="stat-value">${data.startLevel}L</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Current Level</span>
-                        <span class="stat-value">
-                            ${data.endLevel}L
-                            <span class="stat-trend ${trend}">${trendText}</span>
-                        </span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Average Level</span>
-                        <span class="stat-value">${data.avgLevel}L</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Peak Level</span>
-                        <span class="stat-value">${data.maxLevel}L</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Lowest Level</span>
-                        <span class="stat-value">${data.minLevel}L</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Total Consumption</span>
-                        <span class="stat-value">${data.consumption}L</span>
-                    </div>
-                `;
-
-                if (data.refills.length > 0) {
-                    html += `<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
-                        <div style="font-weight: 700; margin-bottom: 12px; color: var(--text-primary);">
-                            Refill History (${data.refills.length})
-                        </div>`;
-                    
-                    data.refills.slice(-5).reverse().forEach(refill => {
-                        const dateStr = refill.date.toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        });
-                        html += `
-                            <div class="timeline-item">
-                                <div class="timeline-date">${dateStr}</div>
-                                <div class="timeline-content">
-                                    Refilled: <span class="timeline-value">+${refill.amount}L</span>
-                                    (${refill.from}L → ${refill.to}L)
-                                </div>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                }
-
-                container.innerHTML = html;
-            });
-        }
-
-        function updateConsumptionChart(analysis) {
-            consumptionChart.data.datasets[0].data = [
-                analysis.dg1.consumption,
-                analysis.dg2.consumption,
-                analysis.dg3.consumption
-            ];
-            consumptionChart.update();
-        }
-
-        // Export Data
-        function exportData() {
-            const params = new URLSearchParams();
-            
-            if (currentFilters.timeRange) params.append('timeRange', currentFilters.timeRange);
-            if (currentFilters.generator) params.append('generator', currentFilters.generator);
-            if (currentFilters.fromDate && currentFilters.timeRange === 'custom') 
-                params.append('fromDate', currentFilters.fromDate);
-            if (currentFilters.toDate && currentFilters.timeRange === 'custom') 
-                params.append('toDate', currentFilters.toDate);
-            
-            window.location.href = `/api/export?${params.toString()}`;
-        }
-
-        // Apply Filters
-        function applyFilters() {
-            const timeRange = document.getElementById('timeRange').value;
-            const generator = document.getElementById('generatorFilter').value;
-            
-            currentFilters.timeRange = timeRange;
-            currentFilters.generator = generator;
-            
-            if (timeRange === 'custom') {
-                const fromDate = document.getElementById('fromDate').value;
-                const toDate = document.getElementById('toDate').value;
-                
-                if (!fromDate || !toDate) {
-                    alert('Please select both dates');
-                    return;
-                }
-                
-                currentFilters.fromDate = fromDate;
-                currentFilters.toDate = toDate;
-            } else {
-                currentFilters.fromDate = null;
-                currentFilters.toDate = null;
-            }
-            
-            fetchHistoricalData();
-        }
-
-        // Load Settings
-        function loadSettings() {
-            fetch('/api/health')
-                .then(res => res.json())
-                .then(data => {
-                    const host = window.location.hostname || '192.168.2.241';
-                    const port = window.location.port || '3000';
-                    document.getElementById('serverAddress').textContent = 
-                        `http://${host}:${port}`;
-                    document.getElementById('dbStatus').textContent = 
-                        data.mongodb === 'connected' ? '✓ Connected' : '✗ Disconnected';
-                    document.getElementById('lastUpdate').textContent = 
-                        data.lastDataUpdate ? 
-                        new Date(data.lastDataUpdate).toLocaleString() : 'Never';
-                })
-                .catch(err => {
-                    document.getElementById('dbStatus').textContent = '✗ Error';
-                });
-        }
-
-        // Hamburger Menu
-const hamburger = document.getElementById('hamburger');
-const sidebar = document.getElementById('sidebar');
-const sidebarOverlay = document.getElementById('sidebarOverlay');
-
-hamburger.addEventListener('click', toggleSidebar);
-sidebarOverlay.addEventListener('click', closeSidebar);
-
-function toggleSidebar() {
-    hamburger.classList.toggle('active');
-    sidebar.classList.toggle('active');
-    sidebarOverlay.classList.toggle('active');
-}
-
-function closeSidebar() {
-    hamburger.classList.remove('active');
-    sidebar.classList.remove('active');
-    sidebarOverlay.classList.remove('active');
-}
-
-// Update nav items to close sidebar on mobile
-document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', function() {
-        const page = this.getAttribute('data-page');
-        switchPage(page);
-        closeSidebar(); // Add this line
-    });
-});
-
-        // Event Listeners
-        document.getElementById('timeRange').addEventListener('change', function() {
-            const isCustom = this.value === 'custom';
-            document.getElementById('customFromGroup').style.display = isCustom ? 'flex' : 'none';
-            document.getElementById('customToGroup').style.display = isCustom ? 'flex' : 'none';
-        });
-
-        document.getElementById('analyticsPeriod').addEventListener('change', function() {
-            const isCustom = this.value === 'custom';
-            document.getElementById('analyticsFromGroup').style.display = isCustom ? 'flex' : 'none';
-            document.getElementById('analyticsToGroup').style.display = isCustom ? 'flex' : 'none';
-        });
-
-        // Initialize
-        initCharts();
-        fetchLiveData();
-        fetchHistoricalData();
-        
-        setInterval(fetchLiveData, 2000);
-        setInterval(fetchHistoricalData, 10000);
-
-        // Set default dates
-        const now = new Date();
-        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        document.getElementById('fromDate').value = yesterday.toISOString().slice(0, 16);
-        document.getElementById('toDate').value = now.toISOString().slice(0, 16);
-        document.getElementById('analyticsFromDate').value = yesterday.toISOString().slice(0, 16);
-        document.getElementById('analyticsToDate').value = now.toISOString().slice(0, 16);
-
-        console.log('✅ DG Monitoring System Initialized');
     </script>
 </body>
 </html>

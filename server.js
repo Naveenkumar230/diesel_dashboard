@@ -6,123 +6,102 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const compression = require('compression');
+const ExcelJS = require('exceljs');
 
 // ============================================
-// MONGODB CONNECTION WITH IMPROVED ERROR HANDLING
+// CONFIGURATION
 // ============================================
+const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/dieselDB";
-
-const mongooseOptions = {
-    serverSelectionTimeoutMS: 10000,
-    socketTimeoutMS: 45000,
-    connectTimeoutMS: 10000,
-    maxPoolSize: 10,
-    minPoolSize: 2,
-    retryWrites: true,
-    retryReads: true,
-    bufferCommands: false,
-    autoIndex: true
-};
-
-let isMongoConnected = false;
-let connectionAttempts = 0;
-const MAX_RETRY_ATTEMPTS = 3;
-
-async function connectMongoDB() {
-    connectionAttempts++;
-    
-    try {
-        console.log(`\n🔄 MongoDB connection attempt ${connectionAttempts}/${MAX_RETRY_ATTEMPTS}...`);
-        await mongoose.connect(MONGODB_URI, mongooseOptions);
-        console.log('✅ MongoDB Connected Successfully');
-        console.log(`   Database: ${mongoose.connection.name}`);
-        console.log(`   Host: ${mongoose.connection.host}`);
-        isMongoConnected = true;
-        connectionAttempts = 0;
-    } catch (err) {
-        console.error('❌ MongoDB Connection Error:', err.message);
-        
-        if (err.message.includes('IP') || err.message.includes('whitelist')) {
-            console.log('\n💡 IP Whitelist Issue:');
-            console.log('   1. Go to: https://cloud.mongodb.com');
-            console.log('   2. Navigate to Network Access');
-            console.log('   3. Add your IP or allow all (0.0.0.0/0)');
-        } else if (err.message.includes('SSL') || err.message.includes('TLS')) {
-            console.log('\n💡 SSL/TLS Issue:');
-            console.log('   Add to .env: &tls=true&tlsAllowInvalidCertificates=true');
-        } else if (err.message.includes('authentication')) {
-            console.log('\n💡 Authentication Issue:');
-            console.log('   Verify username/password in MONGODB_URI');
-        }
-        
-        if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
-            console.log(`\n⏳ Retrying in 5 seconds...`);
-            setTimeout(connectMongoDB, 5000);
-        } else {
-            console.log('\n⚠️  MongoDB unavailable after multiple attempts');
-            console.log('⚠️  System continues WITHOUT database (data not persistent)');
-            console.log('💡 Consider installing local MongoDB: sudo apt-get install mongodb\n');
-        }
-        
-        isMongoConnected = false;
-    }
-}
-
-mongoose.connection.on('connected', () => {
-    console.log('✅ MongoDB connection established');
-    isMongoConnected = true;
-});
-
-mongoose.connection.on('disconnected', () => {
-    console.log('⚠️  MongoDB disconnected - attempting reconnect...');
-    isMongoConnected = false;
-    setTimeout(connectMongoDB, 5000);
-});
-
-mongoose.connection.on('error', (err) => {
-    console.error('❌ MongoDB error:', err.message);
-    isMongoConnected = false;
-});
-
-connectMongoDB();
-
-// ============================================
-// EMAIL CONFIGURATION
-// ============================================
-let emailTransporter = null;
-let emailEnabled = false;
-
-try {
-    if (process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD) {
-        emailTransporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_APP_PASSWORD
-            }
-        });
-        emailEnabled = true;
-        console.log('✅ Email alerts enabled');
-    } else {
-        console.log('⚠️  Email alerts disabled (credentials not configured)');
-    }
-} catch (error) {
-    console.error('❌ Email configuration error:', error.message);
-    emailEnabled = false;
-}
-
-const alertState = {
-    lastAlertTime: {},
-    currentAlerts: new Set()
-};
-
-const ALERT_COOLDOWN = parseInt(process.env.ALERT_COOLDOWN) || 1800000;
+const PLC_PORT = process.env.PLC_PORT || '/dev/ttyUSB0';
+const PLC_SLAVE_ID = parseInt(process.env.PLC_SLAVE_ID) || 1;
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
-const WARNING_LEVEL = parseInt(process.env.WARNING_DIESEL_LEVEL) || 30;
-const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || '';
+const WARNING_LEVEL = parseInt(process.env.WARNING_DIESEL_LEVEL) || 200;
 
 // ============================================
-// OPTIMIZED MONGOOSE SCHEMA - HOURLY LOGGING
+// PLC REGISTER MAPPING (From your documentation)
+// ============================================
+const REGISTERS = {
+    // Diesel Generator Registers
+    DIESEL: {
+        DG1: 4104,  // D8 - DG-1 Diesel Level
+        DG2: 4100,  // D4 - DG-2 Diesel Level
+        DG3: 4102   // D6 - DG-3 Diesel Level
+    },
+    
+    // Voltage Measurements (3-Phase)
+    VOLTAGE: {
+        L1_N: 4096,     // D0 - L1-N Voltage (Phase R)
+        L2_N: 4097,     // D1 - L2-N Voltage (Phase Y)
+        L3_N: 4098,     // D2 - L3-N Voltage (Phase B)
+        L1_L2: 4099,    // D3 - L1-L2 Voltage
+        L2_L3: 4100,    // D4 - L2-L3 Voltage
+        L3_L1: 4101,    // D5 - L3-L1 Voltage
+        AVG_LN: 4102,   // D6 - Average Line-Neutral
+        AVG_LL: 4103,   // D7 - Average Line-Line
+        UNBALANCE: 4104,// D8 - Voltage Unbalance
+        THD_L1: 4105,   // D9 - Voltage THD L1
+        THD_L2: 4106,   // D10 - Voltage THD L2
+        THD_L3: 4107    // D11 - Voltage THD L3
+    },
+    
+    // Current Measurements
+    CURRENT: {
+        L1: 4108,       // D12 - L1 Current (Phase R)
+        L2: 4109,       // D13 - L2 Current (Phase Y)
+        L3: 4110,       // D14 - L3 Current (Phase B)
+        NEUTRAL: 4111,  // D15 - Neutral Current
+        AVG: 4112,      // D16 - Average Line Current
+        UNBALANCE: 4113,// D17 - Current Unbalance
+        THD_L1: 4114,   // D18 - Current THD L1
+        THD_L2: 4115,   // D19 - Current THD L2
+        THD_L3: 4116    // D20 - Current THD L3
+    },
+    
+    // Power Measurements
+    POWER: {
+        ACTIVE_L1: 4120,    // D24 - Active Power L1 (kW)
+        ACTIVE_L2: 4121,    // D25 - Active Power L2 (kW)
+        ACTIVE_L3: 4122,    // D26 - Active Power L3 (kW)
+        TOTAL_ACTIVE: 4123, // D27 - Total Active Power (kW)
+        REACTIVE_L1: 4124,  // D28 - Reactive Power L1 (kVAR)
+        REACTIVE_L2: 4125,  // D29 - Reactive Power L2 (kVAR)
+        REACTIVE_L3: 4126,  // D30 - Reactive Power L3 (kVAR)
+        TOTAL_REACTIVE: 4127,// D31 - Total Reactive Power (kVAR)
+        APPARENT_L1: 4128,  // D32 - Apparent Power L1 (kVA)
+        APPARENT_L2: 4129,  // D33 - Apparent Power L2 (kVA)
+        APPARENT_L3: 4130,  // D34 - Apparent Power L3 (kVA)
+        TOTAL_APPARENT: 4131 // D35 - Total Apparent Power (kVA)
+    },
+    
+    // Power Factor & Frequency
+    PF_FREQ: {
+        PF_L1: 4132,        // D36 - Power Factor L1
+        PF_L2: 4133,        // D37 - Power Factor L2
+        PF_L3: 4134,        // D38 - Power Factor L3
+        TOTAL_PF: 4135,     // D39 - Total Power Factor
+        FREQUENCY: 4136,    // D40 - Frequency
+        FREQ_DEV: 4137      // D41 - Frequency Deviation
+    },
+    
+    // Generator Output
+    GENERATOR: {
+        RATED_POWER: 4150,  // D54 - Generator Rated Power
+        LOAD_PCT: 4151,     // D55 - Generator Load Percentage
+        EFFICIENCY: 4152,   // D56 - Generator Efficiency
+        TEMP: 4153          // D57 - Generator Temperature
+    },
+    
+    // Battery System
+    BATTERY: {
+        VOLTAGE: 4159,      // D63 - Battery Voltage
+        CURRENT: 4160,      // D64 - Battery Charging Current
+        SOC: 4161           // D65 - Battery State of Charge
+    }
+};
+
+// ============================================
+// MONGODB SCHEMA
 // ============================================
 const DieselReadingSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now, index: true },
@@ -130,116 +109,162 @@ const DieselReadingSchema = new mongoose.Schema({
     dg2: { type: Number, required: true },
     dg3: { type: Number, required: true },
     total: { type: Number, required: true },
-    dg1_change: { type: Number, default: 0 },
-    dg2_change: { type: Number, default: 0 },
-    dg3_change: { type: Number, default: 0 },
-    hour: { type: Number, index: true }, // Hour of day (0-23)
-    date: { type: String, index: true }  // Date string for quick filtering (YYYY-MM-DD)
+    
+    // Electrical Parameters
+    voltage: {
+        l1n: Number,
+        l2n: Number,
+        l3n: Number,
+        avg: Number,
+        unbalance: Number
+    },
+    current: {
+        l1: Number,
+        l2: Number,
+        l3: Number,
+        avg: Number,
+        unbalance: Number
+    },
+    power: {
+        activeL1: Number,
+        activeL2: Number,
+        activeL3: Number,
+        totalActive: Number,
+        reactiveTotal: Number,
+        apparentTotal: Number
+    },
+    frequency: Number,
+    powerFactor: {
+        l1: Number,
+        l2: Number,
+        l3: Number,
+        total: Number
+    },
+    generator: {
+        load: Number,
+        efficiency: Number,
+        temperature: Number
+    },
+    
+    hour: { type: Number, index: true },
+    date: { type: String, index: true }
 });
 
-// Compound index for faster queries
 DieselReadingSchema.index({ date: 1, hour: 1 });
 DieselReadingSchema.index({ timestamp: -1 });
 
 const DieselReading = mongoose.model('DieselReading', DieselReadingSchema);
 
-// Cache for recent data to reduce database queries
-let dataCache = {
-    hourly: null,
-    daily: null,
-    lastUpdate: null,
-    cacheDuration: 5 * 60 * 1000 // 5 minutes cache
-};
+// ============================================
+// MONGODB CONNECTION
+// ============================================
+let isMongoConnected = false;
+
+async function connectMongoDB() {
+    try {
+        await mongoose.connect(MONGODB_URI, {
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 45000
+        });
+        console.log('✅ MongoDB Connected Successfully');
+        isMongoConnected = true;
+    } catch (err) {
+        console.error('❌ MongoDB Connection Error:', err.message);
+        console.log('⚠️  System continues WITHOUT database (data not persistent)');
+        isMongoConnected = false;
+    }
+}
+
+connectMongoDB();
+
+mongoose.connection.on('disconnected', () => {
+    console.log('⚠️  MongoDB disconnected - attempting reconnect...');
+    isMongoConnected = false;
+    setTimeout(connectMongoDB, 5000);
+});
 
 // ============================================
-// EMAIL TEMPLATES
+// EMAIL CONFIGURATION
 // ============================================
-function getEmailTemplate(alertType, data) {
-    const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const dashboardUrl = `http://${process.env.PI_IP_ADDRESS || '192.168.30.156'}:${process.env.PORT || 3000}`;
-    
-    const templates = {
-        critical: {
-            subject: '🚨 CRITICAL: Diesel Level Alert - Immediate Action Required',
-            html: `
-<!DOCTYPE html>
-<html>
-<head><style>
-body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
-.container { max-width: 600px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.header { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 40px 24px; text-align: center; color: white; }
-.header h1 { margin: 0; font-size: 28px; font-weight: 700; }
-.content { padding: 32px 24px; }
-.alert-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 20px; margin: 24px 0; border-radius: 8px; }
-.alert-box h2 { color: #991b1b; margin: 0 0 12px 0; font-size: 18px; font-weight: 700; }
-.alert-box p { color: #7f1d1d; margin: 0; line-height: 1.6; }
-.metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 24px 0; }
-.metric { background: #f9fafb; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #e5e7eb; }
-.metric-label { font-size: 12px; color: #6b7280; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
-.metric-value { font-size: 32px; font-weight: 700; color: #111827; }
-.critical { color: #dc2626; }
-.button { display: inline-block; background: #2563eb; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 24px 0; }
-.footer { background: #f9fafb; padding: 24px; text-align: center; font-size: 13px; color: #6b7280; border-top: 1px solid #e5e7eb; }
-.timestamp { background: #f3f4f6; padding: 12px; border-radius: 6px; text-align: center; margin: 20px 0; color: #374151; font-size: 14px; }
-</style></head>
-<body>
-<div class="container">
-    <div class="header">
-        <div style="font-size: 48px; margin-bottom: 12px;">🚨</div>
-        <h1>Critical Diesel Alert</h1>
-    </div>
-    <div class="content">
-        <div class="alert-box">
-            <h2>⚠️ IMMEDIATE ACTION REQUIRED</h2>
-            <p>One or more diesel generators have reached critically low fuel levels (≤${CRITICAL_LEVEL}L). Immediate refueling is required to prevent operational disruption.</p>
-        </div>
-        <div class="metric-grid">
-            <div class="metric">
-                <div class="metric-label">DG-1 Level</div>
-                <div class="metric-value ${data.dg1 <= CRITICAL_LEVEL ? 'critical' : ''}">${data.dg1}L</div>
-            </div>
-            <div class="metric">
-                <div class="metric-label">DG-2 Level</div>
-                <div class="metric-value ${data.dg2 <= CRITICAL_LEVEL ? 'critical' : ''}">${data.dg2}L</div>
-            </div>
-            <div class="metric">
-                <div class="metric-label">DG-3 Level</div>
-                <div class="metric-value ${data.dg3 <= CRITICAL_LEVEL ? 'critical' : ''}">${data.dg3}L</div>
-            </div>
-            <div class="metric">
-                <div class="metric-label">Total Diesel</div>
-                <div class="metric-value">${data.total}L</div>
-            </div>
-        </div>
-        <div class="timestamp">
-            <strong>Alert Time:</strong> ${timestamp}
-        </div>
-        <div style="text-align: center;">
-            <a href="${dashboardUrl}" class="button">View Live Dashboard →</a>
-        </div>
-    </div>
-    <div class="footer">
-        DG Monitoring System - Automated Alert<br>
-        Critical Level Threshold: ${CRITICAL_LEVEL}L
-    </div>
-</div>
-</body>
-</html>`
+let emailTransporter = null;
+let emailEnabled = false;
+
+if (process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD) {
+    emailTransporter = nodemailer.createTransporter({
+        service: 'gmail',
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_APP_PASSWORD
         }
-    };
-    
-    return templates[alertType] || templates.critical;
+    });
+    emailEnabled = true;
+    console.log('✅ Email alerts enabled');
+} else {
+    console.log('⚠️  Email alerts disabled (credentials not configured)');
 }
+
+const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || '';
+const alertState = {
+    lastAlertTime: {},
+    currentAlerts: new Set()
+};
+const ALERT_COOLDOWN = 1800000; // 30 minutes
 
 async function sendEmailAlert(alertType, data) {
     if (!emailEnabled || !ALERT_RECIPIENTS) return;
     
     const alertKey = `${alertType}_${Math.floor(Date.now() / ALERT_COOLDOWN)}`;
-    
     if (alertState.currentAlerts.has(alertKey)) return;
     
     try {
-        const template = getEmailTemplate(alertType, data);
+        const template = {
+            subject: '🚨 CRITICAL: Diesel Level Alert - Immediate Action Required',
+            html: `
+<!DOCTYPE html>
+<html>
+<head><style>
+body { font-family: sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
+.container { max-width: 600px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; }
+.header { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 40px 24px; text-align: center; color: white; }
+.content { padding: 32px 24px; }
+.metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 24px 0; }
+.metric { background: #f9fafb; padding: 20px; border-radius: 8px; text-align: center; }
+.critical { color: #dc2626; font-weight: bold; }
+</style></head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🚨 Critical Diesel Alert</h1>
+    </div>
+    <div class="content">
+        <p><strong>⚠️ IMMEDIATE ACTION REQUIRED</strong></p>
+        <p>One or more diesel generators have reached critically low fuel levels (≤${CRITICAL_LEVEL}L).</p>
+        <div class="metric-grid">
+            <div class="metric">
+                <div>DG-1 Level</div>
+                <div class="${data.dg1 <= CRITICAL_LEVEL ? 'critical' : ''}" style="font-size: 32px">${data.dg1}L</div>
+            </div>
+            <div class="metric">
+                <div>DG-2 Level</div>
+                <div class="${data.dg2 <= CRITICAL_LEVEL ? 'critical' : ''}" style="font-size: 32px">${data.dg2}L</div>
+            </div>
+            <div class="metric">
+                <div>DG-3 Level</div>
+                <div class="${data.dg3 <= CRITICAL_LEVEL ? 'critical' : ''}" style="font-size: 32px">${data.dg3}L</div>
+            </div>
+            <div class="metric">
+                <div>Total Diesel</div>
+                <div style="font-size: 32px">${data.total}L</div>
+            </div>
+        </div>
+        <p style="text-align: center; margin-top: 24px;">
+            <strong>Alert Time:</strong> ${new Date().toLocaleString()}
+        </p>
+    </div>
+</div>
+</body>
+</html>`
+        };
         
         await emailTransporter.sendMail({
             from: `"DG Monitoring System" <${process.env.EMAIL_USER}>`,
@@ -261,748 +286,373 @@ async function sendEmailAlert(alertType, data) {
 }
 
 function checkDieselLevels(data) {
-    // Only send alert when any DG reaches 50L or below
-    if (data.dg1 <= 50 || data.dg2 <= 50 || data.dg3 <= 50) {
+    if (data.dg1 <= CRITICAL_LEVEL || data.dg2 <= CRITICAL_LEVEL || data.dg3 <= CRITICAL_LEVEL) {
         sendEmailAlert('critical', data);
     }
 }
 
 // ============================================
-// PLC SETTINGS
+// MODBUS RTU CLIENT
 // ============================================
-const port = process.env.PLC_PORT || '/dev/ttyUSB0';
+const client = new ModbusRTU();
+let isPlcConnected = false;
+
 const plcSettings = {
     baudRate: parseInt(process.env.PLC_BAUD_RATE) || 9600,
     parity: process.env.PLC_PARITY || 'none',
     dataBits: parseInt(process.env.PLC_DATA_BITS) || 8,
     stopBits: parseInt(process.env.PLC_STOP_BITS) || 1
 };
-const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
 
-const dgRegisters = {
-    dg1: { address: 4104, name: "DG-1" },
-    dg2: { address: 4100, name: "DG-2" },
-    dg3: { address: 4102, name: "DG-3" }
-};
-
-let systemData = {
-    dg1: 0,
-    dg2: 0,
-    dg3: 0,
-    total: 0,
-    lastUpdate: null
-};
-
-let previousReading = null;
-let previousDieselData = { dg1: 0, dg2: 0, dg3: 0 };
-let lastSavedHour = -1; // Track the last hour data was saved
-
-const client = new ModbusRTU();
-const app = express();
-const webServerPort = parseInt(process.env.PORT) || 3000;
-const piIpAddress = process.env.PI_IP_ADDRESS || '192.168.30.156';
-
-// ============================================
-// MIDDLEWARE - OPTIMIZED FOR MOBILE
-// ============================================
-app.use(compression()); // Enable gzip compression for all responses
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname, {
-    maxAge: '1d', // Cache static files for 1 day
-    etag: true,
-    lastModified: true
-}));
-
-// Cache control middleware
-app.use((req, res, next) => {
-    // Enable browser caching for static assets
-    if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
-        res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+async function connectPLC() {
+    try {
+        await client.connectRTUBuffered(PLC_PORT, plcSettings);
+        client.setID(PLC_SLAVE_ID);
+        client.setTimeout(5000);
+        isPlcConnected = true;
+        console.log('✅ PLC Connected Successfully');
+        console.log(`   Port: ${PLC_PORT}`);
+        console.log(`   Slave ID: ${PLC_SLAVE_ID}`);
+    } catch (err) {
+        console.error('❌ PLC Connection Error:', err.message);
+        isPlcConnected = false;
+        setTimeout(connectPLC, 10000); // Retry after 10 seconds
     }
-    next();
-});
+}
+
+connectPLC();
 
 // ============================================
-// DATA CONVERSION FUNCTIONS
+// READ DATA FROM PLC
 // ============================================
-function toSignedInt16(value) {
-    if (value > 32767) return value - 65536;
-    return value;
-}
-
-function isValidReading(value) {
-    const signedValue = toSignedInt16(value);
-    if (value === 65535 || value === 65534 || signedValue === -1) return false;
-    return signedValue >= 0 && signedValue <= 600;
-}
-
-function smoothValue(currentValue, previousValue, maxChangePercent = 50) {
-    if (previousValue === 0 || previousValue === null) return currentValue;
-    const changePercent = Math.abs((currentValue - previousValue) / previousValue * 100);
-    if (changePercent > maxChangePercent) {
-        console.log(`⚠️  Smoothing: ${previousValue} -> ${currentValue} (${changePercent.toFixed(1)}% change - keeping previous)`);
-        return previousValue;
-    }
-    return currentValue;
-}
-
-async function readSingleRegister(address, name, dataKey) {
+async function readRegister(address) {
+    if (!isPlcConnected) return 0;
+    
     try {
         const data = await client.readHoldingRegisters(address, 1);
-        
-        if (!data || !data.data || data.data.length < 1) {
-            console.error(`${name}: Invalid data received`);
-            return systemData[dataKey] || 0;
-        }
-        
-        const rawValue = data.data[0];
-        
-        if (!isValidReading(rawValue)) {
-            console.log(`⚠️  Invalid reading: ${rawValue} for ${name}`);
-            return systemData[dataKey] || 0;
-        }
-        
-        const signedValue = toSignedInt16(rawValue);
-        let value = Math.max(0, signedValue);
-        
-        const previousValue = previousDieselData[dataKey] || 0;
-        value = smoothValue(value, previousValue, 30);
-        previousDieselData[dataKey] = value;
-        
-        console.log(`${name} (Addr: ${address}): ${value}L [Raw: ${rawValue}]`);
-        
-        systemData[dataKey] = value;
-        return value;
-        
-    } catch (e) {
-        console.error(`${name} Read Error at address ${address}: ${e.message}`);
-        return systemData[dataKey] || 0;
+        return data.data[0];
+    } catch (err) {
+        console.error(`Error reading register ${address}:`, err.message);
+        return 0;
     }
 }
 
-async function readAllSystemData() {
-    try {
-        console.log('═'.repeat(80));
-        console.log(`⏱️  ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-        console.log('─'.repeat(80));
-        
-        console.log('🔋 Reading Diesel Levels...');
-        await readSingleRegister(dgRegisters.dg1.address, dgRegisters.dg1.name, 'dg1');
-        await new Promise(resolve => setTimeout(resolve, 250));
-        
-        await readSingleRegister(dgRegisters.dg2.address, dgRegisters.dg2.name, 'dg2');
-        await new Promise(resolve => setTimeout(resolve, 250));
-        
-        await readSingleRegister(dgRegisters.dg3.address, dgRegisters.dg3.name, 'dg3');
-        await new Promise(resolve => setTimeout(resolve, 250));
-        
-        systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
-        systemData.lastUpdate = new Date().toISOString();
-        
-        console.log('═'.repeat(80));
-        console.log(`📊 SYSTEM STATUS:`);
-        console.log(`   DG-1: ${systemData.dg1}L | DG-2: ${systemData.dg2}L | DG-3: ${systemData.dg3}L | Total: ${systemData.total}L`);
-        console.log('═'.repeat(80));
-        console.log('');
-        
-        checkDieselLevels(systemData);
-        await saveToDatabase(systemData);
-        
-    } catch (e) {
-        console.error(`\n❌ MODBUS EXCEPTION: ${e.message}`);
-        console.error('Reconnecting to PLC...\n');
-        client.close();
-        setTimeout(connectToPLC, 5000);
-    }
-}
-
-function calculateChange(current, previous) {
-    if (!previous) return 0;
-    return current - previous;
-}
-
-// ============================================
-// OPTIMIZED DATABASE SAVING - HOURLY ONLY
-// ============================================
-async function saveToDatabase(data) {
-    if (mongoose.connection.readyState !== 1) {
-        return;
-    }
+async function readAllData() {
+    const data = {
+        diesel: {
+            dg1: 0,
+            dg2: 0,
+            dg3: 0,
+            total: 0
+        },
+        electrical: {
+            voltage: {},
+            current: {},
+            power: {},
+            frequency: 0,
+            powerFactor: {},
+            generator: {},
+            battery: {}
+        },
+        timestamp: new Date()
+    };
     
     try {
-        const now = new Date();
-        const currentHour = now.getHours();
+        // Read Diesel Levels
+        data.diesel.dg1 = await readRegister(REGISTERS.DIESEL.DG1);
+        data.diesel.dg2 = await readRegister(REGISTERS.DIESEL.DG2);
+        data.diesel.dg3 = await readRegister(REGISTERS.DIESEL.DG3);
+        data.diesel.total = data.diesel.dg1 + data.diesel.dg2 + data.diesel.dg3;
         
-        // Only save once per hour (at the start of each hour)
-        if (currentHour === lastSavedHour) {
-            return; // Skip saving if we already saved this hour
-        }
+        // Read Voltage Parameters
+        data.electrical.voltage.l1n = await readRegister(REGISTERS.VOLTAGE.L1_N);
+        data.electrical.voltage.l2n = await readRegister(REGISTERS.VOLTAGE.L2_N);
+        data.electrical.voltage.l3n = await readRegister(REGISTERS.VOLTAGE.L3_N);
+        data.electrical.voltage.avg = await readRegister(REGISTERS.VOLTAGE.AVG_LN);
+        data.electrical.voltage.unbalance = await readRegister(REGISTERS.VOLTAGE.UNBALANCE);
         
-        const dateString = now.toISOString().split('T')[0]; // YYYY-MM-DD
+        // Read Current Parameters
+        data.electrical.current.l1 = await readRegister(REGISTERS.CURRENT.L1);
+        data.electrical.current.l2 = await readRegister(REGISTERS.CURRENT.L2);
+        data.electrical.current.l3 = await readRegister(REGISTERS.CURRENT.L3);
+        data.electrical.current.avg = await readRegister(REGISTERS.CURRENT.AVG);
+        data.electrical.current.unbalance = await readRegister(REGISTERS.CURRENT.UNBALANCE);
         
-        const changes = {
-            dg1_change: calculateChange(data.dg1, previousReading?.dg1),
-            dg2_change: calculateChange(data.dg2, previousReading?.dg2),
-            dg3_change: calculateChange(data.dg3, previousReading?.dg3)
-        };
-
-        const reading = new DieselReading({
-            timestamp: now,
-            dg1: data.dg1,
-            dg2: data.dg2,
-            dg3: data.dg3,
-            total: data.total,
-            hour: currentHour,
-            date: dateString,
-            ...changes
-        });
-
-        await reading.save();
-        lastSavedHour = currentHour; // Update the last saved hour
-        previousReading = data;
+        // Read Power Parameters
+        data.electrical.power.activeL1 = await readRegister(REGISTERS.POWER.ACTIVE_L1);
+        data.electrical.power.activeL2 = await readRegister(REGISTERS.POWER.ACTIVE_L2);
+        data.electrical.power.activeL3 = await readRegister(REGISTERS.POWER.ACTIVE_L3);
+        data.electrical.power.totalActive = await readRegister(REGISTERS.POWER.TOTAL_ACTIVE);
+        data.electrical.power.reactiveTotal = await readRegister(REGISTERS.POWER.TOTAL_REACTIVE);
+        data.electrical.power.apparentTotal = await readRegister(REGISTERS.POWER.TOTAL_APPARENT);
         
-        // Clear cache after new data is saved
-        dataCache.hourly = null;
-        dataCache.daily = null;
+        // Read Frequency & Power Factor
+        data.electrical.frequency = await readRegister(REGISTERS.PF_FREQ.FREQUENCY);
+        data.electrical.powerFactor.l1 = await readRegister(REGISTERS.PF_FREQ.PF_L1);
+        data.electrical.powerFactor.l2 = await readRegister(REGISTERS.PF_FREQ.PF_L2);
+        data.electrical.powerFactor.l3 = await readRegister(REGISTERS.PF_FREQ.PF_L3);
+        data.electrical.powerFactor.total = await readRegister(REGISTERS.PF_FREQ.TOTAL_PF);
         
-        console.log(`💾 Hourly data saved to MongoDB (${currentHour}:00)`);
-    } catch (error) {
-        console.error('❌ MongoDB Save Error:', error.message);
-        if (error.name === 'MongoNetworkError') {
-            isMongoConnected = false;
-            console.log('⚠️  Lost MongoDB connection - attempting reconnect...');
-            setTimeout(connectMongoDB, 5000);
-        }
+        // Read Generator Parameters
+        data.electrical.generator.load = await readRegister(REGISTERS.GENERATOR.LOAD_PCT);
+        data.electrical.generator.efficiency = await readRegister(REGISTERS.GENERATOR.EFFICIENCY);
+        data.electrical.generator.temperature = await readRegister(REGISTERS.GENERATOR.TEMP);
+        
+        // Read Battery Parameters
+        data.electrical.battery.voltage = await readRegister(REGISTERS.BATTERY.VOLTAGE);
+        data.electrical.battery.current = await readRegister(REGISTERS.BATTERY.CURRENT);
+        data.electrical.battery.soc = await readRegister(REGISTERS.BATTERY.SOC);
+        
+        // Check for critical levels
+        checkDieselLevels(data.diesel);
+        
+    } catch (err) {
+        console.error('Error reading PLC data:', err.message);
     }
-}
-
-function connectToPLC() {
-    client.connectRTU(port, plcSettings)
-        .then(() => {
-            console.log(`\n╔════════════════════════════════════════════════════════╗`);
-            console.log(`║  DG MONITORING SYSTEM - OPTIMIZED EDITION             ║`);
-            console.log(`║     PLC CONNECTION SUCCESS                            ║`);
-            console.log(`╚════════════════════════════════════════════════════════╝`);
-            console.log(`\n📡 Connection Details:`);
-            console.log(`   Port: ${port}`);
-            console.log(`   Baud Rate: ${plcSettings.baudRate}`);
-            console.log(`   Data Bits: ${plcSettings.dataBits}`);
-            console.log(`   Parity: ${plcSettings.parity.toUpperCase()}`);
-            console.log(`   Stop Bits: ${plcSettings.stopBits}`);
-            console.log(`   Slave ID: ${plcSlaveID}`);
-            console.log(`\n📧 Email Alert Configuration:`);
-            console.log(`   Status: ${emailEnabled ? 'ENABLED' : 'DISABLED'}`);
-            if (emailEnabled) {
-                console.log(`   Recipients: ${ALERT_RECIPIENTS}`);
-                console.log(`   Critical Level: ${CRITICAL_LEVEL}L`);
-                console.log(`   Cooldown Period: ${ALERT_COOLDOWN / 60000} minutes`);
-            }
-            console.log(`\n📋 Register Mapping:`);
-            Object.entries(dgRegisters).forEach(([key, reg]) => {
-                console.log(`   ${reg.name.padEnd(10)} → Address ${reg.address}`);
-            });
-            console.log(`\n💾 Database:`);
-            console.log(`   MongoDB: ${mongoose.connection.readyState === 1 ? '✓ Connected' : '✗ Disconnected'}`);
-            console.log(`   Save Frequency: HOURLY (Optimized)`);
-            
-            client.setID(plcSlaveID);
-            client.setTimeout(3000);
-            
-            setTimeout(() => {
-                console.log(`\n${'═'.repeat(60)}`);
-                console.log(`🚀 Starting live data monitoring...`);
-                console.log(`   Update Interval: 2 seconds`);
-                console.log(`   Database Save: Every 1 hour (Optimized)`);
-                console.log(`   Data Smoothing: Enabled (30% max change threshold)`);
-                console.log(`${'═'.repeat(60)}\n`);
-                readAllSystemData();
-                setInterval(readAllSystemData, 2000);
-            }, 1000);
-        })
-        .catch((e) => {
-            console.error(`\n${'═'.repeat(60)}`);
-            console.error(`❌ PLC CONNECTION FAILED`);
-            console.error(`${'═'.repeat(60)}`);
-            console.error(`Port: ${port}`);
-            console.error(`Error: ${e.message}`);
-            console.error(`\n⚠️  Troubleshooting:`);
-            console.error(`   1. Check if PLC is powered on`);
-            console.error(`   2. Verify USB cable connection`);
-            console.error(`   3. Confirm port name (ls /dev/ttyUSB*)`);
-            console.error(`   4. Check user permissions (sudo usermod -a -G dialout $USER)`);
-            console.error(`\n🔄 Retrying connection in 5 seconds...\n`);
-            client.close();
-            setTimeout(connectToPLC, 5000);
-        });
+    
+    return data;
 }
 
 // ============================================
-// OPTIMIZED EXPRESS API ENDPOINTS
+// DATA STORAGE & HISTORY
+// ============================================
+let currentData = null;
+let dataHistory = [];
+const MAX_HISTORY = 100;
+
+// Read data every 5 seconds
+setInterval(async () => {
+    currentData = await readAllData();
+    
+    // Keep history of last 100 readings
+    dataHistory.unshift({
+        timestamp: currentData.timestamp,
+        dg1: currentData.diesel.dg1,
+        dg2: currentData.diesel.dg2,
+        dg3: currentData.diesel.dg3,
+        total: currentData.diesel.total
+    });
+    
+    if (dataHistory.length > MAX_HISTORY) {
+        dataHistory = dataHistory.slice(0, MAX_HISTORY);
+    }
+}, 5000);
+
+// ============================================
+// HOURLY DATA LOGGING (8AM - 8PM)
+// ============================================
+let lastSavedHour = -1;
+
+setInterval(async () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    
+    // Only save between 8 AM and 8 PM
+    if (currentHour >= 8 && currentHour <= 20) {
+        // Save once per hour
+        if (currentHour !== lastSavedHour && currentData && isMongoConnected) {
+            try {
+                const reading = new DieselReading({
+                    timestamp: now,
+                    dg1: currentData.diesel.dg1,
+                    dg2: currentData.diesel.dg2,
+                    dg3: currentData.diesel.dg3,
+                    total: currentData.diesel.total,
+                    voltage: currentData.electrical.voltage,
+                    current: currentData.electrical.current,
+                    power: currentData.electrical.power,
+                    frequency: currentData.electrical.frequency,
+                    powerFactor: currentData.electrical.powerFactor,
+                    generator: currentData.electrical.generator,
+                    hour: currentHour,
+                    date: now.toISOString().split('T')[0]
+                });
+                
+                await reading.save();
+                lastSavedHour = currentHour;
+                console.log(`✅ Hourly data saved for ${currentHour}:00`);
+            } catch (err) {
+                console.error('Error saving hourly data:', err.message);
+            }
+        }
+    }
+}, 60000); // Check every minute
+
+// ============================================
+// EXPRESS APP
+// ============================================
+const app = express();
+
+app.use(compression());
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ============================================
+// API ENDPOINTS
 // ============================================
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Real-time data endpoint - lightweight, no database query
-app.get('/api/data', (req, res) => {
-    res.json({
-        timestamp: systemData.lastUpdate || new Date().toISOString(),
-        dg1: systemData.dg1,
-        dg2: systemData.dg2,
-        dg3: systemData.dg3,
-        total: systemData.total
-    });
-});
-
-// Optimized historical data with caching and pagination
-app.get('/api/historical', async (req, res) => {
-    try {
-        if (mongoose.connection.readyState !== 1) {
-            return res.json({
-                success: false,
-                error: 'Database not connected',
-                data: []
-            });
-        }
-
-        const { timeRange = '24h', fromDate, toDate, limit = 500 } = req.query;
-
-        // Check cache first
-        const cacheKey = `${timeRange}_${fromDate}_${toDate}`;
-        const now = Date.now();
-        if (dataCache.hourly && dataCache.lastUpdate && 
-            (now - dataCache.lastUpdate < dataCache.cacheDuration) &&
-            dataCache.cacheKey === cacheKey) {
-            console.log('📦 Serving from cache');
-            return res.json(dataCache.hourly);
-        }
-
-        let query = {};
-        
-        if (fromDate && toDate && fromDate !== 'null' && toDate !== 'null') {
-            const from = new Date(fromDate);
-            const to = new Date(toDate);
-            
-            if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
-                query.timestamp = { $gte: from, $lte: to };
-            }
-        } else if (timeRange && timeRange !== 'custom') {
-            const now = new Date();
-            let startTime;
-            
-            switch(timeRange) {
-                case '1h': 
-                    startTime = new Date(now.getTime() - 60 * 60 * 1000); 
-                    break;
-                case '24h': 
-                    startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); 
-                    break;
-                case '7d': 
-                    startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); 
-                    break;
-                case '30d': 
-                    startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); 
-                    break;
-                default: 
-                    startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            }
-            
-            query.timestamp = { $gte: startTime };
-        }
-
-        // Optimized query with field selection
-        const readings = await DieselReading.find(query)
-            .select('timestamp dg1 dg2 dg3 total dg1_change dg2_change dg3_change hour date')
-            .sort({ timestamp: -1 })
-            .limit(parseInt(limit))
-            .lean(); // Use lean() for better performance
-
-        const processedData = readings.map(reading => ({
-            timestamp: reading.timestamp,
-            dg1: reading.dg1,
-            dg2: reading.dg2,
-            dg3: reading.dg3,
-            total: reading.total,
-            dg1_change: reading.dg1_change || 0,
-            dg2_change: reading.dg2_change || 0,
-            dg3_change: reading.dg3_change || 0
-        })).reverse();
-
-        const response = {
-            success: true,
-            count: processedData.length,
-            timeRange: timeRange,
-            data: processedData
-        };
-
-        // Cache the result
-        dataCache.hourly = response;
-        dataCache.lastUpdate = now;
-        dataCache.cacheKey = cacheKey;
-
-        res.json(response);
-
-    } catch (error) {
-        console.error('Historical data error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            data: []
-        });
-    }
-});
-
-// Optimized export with streaming for large datasets
-app.get('/api/export', async (req, res) => {
-    try {
-        if (mongoose.connection.readyState !== 1) {
-            return res.status(503).json({
-                success: false,
-                error: 'Database not connected'
-            });
-        }
-
-        const { timeRange = '24h', fromDate, toDate } = req.query;
-        
-        const now = new Date();
-        let query = {};
-        
-        if (fromDate && toDate && fromDate !== 'null' && toDate !== 'null') {
-            const from = new Date(fromDate);
-            const to = new Date(toDate);
-            
-            if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
-                query.timestamp = { $gte: from, $lte: to };
-            }
-        } else {
-            let startTime;
-            switch(timeRange) {
-                case '1h': 
-                    startTime = new Date(now.getTime() - 60 * 60 * 1000); 
-                    break;
-                case '24h': 
-                    startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); 
-                    break;
-                case '7d': 
-                    startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); 
-                    break;
-                case '30d': 
-                    startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); 
-                    break;
-                default: 
-                    startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            }
-            query.timestamp = { $gte: startTime };
-        }
-
-        // Use cursor for memory-efficient streaming
-        const cursor = DieselReading.find(query)
-            .select('timestamp dg1 dg2 dg3 total dg1_change dg2_change dg3_change')
-            .sort({ timestamp: 1 })
-            .cursor();
-
-        const filename = `dg_data_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}.csv`;
-        
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        
-        // Write header
-        res.write('Date,Time,DG-1 (L),DG-2 (L),DG-3 (L),Total (L),DG-1 Change,DG-2 Change,DG-3 Change\n');
-        
-        let recordCount = 0;
-        
-        // Stream data row by row
-        for (let reading = await cursor.next(); reading != null; reading = await cursor.next()) {
-            const d = new Date(reading.timestamp);
-            const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
-            let hours = d.getHours();
-            const minutes = String(d.getMinutes()).padStart(2, '0');
-            const seconds = String(d.getSeconds()).padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12 || 12;
-            const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
-            
-            res.write(`${dateStr},${timeStr},${reading.dg1},${reading.dg2},${reading.dg3},${reading.total},${reading.dg1_change || 0},${reading.dg2_change || 0},${reading.dg3_change || 0}\n`);
-            recordCount++;
-        }
-        
-        res.end();
-        console.log(`📥 Data exported: ${filename} (${recordCount} records)`);
-
-    } catch (error) {
-        console.error('Export error:', error);
-        if (!res.headersSent) {
-            res.status(500).json({
-                success: false,
-                error: error.message
-            });
-        }
-    }
-});
-
-app.get('/api/health', (req, res) => {
-    res.json({
-        success: true,
-        status: 'running',
-        timestamp: new Date().toISOString(),
-        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        lastDataUpdate: systemData.lastUpdate,
-        systemStatus: {
-            totalDiesel: systemData.total,
-            dg1: systemData.dg1,
-            dg2: systemData.dg2,
-            dg3: systemData.dg3
-        },
-        alerts: {
-            enabled: emailEnabled,
-            criticalLevel: CRITICAL_LEVEL,
-            recipients: ALERT_RECIPIENTS,
-            cooldown: `${ALERT_COOLDOWN / 60000} minutes`
-        },
-        plc: {
-            port: port,
-            baudRate: plcSettings.baudRate,
-            slaveId: plcSlaveID
-        },
-        optimization: {
-            dataLogging: 'Hourly',
-            cacheEnabled: true,
-            compressionEnabled: true
-        }
-    });
-});
-
-// Optimized analytics with aggregation pipeline
-app.get('/api/analytics', async (req, res) => {
-    try {
-        if (mongoose.connection.readyState !== 1) {
-            return res.json({
-                success: false,
-                error: 'Database not connected',
-                data: null
-            });
-        }
-
-        const { period = '24h', fromDate, toDate } = req.query;
-        
-        let query = {};
-        
-        if (fromDate && toDate && fromDate !== 'null' && toDate !== 'null') {
-            const from = new Date(fromDate);
-            const to = new Date(toDate);
-            
-            if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
-                query.timestamp = { $gte: from, $lte: to };
-            }
-        } else {
-            const now = new Date();
-            let startTime;
-            
-            switch(period) {
-                case '1h': startTime = new Date(now.getTime() - 60 * 60 * 1000); break;
-                case '24h': startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
-                case '7d': startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
-                case '30d': startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
-                default: startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            }
-            
-            query.timestamp = { $gte: startTime };
-        }
-
-        // Use aggregation pipeline for better performance
-        const analytics = await DieselReading.aggregate([
-            { $match: query },
-            { $sort: { timestamp: 1 } },
-            {
-                $group: {
-                    _id: null,
-                    firstReading: { $first: '$ROOT' },
-                    lastReading: { $last: '$ROOT' },
-                    avgDg1: { $avg: '$dg1' },
-                    avgDg2: { $avg: '$dg2' },
-                    avgDg3: { $avg: '$dg3' },
-                    maxDg1: { $max: '$dg1' },
-                    maxDg2: { $max: '$dg2' },
-                    maxDg3: { $max: '$dg3' },
-                    minDg1: { $min: '$dg1' },
-                    minDg2: { $min: '$dg2' },
-                    minDg3: { $min: '$dg3' },
-                    count: { $sum: 1 }
-                }
-            }
-        ]);
-
-        if (!analytics || analytics.length === 0) {
-            return res.json({
-                success: true,
-                message: 'Insufficient data for analysis',
-                data: null
-            });
-        }
-
-        const result = analytics[0];
-        const dgs = ['dg1', 'dg2', 'dg3'];
-        const analyticsData = {};
-
-        dgs.forEach(dg => {
-            const firstValue = result.firstReading[dg];
-            const lastValue = result.lastReading[dg];
-            const consumption = Math.max(0, firstValue - lastValue);
-
-            analyticsData[dg] = {
-                startLevel: firstValue,
-                endLevel: lastValue,
-                consumption: consumption,
-                avgLevel: parseFloat(result[`avg${dg.charAt(0).toUpperCase()}${dg.slice(1)}`].toFixed(1)),
-                maxLevel: result[`max${dg.charAt(0).toUpperCase()}${dg.slice(1)}`],
-                minLevel: result[`min${dg.charAt(0).toUpperCase()}${dg.slice(1)}`]
-            };
-        });
-
-        const totalConsumption = analyticsData.dg1.consumption + analyticsData.dg2.consumption + analyticsData.dg3.consumption;
-
+// Get current real-time data
+app.get('/api/current-data', (req, res) => {
+    if (currentData) {
         res.json({
-            success: true,
-            period: period,
-            recordCount: result.count,
-            analytics: analyticsData,
-            summary: {
-                totalConsumption: totalConsumption,
-                currentTotal: systemData.total
-            }
+            diesel: currentData.diesel,
+            electrical: currentData.electrical,
+            history: dataHistory,
+            timestamp: currentData.timestamp
         });
-
-    } catch (error) {
-        console.error('Analytics error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
+    } else {
+        res.json({
+            diesel: { dg1: 0, dg2: 0, dg3: 0, total: 0 },
+            electrical: {},
+            history: [],
+            timestamp: new Date()
         });
     }
 });
 
-// ============================================
-// ERROR HANDLERS
-// ============================================
+// Get hourly data from database
+app.get('/api/hourly-data', async (req, res) => {
+    if (!isMongoConnected) {
+        return res.json({ readings: [] });
+    }
+    
+    try {
+        const { startDate, endDate } = req.query;
+        const query = {};
+        
+        if (startDate && endDate) {
+            query.date = { $gte: startDate, $lte: endDate };
+        }
+        
+        const readings = await DieselReading.find(query)
+            .sort({ timestamp: -1 })
+            .limit(100);
+        
+        res.json({ readings });
+    } catch (err) {
+        console.error('Error fetching hourly data:', err.message);
+        res.status(500).json({ error: 'Error fetching data' });
+    }
+});
 
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Endpoint not found'
+// Export to Excel
+app.get('/api/export-excel', async (req, res) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('DG Report');
+        
+        // Define columns
+        worksheet.columns = [
+            { header: 'Date', key: 'date', width: 12 },
+            { header: 'Hour', key: 'hour', width: 10 },
+            { header: 'DG-1 (L)', key: 'dg1', width: 12 },
+            { header: 'DG-2 (L)', key: 'dg2', width: 12 },
+            { header: 'DG-3 (L)', key: 'dg3', width: 12 },
+            { header: 'Total (L)', key: 'total', width: 12 },
+            { header: 'Avg Voltage (V)', key: 'voltage', width: 15 },
+            { header: 'Avg Current (A)', key: 'current', width: 15 },
+            { header: 'Total Power (kW)', key: 'power', width: 15 },
+            { header: 'Frequency (Hz)', key: 'frequency', width: 15 },
+            { header: 'Power Factor', key: 'pf', width: 15 }
+        ];
+        
+        // Style header
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: '4472C4' }
+        };
+        
+        // Add data
+        if (isMongoConnected) {
+            const readings = await DieselReading.find()
+                .sort({ timestamp: -1 })
+                .limit(1000);
+            
+            readings.forEach(reading => {
+                worksheet.addRow({
+                    date: reading.date,
+                    hour: `${reading.hour}:00`,
+                    dg1: reading.dg1,
+                    dg2: reading.dg2,
+                    dg3: reading.dg3,
+                    total: reading.total,
+                    voltage: reading.voltage?.avg || 0,
+                    current: reading.current?.avg || 0,
+                    power: reading.power?.totalActive || 0,
+                    frequency: reading.frequency || 0,
+                    pf: reading.powerFactor?.total || 0
+                });
+            });
+        }
+        
+        // Send file
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename=DG_Report_${new Date().toISOString().split('T')[0]}.xlsx`
+        );
+        
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        console.error('Error exporting to Excel:', err.message);
+        res.status(500).json({ error: 'Error exporting data' });
+    }
+});
+
+// System status
+app.get('/api/status', (req, res) => {
+    res.json({
+        plc: isPlcConnected ? 'connected' : 'disconnected',
+        database: isMongoConnected ? 'connected' : 'disconnected',
+        email: emailEnabled ? 'enabled' : 'disabled',
+        timestamp: new Date()
     });
 });
 
-app.use((err, req, res, next) => {
-    console.error('Server error:', err);
-    res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-    });
+// ============================================
+// START SERVER
+// ============================================
+app.listen(PORT, () => {
+    console.log('');
+    console.log('===========================================');
+    console.log('   DG MONITORING SYSTEM - v3.0');
+    console.log('===========================================');
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`📊 Dashboard: http://localhost:${PORT}`);
+    console.log('');
+    console.log('System Status:');
+    console.log(`   PLC Connection: ${isPlcConnected ? '✅ Connected' : '⚠️  Disconnected'}`);
+    console.log(`   MongoDB: ${isMongoConnected ? '✅ Connected' : '⚠️  Disconnected'}`);
+    console.log(`   Email Alerts: ${emailEnabled ? '✅ Enabled' : '⚠️  Disabled'}`);
+    console.log('');
+    console.log('Features:');
+    console.log('   ✅ Real-time PLC data reading (every 5 seconds)');
+    console.log('   ✅ Hourly database logging (8AM - 8PM)');
+    console.log('   ✅ Email alerts for critical diesel levels');
+    console.log('   ✅ Excel export with all parameters');
+    console.log('   ✅ Comprehensive electrical parameter monitoring');
+    console.log('===========================================');
+    console.log('');
 });
 
-// ============================================
-// GRACEFUL SHUTDOWN
-// ============================================
-
+// Graceful shutdown
 process.on('SIGINT', async () => {
-    console.log('\n\n🛑 Shutting down gracefully...');
+    console.log('\n🛑 Shutting down gracefully...');
     
-    try {
+    if (client.isOpen) {
         client.close();
-        console.log('✓ PLC connection closed');
-        
-        await mongoose.connection.close();
-        console.log('✓ MongoDB connection closed');
-        
-        console.log('✓ Shutdown complete\n');
-        process.exit(0);
-    } catch (error) {
-        console.error('Error during shutdown:', error);
-        process.exit(1);
     }
-});
-
-process.on('SIGTERM', async () => {
-    console.log('\n\n🛑 Received SIGTERM, shutting down...');
     
-    try {
-        client.close();
+    if (isMongoConnected) {
         await mongoose.connection.close();
-        console.log('✓ Shutdown complete\n');
-        process.exit(0);
-    } catch (error) {
-        console.error('Error during shutdown:', error);
-        process.exit(1);
     }
-});
-
-// ============================================
-// START WEB SERVER
-// ============================================
-
-app.listen(webServerPort, () => {
-    console.log(`\n${'═'.repeat(70)}`);
-    console.log(`║${' '.repeat(68)}║`);
-    console.log(`║    🚀 DG MONITORING SYSTEM - OPTIMIZED EDITION 🚀${' '.repeat(17)}║`);
-    console.log(`║${' '.repeat(68)}║`);
-    console.log(`${'═'.repeat(70)}`);
-    console.log(`\n📡 WEB SERVER STARTED SUCCESSFULLY`);
-    console.log(`${'─'.repeat(70)}`);
-    console.log(`\n🌐 Access Points:`);
-    console.log(`   Dashboard:        http://${piIpAddress}:${webServerPort}/`);
-    console.log(`   Live Data API:    http://${piIpAddress}:${webServerPort}/api/data`);
-    console.log(`   Historical API:   http://${piIpAddress}:${webServerPort}/api/historical`);
-    console.log(`   Analytics API:    http://${piIpAddress}:${webServerPort}/api/analytics`);
-    console.log(`   Export CSV:       http://${piIpAddress}:${webServerPort}/api/export`);
-    console.log(`   Health Check:     http://${piIpAddress}:${webServerPort}/api/health`);
-    console.log(`\n📱 Mobile Optimizations:`);
-    console.log(`   ✓ Gzip compression enabled`);
-    console.log(`   ✓ Response caching (5 min)`);
-    console.log(`   ✓ Static asset caching (1 day)`);
-    console.log(`   ✓ Reduced database queries`);
-    console.log(`   ✓ Memory-efficient streaming`);
-    console.log(`\n📊 Data Logging:`);
-    console.log(`   ✓ Frequency: HOURLY (Every hour at :00)`);
-    console.log(`   ✓ PLC Reading: Every 2 seconds`);
-    console.log(`   ✓ Database: Saves once per hour`);
-    console.log(`   ✓ Export: Hourly data points`);
-    console.log(`\n🔧 System Configuration:`);
-    console.log(`   Server Port: ${webServerPort}`);
-    console.log(`   PLC Port: ${port}`);
-    console.log(`   Database: ${mongoose.connection.readyState === 1 ? '✓ Connected' : '⏳ Connecting...'}`);
-    console.log(`   Email Alerts: ${emailEnabled ? '✓ Enabled' : '✗ Disabled'}`);
-    console.log(`\n${'═'.repeat(70)}\n`);
     
-    connectToPLC();
+    process.exit(0);
 });
-
-// ============================================
-// INITIAL STARTUP LOG
-// ============================================
-
-console.log(`\n${'═'.repeat(70)}`);
-console.log(`  DG MONITORING SYSTEM v3.0.0 - OPTIMIZED EDITION`);
-console.log(`  Starting up...`);
-console.log(`${'═'.repeat(70)}\n`);
-console.log(`📅 Startup Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
-console.log(`💻 Node Version: ${process.version}`);
-console.log(`🖥️  Platform: ${process.platform}`);
-console.log(`📂 Working Directory: ${__dirname}`);
-console.log(`\n⚙️  Loading configuration...`);
-console.log(`   PORT: ${webServerPort}`);
-console.log(`   PLC_PORT: ${port}`);
-console.log(`   PLC_BAUD_RATE: ${plcSettings.baudRate}`);
-console.log(`   PLC_SLAVE_ID: ${plcSlaveID}`);
-console.log(`   PI_IP_ADDRESS: ${piIpAddress}`);
-console.log(`   CRITICAL_LEVEL: ${CRITICAL_LEVEL}L`);
-console.log(`   ALERT_COOLDOWN: ${ALERT_COOLDOWN / 60000} minutes`);
-console.log(`   ALERT_RECIPIENTS: ${ALERT_RECIPIENTS || 'Not configured'}`);
-console.log(`   DATA_LOGGING: HOURLY (Optimized)`);
-console.log(`\n✅ Configuration loaded successfully`);
-console.log(`🔌 Initializing web server...\n`);
