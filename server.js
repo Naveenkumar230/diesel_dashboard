@@ -7,7 +7,7 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 const compression = require('compression');
 
-// Utility function for deep comparison
+// Utility function (only deepEqual needed for general checks)
 function deepEqual(obj1, obj2) {
     if (obj1 === obj2) return true;
     if (typeof obj1 !== 'object' || obj1 === null || typeof obj2 !== 'object' || obj2 === null) return false;
@@ -76,10 +76,10 @@ const ALERT_COOLDOWN = parseInt(process.env.ALERT_COOLDOWN) || 1800000; // 30 mi
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || '';
 
-// *** New Cooldown: 3 minutes (180,000 milliseconds) for the report email ***
+// *** Report Cooldown: 3 minutes (180,000 milliseconds) ***
 const OPERATIONAL_CONFIRM_COOLDOWN = 180000; 
 
-// ====== DieselReading Schema and Caching (Remains the same) ======
+// ====== DieselReading Schema and Caching ======
 const DieselReadingSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now, index: true },
     dg1: { type: Number, required: true }, dg2: { type: Number, required: true }, dg3: { type: Number, required: true },
@@ -102,6 +102,7 @@ const plcSettings = {
     dataBits: parseInt(process.env.PLC_DATA_BITS) || 8, stopBits: parseInt(process.env.PLC_STOP_BITS) || 1
 };
 const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
+
 const dgRegisters = {
     dg1: { address: 4104, name: "DG-1" }, dg2: { address: 4100, name: "DG-2" }, dg3: { address: 4102, name: "DG-3" }
 };
@@ -130,22 +131,16 @@ const electricalRegisters = {
 };
 
 // ====== System Data State ======
-// This holds the latest MINUTELY aggregated data for the Web API
+// This holds the latest (2-second poll) data for the Web API and Email Snapshot
 let systemData = {
     dg1: 0, dg2: 0, dg3: 0, total: 0, lastUpdate: null,
     electrical: { dg1: {}, dg2: {}, dg3: {} }
 };
 
-// *** New variable to buffer the latest reading within the current minute ***
-let currentMinuteBuffer = null;
-let lastMinuteAggregated = -1;
-
-// *** History array to store one aggregated data point per minute for the 3-min email ***
-let dataHistory = []; 
-
 let previousReading = null;
 let previousDieselData = { dg1: 0, dg2: 0, dg3: 0 };
 let lastSavedHour = -1;
+let lastEmailSentTime = 0; // Tracks last successful operational email time
 
 // ... (PLC client, Express, Middleware, Conversion Functions remain the same)
 function toSignedInt16(value) { if (value > 32767) return value - 65536; return value; }
@@ -160,6 +155,7 @@ function smoothValue(currentValue, previousValue, maxChangePercent = 50) {
     if (changePercent > maxChangePercent) return previousValue;
     return currentValue;
 }
+// Read Diesel One Register (Updates systemData directly, as filtering is no longer needed)
 async function readSingleRegister(address, name, dataKey) {
     try {
         const data = await client.readHoldingRegisters(address, 1);
@@ -171,7 +167,8 @@ async function readSingleRegister(address, name, dataKey) {
         const previousValue = previousDieselData[dataKey] || 0;
         value = smoothValue(value, previousValue, 30);
         previousDieselData[dataKey] = value;
-        return value; // Return the new value, don't update global systemData yet
+        systemData[dataKey] = value; // Update global systemData
+        return value;
     } catch (_) { return systemData[dataKey] || 0; }
 }
 async function readElectricalRegister(address, scaling, defaultValue = 0) {
@@ -197,51 +194,25 @@ async function readAllElectrical(dgKey) {
 // Main System Data Polling
 async function readAllSystemData() {
     try {
-        const now = new Date();
-        const currentMinute = now.getMinutes();
+        // 1. Diesel Readings
+        systemData.dg1 = await readSingleRegister(dgRegisters.dg1.address, dgRegisters.dg1.name, 'dg1');
+        systemData.dg2 = await readSingleRegister(dgRegisters.dg2.address, dgRegisters.dg2.name, 'dg2');
+        systemData.dg3 = await readSingleRegister(dgRegisters.dg3.address, dgRegisters.dg3.name, 'dg3');
+        systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
+
+        // 2. Electrical Readings
+        systemData.electrical.dg1 = await readAllElectrical('dg1');
+        systemData.electrical.dg2 = await readAllElectrical('dg2');
+        systemData.electrical.dg3 = await readAllElectrical('dg3');
+
+        // Update timestamp
+        systemData.lastUpdate = new Date().toISOString();
         
-        // 1. Fetch data from PLC
-        const newDiesel = {
-            dg1: await readSingleRegister(dgRegisters.dg1.address, dgRegisters.dg1.name, 'dg1'),
-            dg2: await readSingleRegister(dgRegisters.dg2.address, dgRegisters.dg2.name, 'dg2'),
-            dg3: await readSingleRegister(dgRegisters.dg3.address, dgRegisters.dg3.name, 'dg3')
-        };
-        const newElectrical = {
-            dg1: await readAllElectrical('dg1'),
-            dg2: await readAllElectrical('dg2'),
-            dg3: await readAllElectrical('dg3')
-        };
-        const total = newDiesel.dg1 + newDiesel.dg2 + newDiesel.dg3;
-        const newReading = { ...newDiesel, total, electrical: newElectrical, timestamp: now };
-
-        // 2. Aggregate Data to Minute Level
-        // If the minute has changed since the last aggregation:
-        if (currentMinute !== lastMinuteAggregated) {
-            // A) If we have a buffered reading from the previous minute, push it to history
-            if (currentMinuteBuffer) {
-                const historyCopy = JSON.parse(JSON.stringify(currentMinuteBuffer));
-                dataHistory.push(historyCopy);
-                console.log(`Aggregated Minute ${lastMinuteAggregated}. History length: ${dataHistory.length}`);
-            }
-
-            // B) Reset the buffer for the new minute
-            currentMinuteBuffer = null;
-            lastMinuteAggregated = currentMinute;
-        }
-
-        // C) Update the buffer (only keep the latest successful reading in the current minute)
-        currentMinuteBuffer = newReading;
-
-        // D) Update global systemData only with the latest minute's data for the Web API
-        Object.assign(systemData, currentMinuteBuffer);
-        systemData.lastUpdate = now.toISOString();
-
-        // 3. Database Saving (runs only once per hour) and Critical Alert
         checkDieselLevels(systemData);
         await saveToDatabase(systemData);
 
-        // 4. Trigger the time-based operational confirmation
-        sendDataFetchedConfirmation(dataHistory);
+        // 3. Trigger the time-based operational confirmation (uses the global systemData)
+        sendDataFetchedConfirmation(systemData);
 
     } catch (e) {
         console.error('Error reading system data:', e.message);
@@ -284,40 +255,29 @@ function checkDieselLevels(data) {
     }
 }
 
-// Helper to create the electrical parameter list for minute-based reporting
-function getElectricalDetailsHtml(dataHistory) {
-    if (dataHistory.length === 0) return `<p>No minute samples were recorded during this interval.</p>`;
-
-    const electricalParamNames = {
-        voltageR: 'Voltage R (V)', currentR: 'Current R (A)', frequency: 'Frequency (Hz)', 
-        powerFactor: 'Power Factor', activePower: 'Active Power (kW)', runningHours: 'Running Hours (Hrs)',
-    };
-    
+// Helper to create the detailed electrical parameter list HTML - Matches the image format
+function getElectricalDetailsHtml(data) {
     let html = '';
+    const electricalParamNames = {
+        voltageR: 'Voltage R (V)', voltageY: 'Voltage Y (V)', voltageB: 'Voltage B (V)',
+        currentR: 'Current R (A)', currentY: 'Current Y (A)', currentB: 'Current B (A)',
+        frequency: 'Frequency (Hz)', powerFactor: 'Power Factor',
+        activePower: 'Active Power (kW)', reactivePower: 'Reactive Power (kVAR)',
+        energyMeter: 'Energy Meter (kWh)', runningHours: 'Running Hours (Hrs)',
+        windingTemp: 'Winding Temp (°C)'
+    };
+
     ['dg1', 'dg2', 'dg3'].forEach(dgKey => {
         const dgName = dgKey.toUpperCase();
-        html += `<h3 style="margin-top: 15px; color: #f7a200;">${dgName} - Minute Snapshot</h3><table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-        <tr style="background-color: #f2f2f2;">
-            <th style="border: 1px solid #ddd; padding: 8px;">Parameter</th>`;
-        
-        // Add a column for each minute sampled (up to 3)
-        dataHistory.forEach((_, index) => {
-            html += `<th style="border: 1px solid #ddd; padding: 8px;">Minute ${index + 1}</th>`;
-        });
-        html += `</tr>`;
-
-        // Add rows for key electrical parameters
-        const keyParams = ['voltageR', 'currentR', 'frequency', 'activePower'];
-        keyParams.forEach(key => {
-            html += `<tr><td style="border: 1px solid #ddd; padding: 8px;">${electricalParamNames[key]}</td>`;
-            dataHistory.forEach(dataPoint => {
-                const value = dataPoint.electrical[dgKey][key] !== undefined ? dataPoint.electrical[dgKey][key] : 'N/A';
-                html += `<td style="border: 1px solid #ddd; padding: 8px;"><b>${value}</b></td>`;
-            });
-            html += `</tr>`;
-        });
-        
-        html += `</table>`;
+        const totalParams = Object.keys(electricalRegisters[dgKey]).length;
+        html += `<h2 style="margin-top: 25px;">${dgName} Status (${totalParams} Parameters)</h2><ul style="list-style-type: none; padding-left: 0;">`;
+        const regs = electricalRegisters[dgKey];
+        for (const key in regs) {
+            const name = electricalParamNames[key] || key;
+            const value = data.electrical[dgKey][key] !== undefined ? data.electrical[dgKey][key] : '0'; // Default to '0' as per image
+            html += `<li style="margin-bottom: 3px;">**${name}:** <b>${value}</b></li>`;
+        }
+        html += `</ul>`;
     });
     return html;
 }
@@ -327,35 +287,32 @@ function getEmailTemplate(alertType, data) {
     const dashboardUrl = `http://${process.env.PI_IP_ADDRESS || '192.168.30.156'}:${process.env.PORT || 3000}`;
     
     if (alertType === 'critical') {
-        // ... (Critical Alert Template remains the same, uses single data point)
+        // ... (Critical Alert Template remains the same)
         return {
             subject: 'CRITICAL: Diesel Level Alert',
             html: `<div>... (Critical HTML using latest data) ...</div>`
         };
     } else if (alertType === 'data_fetched') {
-        const dataHistory = data;
-        const firstData = dataHistory[0] || systemData;
-        const lastData = dataHistory[dataHistory.length - 1] || systemData;
-        
-        const electricalHtml = getElectricalDetailsHtml(dataHistory);
+        const electricalHtml = getElectricalDetailsHtml(data);
         
         return {
-            subject: `3-Minute Data Report: ${dataHistory.length} Minutes Sampled`,
+            subject: `3-Minute Data Report: Latest Snapshot (${timestamp})`,
             html: `
-                <div style="font-family: Arial, sans-serif; border: 1px solid #ccc; padding: 15px;">
+                <div style="font-family: Arial, sans-serif; padding: 15px;">
                     <h1 style="color: #1a73e8;">DG Monitoring - 3 Minute Data Report</h1>
-                    <p>This report contains a single sampled data point for each of the last ${dataHistory.length} minutes.</p>
+                    <p>This report confirms successful data fetching. This is the **latest snapshot** recorded at <b>${timestamp}</b>.</p>
                     
-                    <h3 style="color: #333;">Diesel Level Trend (Liters)</h3>
-                    <p>Start (Min 1): DG1: <b>${firstData.dg1} L</b> / DG2: <b>${firstData.dg2} L</b> / DG3: <b>${firstData.dg3} L</b></p>
-                    <p>End (Min ${dataHistory.length}): DG1: <b>${lastData.dg1} L</b> / DG2: <b>${lastData.dg2} L</b> / DG3: <b>${lastData.dg3} L</b></p>
-
-                    <h2 style="color: #f7a200;">Electrical Parameter Minute-by-Minute Samples</h2>
+                    <h3 style="color: #34a853;">Diesel Levels (Liters)</h3>
+                    <ul>
+                        <li>DG-1 Level: <b>${data.dg1} L</b></li>
+                        <li>DG-2 Level: <b>${data.dg2} L</b></li>
+                        <li>DG-3 Level: <b>${data.dg3} L</b></li>
+                    </ul>
+                    
                     ${electricalHtml}
 
-                    <p style="margin-top: 20px;">Report Time: <b>${timestamp}</b></p>
-                    <p>View the live dashboard: <a href="${dashboardUrl}">${dashboardUrl}</a></p>
-                    <p style="font-size: 12px; color: #888; margin-top: 10px;">This report is generated every 3 minutes.</p>
+                    <p style="margin-top: 20px;">View the live dashboard: <a href="${dashboardUrl}">${dashboardUrl}</a></p>
+                    <p style="font-size: 12px; color: #888; margin-top: 10px;">This report is automatically generated every 3 minutes.</p>
                 </div>
             `
         };
@@ -364,7 +321,7 @@ function getEmailTemplate(alertType, data) {
 }
 
 async function sendEmailAlert(alertType, data, cooldown) {
-    if (!emailEnabled || !ALERT_RECIPIENTS) return false; // Return false if mail is disabled
+    if (!emailEnabled || !ALERT_RECIPIENTS) return false; 
     
     const alertKey = `${alertType}_${Math.floor(Date.now() / cooldown)}`; 
     if (alertState.currentAlerts.has(alertKey)) return false; 
@@ -390,20 +347,10 @@ async function sendEmailAlert(alertType, data, cooldown) {
     }
 }
 
-// Function for operational confirmation (sends every 3 minutes using buffered data)
-async function sendDataFetchedConfirmation() {
-    // Only proceed if we have at least one full minute's sample
-    if (dataHistory.length === 0) return; 
-
-    // We only send the report when 3 minutes have passed since the last successful send.
-    // The dataHistory array will contain samples from the last 1, 2, or 3 minutes.
-    
-    const success = await sendEmailAlert('data_fetched', dataHistory, OPERATIONAL_CONFIRM_COOLDOWN);
-
-    // Only clear the history if the mail was successfully sent
-    if (success) {
-        dataHistory = []; 
-    }
+// Function for operational confirmation (sends every 3 minutes)
+async function sendDataFetchedConfirmation(data) {
+    // Cooldown is 3 minutes. Mail uses the latest 'data' (systemData)
+    await sendEmailAlert('data_fetched', data, OPERATIONAL_CONFIRM_COOLDOWN);
 }
 
 
@@ -416,7 +363,6 @@ function connectToPLC() {
             client.setTimeout(3000);
             setTimeout(() => {
                 readAllSystemData();
-                // Data is polled every 2 seconds (to ensure one catch per minute)
                 setInterval(readAllSystemData, 2000); 
             }, 1000);
         })
@@ -443,7 +389,7 @@ app.use((req, res, next) => {
 
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/api/data', (req, res) => {
-    // Returns the latest minute-aggregated data
+    // Returns the latest (2-second poll) data
     res.json({
         timestamp: systemData.lastUpdate || new Date().toISOString(),
         dg1: systemData.dg1, dg2: systemData.dg2, dg3: systemData.dg3,
