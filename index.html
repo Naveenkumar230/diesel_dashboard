@@ -1,1211 +1,319 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DG Monitoring System - Professional Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    
-    <style>
-        :root {
-            --primary: #3b82f6;
-            --primary-dark: #1e40af;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --text-muted: #94a3b8;
-            --border: #334155;
-        }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DG Monitoring System Dashboard</title>
+<style>
+  /* Root Variables */
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0; padding: 20px;
+    background: var(--bg-primary);
+    font-family: 'Inter', sans-serif;
+    color: var(--text-primary);
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-weight: 700;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+    gap: 20px;
+  }
+  .metric-card {
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 15px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    transition: background 0.3s ease;
+  }
+  .metric-card:hover {
+    background: var(--bg-tertiary);
+  }
+  .metric-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 7px;
+    font-weight: 600;
+  }
+  .metric-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+  }
+  .metric-unit {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  /* Color variants for diesel and electrical */
+  .diesel { border-left: 6px solid var(--success); }
+  .electrical { border-left: 6px solid var(--primary); }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  /* Dashboard Sections */
+  .section-title {
+    font-size: 1.4rem;
+    margin: 30px 0 15px 0;
+    border-bottom: 2px solid var(--primary);
+    padding-bottom: 6px;
+  }
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-
-        .page-container {
-            display: none;
-        }
-
-        .page-container.active {
-            display: block;
-        }
-
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 260px;
-            height: 100vh;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border);
-            z-index: 1000;
-            transform: translateX(-260px);
-            transition: transform 0.3s ease;
-            overflow-y: auto;
-        }
-
-        .sidebar.active {
-            transform: translateX(0);
-        }
-
-        .sidebar-header {
-            padding: 24px 20px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--primary), #3b82f6);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-
-        .sidebar-nav {
-            padding: 20px 0;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 20px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 500;
-            border-left: 3px solid transparent;
-        }
-
-        .nav-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-        }
-
-        .nav-item.active {
-            background: var(--bg-tertiary);
-            color: var(--primary);
-            border-left-color: var(--primary);
-        }
-
-        main {
-            margin-left: 0;
-            min-height: 100vh;
-            width: 100%;
-        }
-
-        .header {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border);
-            padding: 0 32px;
-            height: 64px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .menu-toggle {
-            background: none;
-            border: none;
-            color: var(--text-primary);
-            cursor: pointer;
-            padding: 8px;
-            display: flex;
-            align-items: center;
-        }
-
-        .status-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            border-radius: 20px;
-            color: var(--success);
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--success);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .content {
-            padding: 32px;
-        }
-
-        .page-title {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
-        .page-description {
-            font-size: 15px;
-            color: var(--text-secondary);
-            margin-bottom: 32px;
-        }
-
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            margin-bottom: 32px;
-        }
-
-        .metric-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s;
-        }
-
-        .metric-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            border-color: var(--primary);
-        }
-
-        .metric-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 4px;
-            height: 100%;
-        }
-
-        .metric-card.blue::before { background: #3b82f6; }
-        .metric-card.green::before { background: var(--success); }
-        .metric-card.yellow::before { background: var(--warning); }
-        .metric-card.red::before { background: var(--danger); }
-        .metric-card.gradient::before { background: linear-gradient(180deg, var(--primary), #3b82f6); }
-
-        .metric-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
-        }
-
-        .metric-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .metric-value {
-            font-family: 'Roboto Mono', monospace;
-            font-size: 48px;
-            font-weight: 700;
-            color: var(--text-primary);
-            line-height: 1;
-            margin-bottom: 16px;
-        }
-
-        .metric-unit {
-            font-size: 20px;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-left: 4px;
-        }
-
-        .metric-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: 16px;
-            border-top: 1px solid var(--border);
-            font-size: 13px;
-        }
-
-        .charts-container {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
-            margin-bottom: 32px;
-        }
-
-        .chart-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-        }
-
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .chart-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        .chart-wrapper {
-            position: relative;
-            height: 350px;
-        }
-
-        .table-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 32px;
-        }
-
-        .table-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .table-title {
-            font-size: 18px;
-            font-weight: 700;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th {
-            padding: 16px 24px;
-            text-align: left;
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border);
-        }
-
-        td {
-            padding: 16px 24px;
-            font-size: 14px;
-            border-bottom: 1px solid var(--border);
-            font-family: 'Roboto Mono', monospace;
-        }
-
-        tbody tr {
-            transition: background 0.2s;
-        }
-
-        tbody tr:hover {
-            background: var(--bg-tertiary);
-        }
-
-        .btn {
-            padding: 12px 24px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-dark);
-            transform: translateY(-2px);
-        }
-
-        .tabs {
-            margin-bottom: 24px;
-        }
-
-        .tab-list {
-            display: flex;
-            gap: 8px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 24px;
-        }
-
-        .tab-button {
-            background: none;
-            border: none;
-            padding: 12px 24px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-weight: 500;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .tab-button.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .electrical-params-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .param-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 20px;
-            transition: all 0.2s;
-        }
-
-        .param-card:hover {
-            transform: translateY(-2px);
-            border-color: var(--primary);
-        }
-
-        .param-label {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        }
-
-        .param-value {
-            font-family: 'Roboto Mono', monospace;
-            font-size: 32px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        .param-unit {
-            font-family: 'Roboto Mono', monospace;
-            font-size: 14px;
-            color: var(--text-muted);
-            margin-left: 6px;
-        }
-
-        .last-update {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-
-        @media (max-width: 768px) {
-            .charts-container {
-                grid-template-columns: 1fr;
-            }
-            
-            .sidebar {
-                transform: translateX(-260px);
-            }
-            
-            .sidebar.active {
-                transform: translateX(0);
-            }
-        }
-    </style>
+  /* Responsive adjustments */
+  @media (max-width: 600px) {
+    .metric-value {
+      font-size: 2rem;
+    }
+  }
+</style>
 </head>
 <body>
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">
-                <div class="logo-icon">⚡</div>
-                <div>
-                    <div>DG Monitor</div>
-                    <div style="font-size: 11px; color: var(--text-muted)">v3.0</div>
-                </div>
-            </div>
-        </div>
-        <div class="sidebar-nav">
-            <div class="nav-item active" onclick="showPage('dashboard')">
-                📊 Dashboard
-            </div>
-            <div class="nav-item" onclick="showPage('electrical')">
-                ⚡ Electrical Parameters
-            </div>
-            <div class="nav-item" onclick="showPage('diesel')">
-                ⛽ Diesel Monitoring
-            </div>
-            <div class="nav-item" onclick="showPage('reports')">
-                📄 Reports
-            </div>
-            <div class="nav-item" onclick="showPage('analytics')">
-                📈 Analytics
-            </div>
-        </div>
+  <div class="container">
+    <h1>DG Monitoring System Dashboard</h1>
+
+    <!-- Diesel Overview -->
+    <div class="section-title">Diesel Levels (Liters)</div>
+    <div class="metrics-grid" id="diesel-metrics">
+      <div class="metric-card diesel">
+        <div class="metric-label">DG-1 Diesel Level</div>
+        <div class="metric-value" id="dg1">--</div>
+        <div class="metric-unit">L</div>
+      </div>
+      <div class="metric-card diesel">
+        <div class="metric-label">DG-2 Diesel Level</div>
+        <div class="metric-value" id="dg2">--</div>
+        <div class="metric-unit">L</div>
+      </div>
+      <div class="metric-card diesel">
+        <div class="metric-label">DG-3 Diesel Level</div>
+        <div class="metric-value" id="dg3">--</div>
+        <div class="metric-unit">L</div>
+      </div>
+      <div class="metric-card diesel">
+        <div class="metric-label">Total Diesel</div>
+        <div class="metric-value" id="total">--</div>
+        <div class="metric-unit">L</div>
+      </div>
     </div>
 
-    <main>
-        <div class="header">
-            <button class="menu-toggle" onclick="toggleSidebar()">
-                ☰
-            </button>
-            <div class="status-badge">
-                <div class="status-dot"></div>
-                <span>System Operational</span>
-            </div>
-        </div>
+    <!-- Electrical Overview -->
+    <div class="section-title">Electrical Parameters</div>
 
-        <!-- DASHBOARD PAGE -->
-        <div class="page-container active" id="dashboard">
-            <div class="content">
-                <h1 class="page-title">Dashboard</h1>
-                <p class="page-description">Real-time diesel generator monitoring and analytics</p>
-
-                <div class="metrics-grid" id="diesel-metrics">
-                    <!-- Diesel metrics will be inserted here -->
-                </div>
-
-                <div class="charts-container">
-                    <div class="chart-card">
-                        <div class="chart-header">
-                            <h3 class="chart-title">Diesel Consumption Trend</h3>
-                        </div>
-                        <div class="chart-wrapper">
-                            <canvas id="consumptionChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header">
-                            <h3 class="chart-title">Generator Distribution</h3>
-                        </div>
-                        <div class="chart-wrapper">
-                            <canvas id="distributionChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="table-card">
-                    <div class="table-header">
-                        <h3 class="table-title">Recent Hourly Readings</h3>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>DG-1 (L)</th>
-                                <th>DG-2 (L)</th>
-                                <th>DG-3 (L)</th>
-                                <th>Total (L)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="recent-readings">
-                            <!-- Recent readings will be inserted here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- ELECTRICAL PARAMETERS PAGE -->
-        <div class="page-container" id="electrical">
-            <div class="content">
-                <h1 class="page-title">Electrical Parameters</h1>
-                <p class="page-description">Comprehensive 3-phase electrical measurements</p>
-
-                <div class="tabs">
-                    <div class="tab-list">
-                        <button class="tab-button active" onclick="showTab('voltage')">Voltage</button>
-                        <button class="tab-button" onclick="showTab('current')">Current</button>
-                        <button class="tab-button" onclick="showTab('power')">Power</button>
-                        <button class="tab-button" onclick="showTab('frequency')">Frequency & PF</button>
-                    </div>
-
-                    <div class="tab-content active" id="voltage-tab">
-                        <div class="electrical-params-grid" id="voltage-params">
-                            <!-- Voltage parameters will be inserted here -->
-                        </div>
-                    </div>
-
-                    <div class="tab-content" id="current-tab">
-                        <div class="electrical-params-grid" id="current-params">
-                            <!-- Current parameters will be inserted here -->
-                        </div>
-                    </div>
-
-                    <div class="tab-content" id="power-tab">
-                        <div class="electrical-params-grid" id="power-params">
-                            <!-- Power parameters will be inserted here -->
-                        </div>
-                    </div>
-
-                    <div class="tab-content" id="frequency-tab">
-                        <div class="electrical-params-grid" id="frequency-params">
-                            <!-- Frequency parameters will be inserted here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- DIESEL MONITORING PAGE -->
-        <div class="page-container" id="diesel">
-            <div class="content">
-                <h1 class="page-title">Diesel Monitoring</h1>
-                <p class="page-description">Real-time diesel level tracking</p>
-
-                <div class="metrics-grid" id="diesel-detailed-metrics">
-                    <!-- Detailed diesel metrics -->
-                </div>
-
-                <div class="chart-card" style="margin-top: 32px;">
-                    <div class="chart-header">
-                        <h3 class="chart-title">All Generators Trend</h3>
-                    </div>
-                    <div class="chart-wrapper">
-                        <canvas id="allDieselChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- REPORTS PAGE -->
-        <div class="page-container" id="reports">
-            <div class="content">
-                <h1 class="page-title">Reports</h1>
-                <p class="page-description">Hourly data reports with diesel and electrical parameters</p>
-
-                <button class="btn btn-primary" onclick="exportToExcel()" style="margin-bottom: 24px;">
-                    📥 Export to Excel
-                </button>
-
-                <div class="table-card">
-                    <div class="table-header">
-                        <h3 class="table-title">Hourly Data Report (8AM - 8PM)</h3>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Hour</th>
-                                <th>DG-1</th>
-                                <th>DG-2</th>
-                                <th>DG-3</th>
-                                <th>Total</th>
-                                <th>Voltage</th>
-                                <th>Current</th>
-                                <th>Power</th>
-                            </tr>
-                        </thead>
-                        <tbody id="hourly-report">
-                            <!-- Report data will be inserted here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- ANALYTICS PAGE -->
-        <div class="page-container" id="analytics">
-            <div class="content">
-                <h1 class="page-title">Analytics</h1>
-                <p class="page-description">Power BI-style visualizations and insights</p>
-
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <h3 class="chart-title">Power Consumption Analytics</h3>
-                    </div>
-                    <div class="chart-wrapper">
-                        <canvas id="powerAnalyticsChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <div class="last-update" id="last-update">
-        Last updated: --:--:--
+    <h3>Voltage (Volts)</h3>
+    <div class="metrics-grid" id="electrical-voltage">
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Voltage R-Phase</div>
+        <div class="metric-value" id="dg1-voltage-r">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Voltage Y-Phase</div>
+        <div class="metric-value" id="dg1-voltage-y">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Voltage B-Phase</div>
+        <div class="metric-value" id="dg1-voltage-b">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Voltage R-Phase</div>
+        <div class="metric-value" id="dg2-voltage-r">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Voltage Y-Phase</div>
+        <div class="metric-value" id="dg2-voltage-y">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Voltage B-Phase</div>
+        <div class="metric-value" id="dg2-voltage-b">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Voltage R-Phase</div>
+        <div class="metric-value" id="dg3-voltage-r">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Voltage Y-Phase</div>
+        <div class="metric-value" id="dg3-voltage-y">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Voltage B-Phase</div>
+        <div class="metric-value" id="dg3-voltage-b">--</div>
+      </div>
     </div>
 
-    <script>
-        // Global variables
-        let charts = {};
-        let updateInterval;
-        let currentData = {
-            diesel: { dg1: 0, dg2: 0, dg3: 0, total: 0 },
-            electrical: {},
-            history: []
-        };
+    <h3>Current (Amperes)</h3>
+    <div class="metrics-grid" id="electrical-current">
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Current R-Phase</div>
+        <div class="metric-value" id="dg1-current-r">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Current Y-Phase</div>
+        <div class="metric-value" id="dg1-current-y">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Current B-Phase</div>
+        <div class="metric-value" id="dg1-current-b">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Current R-Phase</div>
+        <div class="metric-value" id="dg2-current-r">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Current Y-Phase</div>
+        <div class="metric-value" id="dg2-current-y">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Current B-Phase</div>
+        <div class="metric-value" id="dg2-current-b">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Current R-Phase</div>
+        <div class="metric-value" id="dg3-current-r">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Current Y-Phase</div>
+        <div class="metric-value" id="dg3-current-y">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Current B-Phase</div>
+        <div class="metric-value" id="dg3-current-b">--</div>
+      </div>
+    </div>
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            initCharts();
-            fetchData();
-            updateInterval = setInterval(fetchData, 5000); // Update every 5 seconds
-        });
+    <h3>Other Electrical Parameters</h3>
+    <div class="metrics-grid" id="electrical-other">
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Frequency (Hz)</div>
+        <div class="metric-value" id="dg1-frequency">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Power Factor</div>
+        <div class="metric-value" id="dg1-power-factor">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Active Power (kW)</div>
+        <div class="metric-value" id="dg1-active-power">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-1 Reactive Power (kVAR)</div>
+        <div class="metric-value" id="dg1-reactive-power">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Frequency (Hz)</div>
+        <div class="metric-value" id="dg2-frequency">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Power Factor</div>
+        <div class="metric-value" id="dg2-power-factor">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Active Power (kW)</div>
+        <div class="metric-value" id="dg2-active-power">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-2 Reactive Power (kVAR)</div>
+        <div class="metric-value" id="dg2-reactive-power">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Frequency (Hz)</div>
+        <div class="metric-value" id="dg3-frequency">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Power Factor</div>
+        <div class="metric-value" id="dg3-power-factor">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Active Power (kW)</div>
+        <div class="metric-value" id="dg3-active-power">--</div>
+      </div>
+      <div class="metric-card electrical">
+        <div class="metric-label">DG-3 Reactive Power (kVAR)</div>
+        <div class="metric-value" id="dg3-reactive-power">--</div>
+      </div>
+    </div>
 
-        // Sidebar toggle
-        function toggleSidebar() {
-            document.getElementById('sidebar').classList.toggle('active');
-        }
+  </div>
 
-        // Page navigation
-        function showPage(pageName) {
-            // Hide all pages
-            document.querySelectorAll('.page-container').forEach(page => {
-                page.classList.remove('active');
-            });
-            
-            // Show selected page
-            document.getElementById(pageName).classList.add('active');
-            
-            // Update nav items
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            event.target.classList.add('active');
-        }
+  <script>
+    async function fetchData() {
+      try {
+        const response = await fetch('/api/data');
+        if (!response.ok) throw new Error('Network response was not OK');
+        return await response.json();
+      } catch (err) {
+        console.error('Fetch error:', err);
+        return null;
+      }
+    }
 
-        // Tab navigation
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName + '-tab').classList.add('active');
-        }
+    function updateDiesel(data) {
+      document.getElementById('dg1').textContent = data.dg1 ?? '--';
+      document.getElementById('dg2').textContent = data.dg2 ?? '--';
+      document.getElementById('dg3').textContent = data.dg3 ?? '--';
+      document.getElementById('total').textContent = data.total ?? '--';
+    }
 
-        // Fetch data from server
-        async function fetchData() {
-            try {
-                const response = await fetch('/api/current-data');
-                const data = await response.json();
-                
-                currentData = data;
-                updateDashboard(data);
-                updateElectricalParams(data);
-                updateLastUpdate();
-            } catch (error) {
-                console.error('Error fetching data:', error);
-            }
-        }
+    function updateElectrical(data) {
+      if (!data.electrical) return;
+      ['dg1', 'dg2', 'dg3'].forEach(dg => {
+        const e = data.electrical[dg] || {};
+        // Voltage
+        document.getElementById(dg + '-voltage-r').textContent = formatNum(e.voltageR);
+        document.getElementById(dg + '-voltage-y').textContent = formatNum(e.voltageY);
+        document.getElementById(dg + '-voltage-b').textContent = formatNum(e.voltageB);
+        // Current
+        document.getElementById(dg + '-current-r').textContent = formatNum(e.currentR);
+        document.getElementById(dg + '-current-y').textContent = formatNum(e.currentY);
+        document.getElementById(dg + '-current-b').textContent = formatNum(e.currentB);
+        // Other params
+        document.getElementById(dg + '-frequency').textContent = formatNum(e.frequency);
+        document.getElementById(dg + '-power-factor').textContent = formatNum(e.powerFactor, 2);
+        document.getElementById(dg + '-active-power').textContent = formatNum(e.activePower);
+        document.getElementById(dg + '-reactive-power').textContent = formatNum(e.reactivePower);
+      });
+    }
 
-        // Update dashboard
-        function updateDashboard(data) {
-            // Update diesel metrics
-            const metricsHtml = `
-                <div class="metric-card blue">
-                    <div class="metric-header">
-                        <div class="metric-label">DG-1 Diesel Level</div>
-                    </div>
-                    <div>
-                        <span class="metric-value">${data.diesel.dg1}</span>
-                        <span class="metric-unit">L</span>
-                    </div>
-                    <div class="metric-footer">
-                        <span style="color: var(--text-muted)">Capacity: 500L</span>
-                    </div>
-                </div>
-                <div class="metric-card green">
-                    <div class="metric-header">
-                        <div class="metric-label">DG-2 Diesel Level</div>
-                    </div>
-                    <div>
-                        <span class="metric-value">${data.diesel.dg2}</span>
-                        <span class="metric-unit">L</span>
-                    </div>
-                    <div class="metric-footer">
-                        <span style="color: var(--text-muted)">Capacity: 500L</span>
-                    </div>
-                </div>
-                <div class="metric-card ${data.diesel.dg3 < 200 ? 'red' : 'yellow'}">
-                    <div class="metric-header">
-                        <div class="metric-label">DG-3 Diesel Level</div>
-                    </div>
-                    <div>
-                        <span class="metric-value">${data.diesel.dg3}</span>
-                        <span class="metric-unit">L</span>
-                    </div>
-                    <div class="metric-footer">
-                        <span style="color: var(--text-muted)">Capacity: 500L</span>
-                    </div>
-                </div>
-                <div class="metric-card gradient">
-                    <div class="metric-header">
-                        <div class="metric-label">Total Diesel</div>
-                    </div>
-                    <div>
-                        <span class="metric-value">${data.diesel.total}</span>
-                        <span class="metric-unit">L</span>
-                    </div>
-                    <div class="metric-footer">
-                        <span style="color: var(--text-muted)">Total: 1500L</span>
-                    </div>
-                </div>
-            `;
-            document.getElementById('diesel-metrics').innerHTML = metricsHtml;
-            document.getElementById('diesel-detailed-metrics').innerHTML = metricsHtml;
+    function formatNum(num, decimals = 1) {
+      if (num === undefined || num === null) return '--';
+      if (isNaN(num)) return '--';
+      return num.toFixed(decimals);
+    }
 
-            // Update recent readings
-            if (data.history && data.history.length > 0) {
-                const readingsHtml = data.history.slice(0, 5).map(reading => `
-                    <tr>
-                        <td>${new Date(reading.timestamp).toLocaleTimeString()}</td>
-                        <td>${reading.dg1}</td>
-                        <td>${reading.dg2}</td>
-                        <td>${reading.dg3}</td>
-                        <td><strong>${reading.total}</strong></td>
-                    </tr>
-                `).join('');
-                document.getElementById('recent-readings').innerHTML = readingsHtml;
-            }
+    async function refresh() {
+      const data = await fetchData();
+      if (!data) return;
+      updateDiesel(data);
+      updateElectrical(data);
+    }
 
-            // Update charts
-            if (data.history && data.history.length > 0 && charts.consumption) {
-                const labels = data.history.map(h => new Date(h.timestamp).toLocaleTimeString());
-                const values = data.history.map(h => h.total);
-                
-                charts.consumption.data.labels = labels;
-                charts.consumption.data.datasets[0].data = values;
-                charts.consumption.update('none');
-            }
-        }
-
-        // Update electrical parameters
-        function updateElectricalParams(data) {
-            if (!data.electrical) return;
-
-            // Voltage parameters
-            if (data.electrical.voltage) {
-                const voltageHtml = `
-                    <div class="param-card">
-                        <div class="param-label">L1-N Voltage</div>
-                        <div>
-                            <span class="param-value">${data.electrical.voltage.l1n || 0}</span>
-                            <span class="param-unit">V</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">L2-N Voltage</div>
-                        <div>
-                            <span class="param-value">${data.electrical.voltage.l2n || 0}</span>
-                            <span class="param-unit">V</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">L3-N Voltage</div>
-                        <div>
-                            <span class="param-value">${data.electrical.voltage.l3n || 0}</span>
-                            <span class="param-unit">V</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Avg Voltage</div>
-                        <div>
-                            <span class="param-value">${data.electrical.voltage.avg || 0}</span>
-                            <span class="param-unit">V</span>
-                        </div>
-                    </div>
-                `;
-                document.getElementById('voltage-params').innerHTML = voltageHtml;
-            }
-
-            // Current parameters
-            if (data.electrical.current) {
-                const currentHtml = `
-                    <div class="param-card">
-                        <div class="param-label">L1 Current</div>
-                        <div>
-                            <span class="param-value">${data.electrical.current.l1 || 0}</span>
-                            <span class="param-unit">A</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">L2 Current</div>
-                        <div>
-                            <span class="param-value">${data.electrical.current.l2 || 0}</span>
-                            <span class="param-unit">A</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">L3 Current</div>
-                        <div>
-                            <span class="param-value">${data.electrical.current.l3 || 0}</span>
-                            <span class="param-unit">A</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Avg Current</div>
-                        <div>
-                            <span class="param-value">${data.electrical.current.avg || 0}</span>
-                            <span class="param-unit">A</span>
-                        </div>
-                    </div>
-                `;
-                document.getElementById('current-params').innerHTML = currentHtml;
-            }
-
-            // Power parameters
-            if (data.electrical.power) {
-                const powerHtml = `
-                    <div class="param-card">
-                        <div class="param-label">Active Power L1</div>
-                        <div>
-                            <span class="param-value">${data.electrical.power.activeL1 || 0}</span>
-                            <span class="param-unit">kW</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Active Power L2</div>
-                        <div>
-                            <span class="param-value">${data.electrical.power.activeL2 || 0}</span>
-                            <span class="param-unit">kW</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Active Power L3</div>
-                        <div>
-                            <span class="param-value">${data.electrical.power.activeL3 || 0}</span>
-                            <span class="param-unit">kW</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Total Active Power</div>
-                        <div>
-                            <span class="param-value">${data.electrical.power.totalActive || 0}</span>
-                            <span class="param-unit">kW</span>
-                        </div>
-                    </div>
-                `;
-                document.getElementById('power-params').innerHTML = powerHtml;
-            }
-
-            // Frequency parameters
-            if (data.electrical.frequency || data.electrical.powerFactor) {
-                const freqHtml = `
-                    <div class="param-card">
-                        <div class="param-label">Frequency</div>
-                        <div>
-                            <span class="param-value">${data.electrical.frequency || 0}</span>
-                            <span class="param-unit">Hz</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Power Factor L1</div>
-                        <div>
-                            <span class="param-value">${data.electrical.powerFactor?.l1 || 0}</span>
-                            <span class="param-unit">PF</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Power Factor L2</div>
-                        <div>
-                            <span class="param-value">${data.electrical.powerFactor?.l2 || 0}</span>
-                            <span class="param-unit">PF</span>
-                        </div>
-                    </div>
-                    <div class="param-card">
-                        <div class="param-label">Power Factor L3</div>
-                        <div>
-                            <span class="param-value">${data.electrical.powerFactor?.l3 || 0}</span>
-                            <span class="param-unit">PF</span>
-                        </div>
-                    </div>
-                `;
-                document.getElementById('frequency-params').innerHTML = freqHtml;
-            }
-        }
-
-        // Update last update time
-        function updateLastUpdate() {
-            const now = new Date();
-            document.getElementById('last-update').textContent = 
-                `Last updated: ${now.toLocaleTimeString()}`;
-        }
-
-        // Initialize charts
-        function initCharts() {
-            // Consumption trend chart
-            const consumptionCtx = document.getElementById('consumptionChart').getContext('2d');
-            charts.consumption = new Chart(consumptionCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Total Diesel',
-                        data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { 
-                            beginAtZero: true,
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8' }
-                        },
-                        x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8' }
-                        }
-                    }
-                }
-            });
-
-            // Distribution chart
-            const distributionCtx = document.getElementById('distributionChart').getContext('2d');
-            charts.distribution = new Chart(distributionCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['DG-1', 'DG-2', 'DG-3'],
-                    datasets: [{
-                        data: [0, 0, 0],
-                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { color: '#94a3b8' }
-                        }
-                    }
-                }
-            });
-
-            // All diesel chart
-            const allDieselCtx = document.getElementById('allDieselChart').getContext('2d');
-            charts.allDiesel = new Chart(allDieselCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'DG-1',
-                            data: [],
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'DG-2',
-                            data: [],
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'DG-3',
-                            data: [],
-                            borderColor: '#f59e0b',
-                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: { color: '#94a3b8' }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8' }
-                        },
-                        x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8' }
-                        }
-                    }
-                }
-            });
-
-            // Power analytics chart
-            const powerAnalyticsCtx = document.getElementById('powerAnalyticsChart').getContext('2d');
-            charts.powerAnalytics = new Chart(powerAnalyticsCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Power (kW)',
-                        data: [],
-                        backgroundColor: '#10b981',
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            labels: { color: '#94a3b8' }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8' }
-                        },
-                        x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8' }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Export to Excel
-        async function exportToExcel() {
-            try {
-                const response = await fetch('/api/export-excel');
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `DG_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } catch (error) {
-                console.error('Error exporting to Excel:', error);
-                alert('Error exporting data');
-            }
-        }
-
-        // Fetch hourly report
-        async function fetchHourlyReport() {
-            try {
-                const response = await fetch('/api/hourly-data');
-                const data = await response.json();
-                
-                if (data.readings && data.readings.length > 0) {
-                    const reportHtml = data.readings.map(reading => `
-                        <tr>
-                            <td>${reading.date}</td>
-                            <td>${reading.hour}:00</td>
-                            <td>${reading.dg1}</td>
-                            <td>${reading.dg2}</td>
-                            <td>${reading.dg3}</td>
-                            <td><strong>${reading.total}</strong></td>
-                            <td>${reading.voltage || 'N/A'}</td>
-                            <td>${reading.current || 'N/A'}</td>
-                            <td>${reading.power || 'N/A'}</td>
-                        </tr>
-                    `).join('');
-                    document.getElementById('hourly-report').innerHTML = reportHtml;
-                }
-            } catch (error) {
-                console.error('Error fetching hourly report:', error);
-            }
-        }
-
-        // Load hourly report when reports page is shown
-        const reportsObserver = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.target.id === 'reports' && mutation.target.classList.contains('active')) {
-                    fetchHourlyReport();
-                }
-            });
-        });
-
-        if (document.getElementById('reports')) {
-            reportsObserver.observe(document.getElementById('reports'), {
-                attributes: true,
-                attributeFilter: ['class']
-            });
-        }
-    </script>
+    setInterval(refresh, 3000);
+    refresh(); // Initial load
+  </script>
 </body>
 </html>
