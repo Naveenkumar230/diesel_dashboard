@@ -91,8 +91,7 @@ const alertState = {
     lastElectricalValues: {}
 };
 
-// NOTE: ALERT_COOLDOWN is now 1 hour (3600000) for Diesel, as previously suggested.
-const ALERT_COOLDOWN = parseInt(process.env.ALERT_COOLDOWN) || 3600000;
+const ALERT_COOLDOWN = parseInt(process.env.ALERT_COOLDOWN) || 3600000; // 30 minutes
 const ELECTRICAL_ALERT_COOLDOWN = parseInt(process.env.ELECTRICAL_ALERT_COOLDOWN) || 300000; // 5 minutes
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || '';
@@ -158,26 +157,287 @@ const dgRegisters = {
     }
 };
 
-// Enhanced electrical registers (partial inclusion for brevity, assume the full map is present)
+// Enhanced electrical registers with EXTENSIVE fallback options
 const electricalRegisters = {
     dg1: {
-        voltageR: { primary: 4196, fallback: [4100, 4101, 4102], scaling: 0.1, name: "DG1 Voltage R", unit: "V" },
-        voltageY: { primary: 4198, fallback: [4125, 4126, 4127], scaling: 0.1, name: "DG1 Voltage Y", unit: "V" },
-        voltageB: { primary: 4200, fallback: [4150, 4151, 4152], scaling: 0.1, name: "DG1 Voltage B", unit: "V" },
-        currentR: { primary: 4202, fallback: [4175, 4176, 4177], scaling: 0.1, name: "DG1 Current R", unit: "A" },
-        currentY: { primary: 4204, fallback: [4205, 4207, 4209], scaling: 0.1, name: "DG1 Current Y", unit: "A" },
-        currentB: { primary: 4206, fallback: [4255, 4257, 4259], scaling: 0.1, name: "DG1 Current B", unit: "A" },
-        frequency: { primary: 4208, fallback: [4305, 4307, 4309], scaling: 0.1, name: "DG1 Frequency", unit: "Hz" },
-        powerFactor: { primary: 4210, fallback: [4355, 4357, 4359], scaling: 0.01, name: "DG1 Power Factor", unit: "" },
-        activePower: { primary: 4212, fallback: [4405, 4407, 4409], scaling: 0.1, name: "DG1 Active Power", unit: "kW" },
-        reactivePower: { primary: 4214, fallback: [4455, 4457, 4459], scaling: 0.1, name: "DG1 Reactive Power", unit: "kVAR" },
-        energyMeter: { primary: 4216, fallback: [4505, 4507, 4509], scaling: 1, name: "DG1 Energy Meter", unit: "kWh" },
-        runningHours: { primary: 4218, fallback: [4555, 4557, 4559], scaling: 1, name: "DG1 Running Hours", unit: "hrs" },
-        windingTemp: { primary: 4232, fallback: [4605, 4607, 4609], scaling: 1, name: "DG1 Winding Temperature", unit: "°C" }
+        voltageR: {
+            primary: 4196,
+            fallback: [4100, 4101, 4102, 4103, 4104, 4105, 4106, 4107, 4108, 4109, 4110, 4111, 4112, 4113, 4114, 4115, 4116, 4117, 4118, 4119, 4120, 4121, 4122, 4123, 4124],
+            scaling: 0.1,
+            name: "DG1 Voltage R",
+            unit: "V"
+        },
+        voltageY: {
+            primary: 4198,
+            fallback: [4125, 4126, 4127, 4128, 4129, 4130, 4131, 4132, 4133, 4134, 4135, 4136, 4137, 4138, 4139, 4140, 4141, 4142, 4143, 4144, 4145, 4146, 4147, 4148, 4149],
+            scaling: 0.1,
+            name: "DG1 Voltage Y",
+            unit: "V"
+        },
+        voltageB: {
+            primary: 4200,
+            fallback: [4150, 4151, 4152, 4153, 4154, 4155, 4156, 4157, 4158, 4159, 4160, 4161, 4162, 4163, 4164, 4165, 4166, 4167, 4168, 4169, 4170, 4171, 4172, 4173, 4174],
+            scaling: 0.1,
+            name: "DG1 Voltage B",
+            unit: "V"
+        },
+        currentR: {
+            primary: 4202,
+            fallback: [4175, 4176, 4177, 4178, 4179, 4180, 4181, 4182, 4183, 4184, 4185, 4186, 4187, 4188, 4189, 4190, 4191, 4192, 4193, 4194, 4195, 4197, 4199, 4201, 4203],
+            scaling: 0.1,
+            name: "DG1 Current R",
+            unit: "A"
+        },
+        currentY: {
+            primary: 4204,
+            fallback: [4205, 4207, 4209, 4211, 4213, 4215, 4217, 4219, 4221, 4223, 4225, 4227, 4229, 4231, 4233, 4235, 4237, 4239, 4241, 4243, 4245, 4247, 4249, 4251, 4253],
+            scaling: 0.1,
+            name: "DG1 Current Y",
+            unit: "A"
+        },
+        currentB: {
+            primary: 4206,
+            fallback: [4255, 4257, 4259, 4261, 4263, 4265, 4267, 4269, 4271, 4273, 4275, 4277, 4279, 4281, 4283, 4285, 4287, 4289, 4291, 4293, 4295, 4297, 4299, 4301, 4303],
+            scaling: 0.1,
+            name: "DG1 Current B",
+            unit: "A"
+        },
+        frequency: {
+            primary: 4208,
+            fallback: [4305, 4307, 4309, 4311, 4313, 4315, 4317, 4319, 4321, 4323, 4325, 4327, 4329, 4331, 4333, 4335, 4337, 4339, 4341, 4343, 4345, 4347, 4349, 4351, 4353],
+            scaling: 0.1,
+            name: "DG1 Frequency",
+            unit: "Hz"
+        },
+        powerFactor: {
+            primary: 4210,
+            fallback: [4355, 4357, 4359, 4361, 4363, 4365, 4367, 4369, 4371, 4373, 4375, 4377, 4379, 4381, 4383, 4385, 4387, 4389, 4391, 4393, 4395, 4397, 4399, 4401, 4403],
+            scaling: 0.01,
+            name: "DG1 Power Factor",
+            unit: ""
+        },
+        activePower: {
+            primary: 4212,
+            fallback: [4405, 4407, 4409, 4411, 4413, 4415, 4417, 4419, 4421, 4423, 4425, 4427, 4429, 4431, 4433, 4435, 4437, 4439, 4441, 4443, 4445, 4447, 4449, 4451, 4453],
+            scaling: 0.1,
+            name: "DG1 Active Power",
+            unit: "kW"
+        },
+        reactivePower: {
+            primary: 4214,
+            fallback: [4455, 4457, 4459, 4461, 4463, 4465, 4467, 4469, 4471, 4473, 4475, 4477, 4479, 4481, 4483, 4485, 4487, 4489, 4491, 4493, 4495, 4497, 4499, 4501, 4503],
+            scaling: 0.1,
+            name: "DG1 Reactive Power",
+            unit: "kVAR"
+        },
+        energyMeter: {
+            primary: 4216,
+            fallback: [4505, 4507, 4509, 4511, 4513, 4515, 4517, 4519, 4521, 4523, 4525, 4527, 4529, 4531, 4533, 4535, 4537, 4539, 4541, 4543, 4545, 4547, 4549, 4551, 4553],
+            scaling: 1,
+            name: "DG1 Energy Meter",
+            unit: "kWh"
+        },
+        runningHours: {
+            primary: 4218,
+            fallback: [4555, 4557, 4559, 4561, 4563, 4565, 4567, 4569, 4571, 4573, 4575, 4577, 4579, 4581, 4583, 4585, 4587, 4589, 4591, 4593, 4595, 4597, 4599, 4601, 4603],
+            scaling: 1,
+            name: "DG1 Running Hours",
+            unit: "hrs"
+        },
+        windingTemp: {
+            primary: 4232,
+            fallback: [4605, 4607, 4609, 4611, 4613, 4615, 4617, 4619, 4621, 4623, 4625, 4627, 4629, 4631, 4633, 4635, 4637, 4639, 4641, 4643, 4645, 4647, 4649, 4651, 4653],
+            scaling: 1,
+            name: "DG1 Winding Temperature",
+            unit: "°C"
+        }
     },
-    // dg2 and dg3 maps follow the same structure as above
-    dg2: { /* ... full map here ... */ },
-    dg3: { /* ... full map here ... */ }
+    dg2: {
+        voltageR: {
+            primary: 4236,
+            fallback: [4655, 4657, 4659, 4661, 4663, 4665, 4667, 4669, 4671, 4673, 4675, 4677, 4679, 4681, 4683, 4685, 4687, 4689, 4691, 4693, 4695, 4697, 4699, 4701, 4703],
+            scaling: 0.1,
+            name: "DG2 Voltage R",
+            unit: "V"
+        },
+        voltageY: {
+            primary: 4238,
+            fallback: [4705, 4707, 4709, 4711, 4713, 4715, 4717, 4719, 4721, 4723, 4725, 4727, 4729, 4731, 4733, 4735, 4737, 4739, 4741, 4743, 4745, 4747, 4749, 4751, 4753],
+            scaling: 0.1,
+            name: "DG2 Voltage Y",
+            unit: "V"
+        },
+        voltageB: {
+            primary: 4240,
+            fallback: [4755, 4757, 4759, 4761, 4763, 4765, 4767, 4769, 4771, 4773, 4775, 4777, 4779, 4781, 4783, 4785, 4787, 4789, 4791, 4793, 4795, 4797, 4799, 4801, 4803],
+            scaling: 0.1,
+            name: "DG2 Voltage B",
+            unit: "V"
+        },
+        currentR: {
+            primary: 4242,
+            fallback: [4805, 4807, 4809, 4811, 4813, 4815, 4817, 4819, 4821, 4823, 4825, 4827, 4829, 4831, 4833, 4835, 4837, 4839, 4841, 4843, 4845, 4847, 4849, 4851, 4853],
+            scaling: 0.1,
+            name: "DG2 Current R",
+            unit: "A"
+        },
+        currentY: {
+            primary: 4244,
+            fallback: [4855, 4857, 4859, 4861, 4863, 4865, 4867, 4869, 4871, 4873, 4875, 4877, 4879, 4881, 4883, 4885, 4887, 4889, 4891, 4893, 4895, 4897, 4899, 4901, 4903],
+            scaling: 0.1,
+            name: "DG2 Current Y",
+            unit: "A"
+        },
+        currentB: {
+            primary: 4246,
+            fallback: [4905, 4907, 4909, 4911, 4913, 4915, 4917, 4919, 4921, 4923, 4925, 4927, 4929, 4931, 4933, 4935, 4937, 4939, 4941, 4943, 4945, 4947, 4949, 4951, 4953],
+            scaling: 0.1,
+            name: "DG2 Current B",
+            unit: "A"
+        },
+        frequency: {
+            primary: 4248,
+            fallback: [4955, 4957, 4959, 4961, 4963, 4965, 4967, 4969, 4971, 4973, 4975, 4977, 4979, 4981, 4983, 4985, 4987, 4989, 4991, 4993, 4995, 4997, 4999, 5001, 5003],
+            scaling: 0.1,
+            name: "DG2 Frequency",
+            unit: "Hz"
+        },
+        powerFactor: {
+            primary: 4250,
+            fallback: [5005, 5007, 5009, 5011, 5013, 5015, 5017, 5019, 5021, 5023, 5025, 5027, 5029, 5031, 5033, 5035, 5037, 5039, 5041, 5043, 5045, 5047, 5049, 5051, 5053],
+            scaling: 0.01,
+            name: "DG2 Power Factor",
+            unit: ""
+        },
+        activePower: {
+            primary: 4252,
+            fallback: [5055, 5057, 5059, 5061, 5063, 5065, 5067, 5069, 5071, 5073, 5075, 5077, 5079, 5081, 5083, 5085, 5087, 5089, 5091, 5093, 5095, 5097, 5099, 5101, 5103],
+            scaling: 0.1,
+            name: "DG2 Active Power",
+            unit: "kW"
+        },
+        reactivePower: {
+            primary: 4254,
+            fallback: [5105, 5107, 5109, 5111, 5113, 5115, 5117, 5119, 5121, 5123, 5125, 5127, 5129, 5131, 5133, 5135, 5137, 5139, 5141, 5143, 5145, 5147, 5149, 5151, 5153],
+            scaling: 0.1,
+            name: "DG2 Reactive Power",
+            unit: "kVAR"
+        },
+        energyMeter: {
+            primary: 4256,
+            fallback: [5155, 5157, 5159, 5161, 5163, 5165, 5167, 5169, 5171, 5173, 5175, 5177, 5179, 5181, 5183, 5185, 5187, 5189, 5191, 5193, 5195, 5197, 5199, 5201, 5203],
+            scaling: 1,
+            name: "DG2 Energy Meter",
+            unit: "kWh"
+        },
+        runningHours: {
+            primary: 4258,
+            fallback: [5205, 5207, 5209, 5211, 5213, 5215, 5217, 5219, 5221, 5223, 5225, 5227, 5229, 5231, 5233, 5235, 5237, 5239, 5241, 5243, 5245, 5247, 5249, 5251, 5253],
+            scaling: 1,
+            name: "DG2 Running Hours",
+            unit: "hrs"
+        },
+        windingTemp: {
+            primary: 4272,
+            fallback: [5255, 5257, 5259, 5261, 5263, 5265, 5267, 5269, 5271, 5273, 5275, 5277, 5279, 5281, 5283, 5285, 5287, 5289, 5291, 5293, 5295, 5297, 5299, 5301, 5303],
+            scaling: 1,
+            name: "DG2 Winding Temperature",
+            unit: "°C"
+        }
+    },
+    dg3: {
+        voltageR: {
+            primary: 4276,
+            fallback: [5305, 5307, 5309, 5311, 5313, 5315, 5317, 5319, 5321, 5323, 5325, 5327, 5329, 5331, 5333, 5335, 5337, 5339, 5341, 5343, 5345, 5347, 5349, 5351, 5353],
+            scaling: 0.1,
+            name: "DG3 Voltage R",
+            unit: "V"
+        },
+        voltageY: {
+            primary: 4278,
+            fallback: [5355, 5357, 5359, 5361, 5363, 5365, 5367, 5369, 5371, 5373, 5375, 5377, 5379, 5381, 5383, 5385, 5387, 5389, 5391, 5393, 5395, 5397, 5399, 5401, 5403],
+            scaling: 0.1,
+            name: "DG3 Voltage Y",
+            unit: "V"
+        },
+        voltageB: {
+            primary: 4280,
+            fallback: [5405, 5407, 5409, 5411, 5413, 5415, 5417, 5419, 5421, 5423, 5425, 5427, 5429, 5431, 5433, 5435, 5437, 5439, 5441, 5443, 5445, 5447, 5449, 5451, 5453],
+            scaling: 0.1,
+            name: "DG3 Voltage B",
+            unit: "V"
+        },
+        currentR: {
+            primary: 4282,
+            fallback: [5455, 5457, 5459, 5461, 5463, 5465, 5467, 5469, 5471, 5473, 5475, 5477, 5479, 5481, 5483, 5485, 5487, 5489, 5491, 5493, 5495, 5497, 5499, 5501, 5503],
+            scaling: 0.1,
+            name: "DG3 Current R",
+            unit: "A"
+        },
+        currentY: {
+            primary: 4284,
+            fallback: [5505, 5507, 5509, 5511, 5513, 5515, 5517, 5519, 5521, 5523, 5525, 5527, 5529, 5531, 5533, 5535, 5537, 5539, 5541, 5543, 5545, 5547, 5549, 5551, 5553],
+            scaling: 0.1,
+            name: "DG3 Current Y",
+            unit: "A"
+        },
+        currentB: {
+            primary: 4286,
+            fallback: [5555, 5557, 5559, 5561, 5563, 5565, 5567, 5569, 5571, 5573, 5575, 5577, 5579, 5581, 5583, 5585, 5587, 5589, 5591, 5593, 5595, 5597, 5599, 5601, 5603],
+            scaling: 0.1,
+            name: "DG3 Current B",
+            unit: "A"
+        },
+        frequency: {
+            primary: 4288,
+            fallback: [5605, 5607, 5609, 5611, 5613, 5615, 5617, 5619, 5621, 5623, 5625, 5627, 5629, 5631, 5633, 5635, 5637, 5639, 5641, 5643, 5645, 5647, 5649, 5651, 5653],
+            scaling: 0.1,
+            name: "DG3 Frequency",
+            unit: "Hz"
+        },
+        powerFactor: {
+            primary: 4290,
+            fallback: [5655, 5657, 5659, 5661, 5663, 5665, 5667, 5669, 5671, 5673, 5675, 5677, 5679, 5681, 5683, 5685, 5687, 5689, 5691, 5693, 5695, 5697, 5699, 5701, 5703],
+            scaling: 0.01,
+            name: "DG3 Power Factor",
+            unit: ""
+        },
+        activePower: {
+            primary: 4292,
+            fallback: [5705, 5707, 5709, 5711, 5713, 5715, 5717, 5719, 5721, 5723, 5725, 5727, 5729, 5731, 5733, 5735, 5737, 5739, 5741, 5743, 5745, 5747, 5749, 5751, 5753],
+            scaling: 0.1,
+            name: "DG3 Active Power",
+            unit: "kW"
+        },
+        reactivePower: {
+            primary: 4294,
+            fallback: [5755, 5757, 5759, 5761, 5763, 5765, 5767, 5769, 5771, 5773, 5775, 5777, 5779, 5781, 5783, 5785, 5787, 5789, 5791, 5793, 5795, 5797, 5799, 5801, 5803],
+            scaling: 0.1,
+            name: "DG3 Reactive Power",
+            unit: "kVAR"
+        },
+        energyMeter: {
+            primary: 4296,
+            fallback: [5805, 5807, 5809, 5811, 5813, 5815, 5817, 5819, 5821, 5823, 5825, 5827, 5829, 5831, 5833, 5835, 5837, 5839, 5841, 5843, 5845, 5847, 5849, 5851, 5853],
+            scaling: 1,
+            name: "DG3 Energy Meter",
+            unit: "kWh"
+        },
+        runningHours: {
+            primary: 4298,
+            fallback: [5855, 5857, 5859, 5861, 5863, 5865, 5867, 5869, 5871, 5873, 5875, 5877, 5879, 5881, 5883, 5885, 5887, 5889, 5891, 5893, 5895, 5897, 5899, 5901, 5903],
+            scaling: 1,
+            name: "DG3 Running Hours",
+            unit: "hrs"
+        },
+        windingTemp: {
+            primary: 4312,
+            fallback: [5905, 5907, 5909, 5911, 5913, 5915, 5917, 5919, 5921, 5923, 5925, 5927, 5929, 5931, 5933, 5935, 5937, 5939, 5941, 5943, 5945, 5947, 5949, 5951, 5953],
+            scaling: 1,
+            name: "DG3 Winding Temperature",
+            unit: "°C"
+        }
+    }
 };
 
 // Track which registers are working for each parameter
@@ -373,11 +633,8 @@ async function readAllElectrical(dgKey) {
 }
 
 /**
- * Checks for significant changes, threshold violations, and DG start/stop status.
- * Sends a notification if:
- * 1. A critical threshold is violated.
- * 2. The DG has just started running (Active Power > 5 kW).
- * 3. A significant parameter change (>10%) is detected *while* the DG is running.
+ * Checks for significant changes and threshold violations in electrical parameters.
+ * IMPORTANT: Suppresses V/Hz alerts if Active Power is close to zero (assumes DG is off).
  */
 function checkElectricalChanges(dgKey, newValues, registerMap) {
     const lastKey = `electrical_${dgKey}`;
@@ -385,13 +642,9 @@ function checkElectricalChanges(dgKey, newValues, registerMap) {
     const changes = [];
     const alerts = [];
 
-    // Determine if the DG is running based on Active Power being above noise level.
-    const POWER_THRESHOLD_KW = 5; 
-    const IS_DG_RUNNING = newValues.activePower > POWER_THRESHOLD_KW; 
-    const WAS_DG_RUNNING = previousValues.activePower > POWER_THRESHOLD_KW;
-    const isFirstRead = Object.keys(previousValues).length === 0;
+    // Determine if the DG is running. Assume it's OFF if Active Power is < 5 kW.
+    const IS_DG_RUNNING = newValues.activePower > 5; // Use 5 kW as a practical threshold to filter noise
 
-    // --- 1. Detect Significant Changes & Threshold Violations ---
     for (const param in newValues) {
         const newVal = newValues[param];
         const oldVal = previousValues[param];
@@ -400,9 +653,10 @@ function checkElectricalChanges(dgKey, newValues, registerMap) {
         const unit = regConfig ? regConfig.unit : '';
         const thresholds = ELECTRICAL_THRESHOLDS;
 
-        // Check for significant changes (>10%)
+        // 1. Check for significant changes
         if (oldVal !== undefined && newVal !== oldVal) {
             const changePercent = Math.abs((newVal - oldVal) / (oldVal || 1) * 100); 
+            
             if (changePercent > 10) {
                 changes.push({
                     parameter: param,
@@ -413,83 +667,78 @@ function checkElectricalChanges(dgKey, newValues, registerMap) {
             }
         }
 
-        // Check for threshold violations (CRITICAL ALERTS)
+        // 2. Check for threshold violations (CRITICAL ALERTS)
         
-        // Suppress V/Hz/PF alerts if the DG is not running (prevents 0V spam).
+        // Suppress V/Hz/PF alerts if the DG is not running.
         if (!IS_DG_RUNNING && (param.includes('voltage') || param === 'frequency' || param === 'powerFactor')) {
              if (newVal === 0) {
-                 continue; // Suppress alert for zero values when DG is definitely off
+                 continue; // Suppress alert for zero values when DG is off
              }
         }
 
-        // Threshold checks
         if (param.includes('voltage')) {
             if (newVal < thresholds.voltageMin || newVal > thresholds.voltageMax) {
-                alerts.push({ parameter: param, value: newVal, threshold: `${thresholds.voltageMin}-${thresholds.voltageMax}${unit}`, severity: 'critical' });
+                alerts.push({
+                    parameter: param,
+                    value: newVal,
+                    threshold: `${thresholds.voltageMin}-${thresholds.voltageMax}${unit}`,
+                    severity: 'critical'
+                });
+            }
+        } else if (param.includes('current')) {
+            if (newVal > thresholds.currentMax) {
+                alerts.push({
+                    parameter: param,
+                    value: newVal,
+                    threshold: `Max ${thresholds.currentMax}${unit}`,
+                    severity: 'warning'
+                });
             }
         } else if (param === 'frequency') {
             if (newVal < thresholds.frequencyMin || newVal > thresholds.frequencyMax) {
-                alerts.push({ parameter: param, value: newVal, threshold: `${thresholds.frequencyMin}-${thresholds.frequencyMax}${unit}`, severity: 'critical' });
+                alerts.push({
+                    parameter: param,
+                    value: newVal,
+                    threshold: `${thresholds.frequencyMin}-${thresholds.frequencyMax}${unit}`,
+                    severity: 'critical'
+                });
+            }
+        } else if (param === 'powerFactor') {
+            if (newVal < thresholds.powerFactorMin) {
+                alerts.push({
+                    parameter: param,
+                    value: newVal,
+                    threshold: `Min ${thresholds.powerFactorMin}`,
+                    severity: 'warning'
+                });
             }
         } else if (param === 'windingTemp') {
             if (newVal > thresholds.temperatureMax) {
-                alerts.push({ parameter: param, value: newVal, threshold: `Max ${thresholds.temperatureMax}${unit}`, severity: 'critical' });
+                alerts.push({
+                    parameter: param,
+                    value: newVal,
+                    threshold: `Max ${thresholds.temperatureMax}${unit}`,
+                    severity: 'critical'
+                });
             }
         }
-        // ... (Include other threshold checks as needed)
-    }
-
-    // --- 2. DG Start/Run & Final Send Condition Logic ---
-    let finalAlerts = alerts; // Start with threshold violations
-
-    // 1. DG Started Notification (Highest Priority)
-    if (IS_DG_RUNNING && !WAS_DG_RUNNING && !isFirstRead) {
-        // DG just started (Transition from OFF to ON)
-        finalAlerts.unshift({
-            parameter: 'STATUS',
-            value: newValues.activePower,
-            threshold: `DG just STARTED running`,
-            severity: 'STATUS'
-        });
-        console.log(`[${dgKey.toUpperCase()}] STATUS ALERT: DG just STARTED running.`);
-    } 
-    // 2. DG Stopped Notification (Important for logs)
-    else if (!IS_DG_RUNNING && WAS_DG_RUNNING && !isFirstRead) {
-        finalAlerts.unshift({
-            parameter: 'STATUS',
-            value: newValues.activePower,
-            threshold: `DG just STOPPED running`,
-            severity: 'STATUS'
-        });
-        console.log(`[${dgKey.toUpperCase()}] STATUS ALERT: DG just STOPPED running.`);
     }
 
     // Store current values for next comparison
     alertState.lastElectricalValues[lastKey] = { ...newValues };
 
-    // --- 3. Determine if Email is Required ---
-    let shouldSendEmail = false;
-
-    // A. Always send for Critical Alerts or Start/Stop (finalAlerts > 0)
-    if (finalAlerts.length > 0) {
-        shouldSendEmail = true;
-    }
-    
-    // B. Send for ANY significant change (>10% change) IF the DG is running (your requirement)
-    if (changes.length > 0 && IS_DG_RUNNING) {
-        shouldSendEmail = true;
-        console.log(`[${dgKey.toUpperCase()}] Significant Changes Detected. Sending Email.`);
-    }
-
-
-    if (shouldSendEmail) {
-        sendElectricalAlert(dgKey, changes, finalAlerts, newValues, registerMap);
-    } else if (changes.length > 0 && IS_DG_RUNNING) {
-        // Log changes if DG is running, even if not emailing (for diagnostics)
-        console.log(`[${dgKey.toUpperCase()}] Changes Detected (Suppressed by Cooldown/Logic):`, changes);
+    // Only send email if actual threshold violations (alerts) were detected.
+    if (alerts.length > 0) {
+        console.log(`[${dgKey.toUpperCase()}] CRITICAL ALERT TRIGGERED (DG Running: ${IS_DG_RUNNING}):`, alerts);
+        sendElectricalAlert(dgKey, changes, alerts, newValues, registerMap);
+    } else if (changes.length > 0) {
+        // Log changes, but DO NOT send email
+        // Log only if the DG is actually producing power, otherwise, it's just noise.
+        if (IS_DG_RUNNING) {
+            console.log(`[${dgKey.toUpperCase()}] Significant Changes Detected (No Critical Alert):`, changes);
+        }
     }
 }
-
 
 // ====== Main Data Reading ======
 let errorCount = 0;
@@ -612,7 +861,7 @@ function checkDieselLevels(data) {
     }
 }
 
-// **DIESEL ALERT TEMPLATE FUNCTION**
+// **CORRECTED DIESEL ALERT TEMPLATE FUNCTION**
 function getEmailTemplate(alertType, data, criticalDGs) {
     const timestamp = new Date().toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
@@ -695,7 +944,7 @@ function getEmailTemplate(alertType, data, criticalDGs) {
     };
 }
 
-// **ELECTRICAL ALERT TEMPLATE FUNCTION**
+// **CORRECTED ELECTRICAL ALERT TEMPLATE FUNCTION**
 function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, registerMap) {
     const timestamp = new Date().toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
@@ -783,12 +1032,12 @@ function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, regi
                         <th style="padding:10px; text-align:left; border:1px solid #fecaca;">Severity</th>
                     </tr>
                     ${alerts.map(a => `
-                        <tr style="${a.severity === 'STATUS' ? 'background:#dbeafe;' : a.severity === 'critical' ? 'background:#fee2e2;' : 'background:#fef9c3;'}">
+                        <tr>
                             <td style="padding:10px; border:1px solid #fecaca;">${a.parameter}</td>
-                            <td style="padding:10px; border:1px solid #fecaca; font-weight:bold; color:${a.severity === 'critical' ? '#dc2626' : a.severity === 'STATUS' ? '#2563eb' : '#f59e0b'};">${a.value}</td>
+                            <td style="padding:10px; border:1px solid #fecaca; font-weight:bold; color:#dc2626;">${a.value}</td>
                             <td style="padding:10px; border:1px solid #fecaca;">${a.threshold}</td>
                             <td style="padding:10px; border:1px solid #fecaca;">
-                                <span style="background:${a.severity === 'critical' ? '#dc2626' : a.severity === 'STATUS' ? '#2563eb' : '#f59e0b'}; color:white; padding:4px 8px; border-radius:4px; font-size:12px;">
+                                <span style="background:${a.severity === 'critical' ? '#dc2626' : '#f59e0b'}; color:white; padding:4px 8px; border-radius:4px; font-size:12px;">
                                     ${a.severity.toUpperCase()}
                                 </span>
                             </td>
@@ -799,17 +1048,8 @@ function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, regi
         `;
     }
     
-    // Determine subject line based on the most severe alert/event
-    let emailSubject = `⚡ ${dgName} Electrical Alert - Changes Detected`;
-    if (alerts.some(a => a.severity === 'critical')) {
-        emailSubject = `🚨 CRITICAL ALERT: ${dgName} Threshold Violation`;
-    } else if (alerts.some(a => a.severity === 'STATUS')) {
-        emailSubject = `🔔 STATUS ALERT: ${dgName} Started/Stopped`;
-    }
-
-
     return {
-        subject: emailSubject,
+        subject: `⚡ ${dgName} Electrical Parameters Alert - Register Mapping Included`,
         html: `
 <!DOCTYPE html>
 <html>
@@ -827,7 +1067,7 @@ function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, regi
 <body>
     <div class="container">
         <div class="header">
-            <h1 style="margin:0;">${emailSubject}</h1>
+            <h1 style="margin:0;">⚡ Electrical Parameters Alert</h1>
             <p style="margin:10px 0 0 0;">${dgName} - DG Monitoring System</p>
         </div>
         
@@ -888,7 +1128,7 @@ function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, regi
             
             <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 15px 0;">
                 <p style="margin: 0; font-weight: bold; color: #92400e;">⚠️ Action Required:</p>
-                <p style="margin: 5px 0 0 0; color: #78350f;">Please review the parameters. The generator has either experienced a critical event, a significant change in load/output, or just started/stopped.</p>
+                <p style="margin: 5px 0 0 0; color: #78350f;">Please check the generator immediately and verify all electrical parameters are within safe operating ranges. The register mapping above shows which PLC registers are currently providing data.</p>
             </div>
         </div>
         
@@ -913,16 +1153,14 @@ async function sendElectricalAlert(dgKey, changes, alerts, currentValues, regist
 
     const alertKey = `electrical_${dgKey}_${Math.floor(Date.now() / ELECTRICAL_ALERT_COOLDOWN)}`;
     
-    // Only apply the cooldown if it's NOT a Critical/Status alert.
-    const isCriticalOrStatus = alerts.some(a => a.severity === 'critical' || a.severity === 'STATUS');
-
-    if (!isCriticalOrStatus && alertState.currentAlerts.has(alertKey)) {
-        console.log(`Electrical alert for ${dgKey} suppressed by COOLDOWN, skipping...`);
+    if (alertState.currentAlerts.has(alertKey)) {
+        console.log(`Electrical alert for ${dgKey} already sent recently, skipping...`);
         return;
     }
 
     try {
         const dgName = dgKey.toUpperCase().replace('dg', 'DG-');
+        // Pass the registerMap to the template function
         const template = getElectricalAlertTemplate(dgName, changes, alerts, currentValues, registerMap);
         
         await emailTransporter.sendMail({
@@ -933,8 +1171,8 @@ async function sendElectricalAlert(dgKey, changes, alerts, currentValues, regist
         });
         
         console.log(`⚡ Electrical alert email sent for ${dgName} to ${ALERT_RECIPIENTS}`);
+        console.log(`Register Map:`, JSON.stringify(registerMap, null, 2));
         
-        // Always reset the cooldown on send, regardless of the cause
         alertState.currentAlerts.add(alertKey);
         setTimeout(() => alertState.currentAlerts.delete(alertKey), ELECTRICAL_ALERT_COOLDOWN);
         
@@ -957,6 +1195,7 @@ async function sendEmailAlert(alertType, data, criticalDGs) {
     }
 
     try {
+        // Use the corrected Diesel alert template function
         const template = getEmailTemplate(alertType, data, criticalDGs);
         
         await emailTransporter.sendMail({
