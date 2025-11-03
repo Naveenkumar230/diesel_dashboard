@@ -28,6 +28,7 @@
     color: var(--text-primary);
     min-height: 100vh;
   }
+  .container { max-width: 1400px; margin: 0 auto; }
   .header {
     text-align: center;
     margin-bottom: 2rem;
@@ -43,12 +44,12 @@
     background: linear-gradient(90deg, #60a5fa, #34d399);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   .last-update {
     font-size: 0.9rem;
     color: var(--text-muted);
   }
-  .container { max-width: 1400px; margin: 0 auto; }
   
   .status-indicator {
     display: inline-block;
@@ -161,6 +162,19 @@
     font-size: 1.3rem;
     font-weight: 700;
   }
+  
+  .dg-status-pill {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+  
+  .dg-status-running { background-color: var(--success); }
+  .dg-status-off { background-color: var(--danger); }
 
   .phase-grid {
     display: grid;
@@ -173,6 +187,17 @@
     padding: 15px;
     border-radius: 8px;
     text-align: center;
+    transition: all 0.3s ease;
+  }
+  
+  .phase-card.warning { 
+    box-shadow: 0 0 10px var(--warning); 
+    border: 1px solid var(--warning); 
+  }
+  
+  .phase-card.critical { 
+    box-shadow: 0 0 10px var(--danger); 
+    border: 1px solid var(--danger); 
   }
 
   .phase-label {
@@ -211,6 +236,7 @@
   @media (max-width: 768px) {
     .metric-value { font-size: 2rem; }
     .metrics-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .phase-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   }
 </style>
 </head>
@@ -219,14 +245,13 @@
     <div class="header">
       <h1>⚡ DG Monitoring System Dashboard</h1>
       <div class="last-update">
-        <span class="status-indicator status-online"></span>
+        <span class="status-indicator status-online" id="server-status-indicator"></span>
         Last Updated: <span id="last-update">--</span>
       </div>
     </div>
 
     <div id="alert-container"></div>
 
-    <!-- Diesel Overview -->
     <div class="section-title">🛢️ Diesel Levels</div>
     <div class="metrics-grid">
       <div class="metric-card diesel" id="dg1-diesel-card">
@@ -251,58 +276,58 @@
       </div>
     </div>
 
-    <!-- DG-1 Electrical Parameters -->
     <div class="section-title">⚙️ DG-1 Electrical Parameters</div>
-    <div class="dg-section">
+    <div class="dg-section" id="dg1-section">
       <div class="dg-header">
         <div class="dg-name">Generator Set 1</div>
+        <div class="dg-status-pill dg-status-off" id="dg1-status">OFF</div>
       </div>
       <div class="phase-grid">
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-v-r-card">
           <div class="phase-label">Voltage R-Phase</div>
           <div class="phase-value" id="dg1-voltage-r">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-v-y-card">
           <div class="phase-label">Voltage Y-Phase</div>
           <div class="phase-value" id="dg1-voltage-y">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-v-b-card">
           <div class="phase-label">Voltage B-Phase</div>
           <div class="phase-value" id="dg1-voltage-b">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-c-r-card">
           <div class="phase-label">Current R-Phase</div>
           <div class="phase-value" id="dg1-current-r">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-c-y-card">
           <div class="phase-label">Current Y-Phase</div>
           <div class="phase-value" id="dg1-current-y">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-c-b-card">
           <div class="phase-label">Current B-Phase</div>
           <div class="phase-value" id="dg1-current-b">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-freq-card">
           <div class="phase-label">Frequency</div>
           <div class="phase-value" id="dg1-frequency">--</div>
           <div class="metric-unit">Hz</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-pf-card">
           <div class="phase-label">Power Factor</div>
           <div class="phase-value" id="dg1-power-factor">--</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-ap-card">
           <div class="phase-label">Active Power</div>
           <div class="phase-value" id="dg1-active-power">--</div>
           <div class="metric-unit">kW</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg1-rp-card">
           <div class="phase-label">Reactive Power</div>
           <div class="phase-value" id="dg1-reactive-power">--</div>
           <div class="metric-unit">kVAR</div>
@@ -310,58 +335,58 @@
       </div>
     </div>
 
-    <!-- DG-2 Electrical Parameters -->
     <div class="section-title">⚙️ DG-2 Electrical Parameters</div>
-    <div class="dg-section">
+    <div class="dg-section" id="dg2-section">
       <div class="dg-header">
         <div class="dg-name">Generator Set 2</div>
+        <div class="dg-status-pill dg-status-off" id="dg2-status">OFF</div>
       </div>
       <div class="phase-grid">
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-v-r-card">
           <div class="phase-label">Voltage R-Phase</div>
           <div class="phase-value" id="dg2-voltage-r">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-v-y-card">
           <div class="phase-label">Voltage Y-Phase</div>
           <div class="phase-value" id="dg2-voltage-y">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-v-b-card">
           <div class="phase-label">Voltage B-Phase</div>
           <div class="phase-value" id="dg2-voltage-b">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-c-r-card">
           <div class="phase-label">Current R-Phase</div>
           <div class="phase-value" id="dg2-current-r">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-c-y-card">
           <div class="phase-label">Current Y-Phase</div>
           <div class="phase-value" id="dg2-current-y">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-c-b-card">
           <div class="phase-label">Current B-Phase</div>
           <div class="phase-value" id="dg2-current-b">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-freq-card">
           <div class="phase-label">Frequency</div>
           <div class="phase-value" id="dg2-frequency">--</div>
           <div class="metric-unit">Hz</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-pf-card">
           <div class="phase-label">Power Factor</div>
           <div class="phase-value" id="dg2-power-factor">--</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-ap-card">
           <div class="phase-label">Active Power</div>
           <div class="phase-value" id="dg2-active-power">--</div>
           <div class="metric-unit">kW</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg2-rp-card">
           <div class="phase-label">Reactive Power</div>
           <div class="phase-value" id="dg2-reactive-power">--</div>
           <div class="metric-unit">kVAR</div>
@@ -369,69 +394,135 @@
       </div>
     </div>
 
-    <!-- DG-3 Electrical Parameters -->
     <div class="section-title">⚙️ DG-3 Electrical Parameters</div>
-    <div class="dg-section">
+    <div class="dg-section" id="dg3-section">
       <div class="dg-header">
         <div class="dg-name">Generator Set 3</div>
+        <div class="dg-status-pill dg-status-off" id="dg3-status">OFF</div>
       </div>
       <div class="phase-grid">
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-v-r-card">
           <div class="phase-label">Voltage R-Phase</div>
           <div class="phase-value" id="dg3-voltage-r">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-v-y-card">
           <div class="phase-label">Voltage Y-Phase</div>
           <div class="phase-value" id="dg3-voltage-y">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-v-b-card">
           <div class="phase-label">Voltage B-Phase</div>
           <div class="phase-value" id="dg3-voltage-b">--</div>
           <div class="metric-unit">V</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-c-r-card">
           <div class="phase-label">Current R-Phase</div>
           <div class="phase-value" id="dg3-current-r">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-c-y-card">
           <div class="phase-label">Current Y-Phase</div>
           <div class="phase-value" id="dg3-current-y">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-c-b-card">
           <div class="phase-label">Current B-Phase</div>
           <div class="phase-value" id="dg3-current-b">--</div>
           <div class="metric-unit">A</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-freq-card">
           <div class="phase-label">Frequency</div>
           <div class="phase-value" id="dg3-frequency">--</div>
           <div class="metric-unit">Hz</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-pf-card">
           <div class="phase-label">Power Factor</div>
           <div class="phase-value" id="dg3-power-factor">--</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-ap-card">
           <div class="phase-label">Active Power</div>
           <div class="phase-value" id="dg3-active-power">--</div>
           <div class="metric-unit">kW</div>
         </div>
-        <div class="phase-card">
+        <div class="phase-card" id="dg3-rp-card">
           <div class="phase-label">Reactive Power</div>
           <div class="phase-value" id="dg3-reactive-power">--</div>
           <div class="metric-unit">kVAR</div>
         </div>
       </div>
     </div>
+    
+    <div class="section-title">⚙️ DG-4 Electrical Parameters</div>
+    <div class="dg-section" id="dg4-section">
+      <div class="dg-header">
+        <div class="dg-name">Generator Set 4</div>
+        <div class="dg-status-pill dg-status-off" id="dg4-status">OFF</div>
+      </div>
+      <div class="phase-grid">
+        <div class="phase-card" id="dg4-v-r-card">
+          <div class="phase-label">Voltage R-Phase</div>
+          <div class="phase-value" id="dg4-voltage-r">--</div>
+          <div class="metric-unit">V</div>
+        </div>
+        <div class="phase-card" id="dg4-v-y-card">
+          <div class="phase-label">Voltage Y-Phase</div>
+          <div class="phase-value" id="dg4-voltage-y">--</div>
+          <div class="metric-unit">V</div>
+        </div>
+        <div class="phase-card" id="dg4-v-b-card">
+          <div class="phase-label">Voltage B-Phase</div>
+          <div class="phase-value" id="dg4-voltage-b">--</div>
+          <div class="metric-unit">V</div>
+        </div>
+        <div class="phase-card" id="dg4-c-r-card">
+          <div class="phase-label">Current R-Phase</div>
+          <div class="phase-value" id="dg4-current-r">--</div>
+          <div class="metric-unit">A</div>
+        </div>
+        <div class="phase-card" id="dg4-c-y-card">
+          <div class="phase-label">Current Y-Phase</div>
+          <div class="phase-value" id="dg4-current-y">--</div>
+          <div class="metric-unit">A</div>
+        </div>
+        <div class="phase-card" id="dg4-c-b-card">
+          <div class="phase-label">Current B-Phase</div>
+          <div class="phase-value" id="dg4-current-b">--</div>
+          <div class="metric-unit">A</div>
+        </div>
+        <div class="phase-card" id="dg4-freq-card">
+          <div class="phase-label">Frequency</div>
+          <div class="phase-value" id="dg4-frequency">--</div>
+          <div class="metric-unit">Hz</div>
+        </div>
+        <div class="phase-card" id="dg4-pf-card">
+          <div class="phase-label">Power Factor</div>
+          <div class="phase-value" id="dg4-power-factor">--</div>
+        </div>
+        <div class="phase-card" id="dg4-ap-card">
+          <div class="phase-label">Active Power</div>
+          <div class="phase-value" id="dg4-active-power">--</div>
+          <div class="metric-unit">kW</div>
+        </div>
+        <div class="phase-card" id="dg4-rp-card">
+          <div class="phase-label">Reactive Power</div>
+          <div class="phase-value" id="dg4-reactive-power">--</div>
+          <div class="metric-unit">kVAR</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script>
     const CRITICAL_LEVEL = 50;
     const WARNING_LEVEL = 100;
+    const VOLTAGE_MIN = 200;
+    const VOLTAGE_MAX = 250;
+    const CURRENT_MAX = 500;
+    const FREQUENCY_MIN = 48;
+    const FREQUENCY_MAX = 52;
+    const DG_RUNNING_THRESHOLD = 5;
 
     async function fetchData() {
       try {
@@ -442,6 +533,12 @@
         console.error('Fetch error:', err);
         return null;
       }
+    }
+
+    function formatNum(num, decimals = 1) {
+      if (num === undefined || num === null || isNaN(num)) return '--';
+      if (num === 0) return (decimals > 0) ? '0.0' : '0';
+      return num.toFixed(decimals);
     }
 
     function updateDiesel(data) {
@@ -455,7 +552,7 @@
         const el = document.getElementById(key);
         const card = document.getElementById(`${key}-diesel-card`);
         
-        if (el) el.textContent = value;
+        if (el) el.textContent = formatNum(value, 0);
         
         if (card) {
           card.className = 'metric-card';
@@ -469,7 +566,7 @@
         }
       });
 
-      document.getElementById('total').textContent = data.total || 0;
+      document.getElementById('total').textContent = formatNum(data.total, 0);
       checkAlerts(dieselLevels);
     }
 
@@ -477,66 +574,130 @@
       const container = document.getElementById('alert-container');
       const criticalDGs = Object.entries(levels)
         .filter(([_, value]) => value <= CRITICAL_LEVEL)
-        .map(([key]) => key.toUpperCase());
+        .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
 
+      container.innerHTML = '';
       if (criticalDGs.length > 0) {
         container.innerHTML = `
           <div class="alert-banner show">
-            ⚠️ CRITICAL: Low diesel levels detected in ${criticalDGs.join(', ')}!
+            ⚠️ CRITICAL: Low diesel levels detected in ${criticalDGs.join(', ')}! Refuel immediately.
           </div>
         `;
-      } else {
-        container.innerHTML = '';
+      }
+    }
+
+    function applyCardClass(cardId, value, min, max) {
+      const card = document.getElementById(cardId);
+      if (!card) return;
+      
+      card.className = 'phase-card';
+      if (value === undefined || value < 1) return;
+
+      if (value < min || value > max) {
+        card.classList.add('critical');
+      } else if (value > min && value < (min + (max - min) * 0.1)) {
+        card.classList.add('warning');
+      } else if (value > (max - (max - min) * 0.1) && value < max) {
+        card.classList.add('warning');
       }
     }
 
     function updateElectrical(data) {
       if (!data.electrical) return;
       
-      ['dg1', 'dg2', 'dg3'].forEach(dg => {
+      ['dg1', 'dg2', 'dg3', 'dg4'].forEach(dg => {
         const e = data.electrical[dg] || {};
-        
-        ['voltageR', 'voltageY', 'voltageB'].forEach(v => {
-          const el = document.getElementById(`${dg}-${v.toLowerCase().replace('voltage', 'voltage-')}`);
-          if (el) el.textContent = formatNum(e[v]);
-        });
-        
-        ['currentR', 'currentY', 'currentB'].forEach(c => {
-          const el = document.getElementById(`${dg}-${c.toLowerCase().replace('current', 'current-')}`);
-          if (el) el.textContent = formatNum(e[c]);
-        });
-        
-        const freq = document.getElementById(`${dg}-frequency`);
-        if (freq) freq.textContent = formatNum(e.frequency);
-        
-        const pf = document.getElementById(`${dg}-power-factor`);
-        if (pf) pf.textContent = formatNum(e.powerFactor, 2);
-        
-        const ap = document.getElementById(`${dg}-active-power`);
-        if (ap) ap.textContent = formatNum(e.activePower);
-        
-        const rp = document.getElementById(`${dg}-reactive-power`);
-        if (rp) rp.textContent = formatNum(e.reactivePower);
-      });
-    }
+        const isRunning = (e.activePower || 0) > DG_RUNNING_THRESHOLD;
 
-    function formatNum(num, decimals = 1) {
-      if (num === undefined || num === null || isNaN(num)) return '--';
-      return num.toFixed(decimals);
+        const statusEl = document.getElementById(`${dg}-status`);
+        if (statusEl) {
+          statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
+          statusEl.classList.remove('dg-status-running', 'dg-status-off');
+          statusEl.classList.add(isRunning ? 'dg-status-running' : 'dg-status-off');
+        }
+
+        const voltageFields = ['voltageR', 'voltageY', 'voltageB'];
+        voltageFields.forEach(v => {
+          const val = e[v];
+          const phaseChar = v.charAt(7).toLowerCase();
+          const el = document.getElementById(`${dg}-voltage-${phaseChar}`);
+          if (el) el.textContent = formatNum(val);
+          if (isRunning) {
+            applyCardClass(`${dg}-v-${phaseChar}-card`, val, VOLTAGE_MIN, VOLTAGE_MAX);
+          } else {
+            const cardEl = document.getElementById(`${dg}-v-${phaseChar}-card`);
+            if (cardEl) cardEl.className = 'phase-card';
+          }
+        });
+
+        const currentFields = ['currentR', 'currentY', 'currentB'];
+        currentFields.forEach(c => {
+          const val = e[c];
+          const phaseChar = c.charAt(7).toLowerCase();
+          const el = document.getElementById(`${dg}-current-${phaseChar}`);
+          if (el) el.textContent = formatNum(val);
+          if (isRunning) {
+            applyCardClass(`${dg}-c-${phaseChar}-card`, val, 0, CURRENT_MAX);
+          } else {
+            const cardEl = document.getElementById(`${dg}-c-${phaseChar}-card`);
+            if (cardEl) cardEl.className = 'phase-card';
+          }
+        });
+
+        const freqEl = document.getElementById(`${dg}-frequency`);
+        if (freqEl) freqEl.textContent = formatNum(e.frequency);
+        if (isRunning) {
+          applyCardClass(`${dg}-freq-card`, e.frequency, FREQUENCY_MIN, FREQUENCY_MAX);
+        } else {
+          const freqCard = document.getElementById(`${dg}-freq-card`);
+          if (freqCard) freqCard.className = 'phase-card';
+        }
+
+        const pfEl = document.getElementById(`${dg}-power-factor`);
+        if (pfEl) pfEl.textContent = formatNum(e.powerFactor, 2);
+        if (isRunning) {
+          applyCardClass(`${dg}-pf-card`, e.powerFactor, 0.7, 1.0);
+        } else {
+          const pfCard = document.getElementById(`${dg}-pf-card`);
+          if (pfCard) pfCard.className = 'phase-card';
+        }
+        
+        const apEl = document.getElementById(`${dg}-active-power`);
+        const rpEl = document.getElementById(`${dg}-reactive-power`);
+        if (apEl) apEl.textContent = formatNum(e.activePower);
+        if (rpEl) rpEl.textContent = formatNum(e.reactivePower);
+      });
     }
 
     function updateTimestamp() {
       const now = new Date();
-      document.getElementById('last-update').textContent = now.toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        dateStyle: 'short',
-        timeStyle: 'medium'
-      });
+      const timestampEl = document.getElementById('last-update');
+      if (timestampEl) {
+        timestampEl.textContent = now.toLocaleString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          dateStyle: 'short',
+          timeStyle: 'medium'
+        });
+      }
     }
 
     async function refresh() {
       const data = await fetchData();
-      if (!data) return;
+      const indicator = document.getElementById('server-status-indicator');
+      
+      if (!data) {
+        if (indicator) {
+          indicator.classList.remove('status-online');
+          indicator.classList.add('status-offline');
+        }
+        return;
+      }
+      
+      if (indicator) {
+        indicator.classList.remove('status-offline');
+        indicator.classList.add('status-online');
+      }
+      
       updateDiesel(data);
       updateElectrical(data);
       updateTimestamp();
