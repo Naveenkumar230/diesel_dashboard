@@ -65,8 +65,6 @@ const dgRegisters = {
     dg1: { primary: 4104, fallback: [4105, 4106], name: "DG-1 Diesel (D108)" },
     dg2: { primary: 4100, fallback: [4101, 4102], name: "DG-2 Diesel (D104)" },
     dg3: { primary: 4102, fallback: [4103, 4107], name: "DG-3 Diesel (D106)" },
-    // DG4 Diesel not monitored as per original table, but structured for consistency if needed:
-    // dg4: { primary: 4108, fallback: [4109, 4110], name: "DG-4 Diesel (D112)" } 
 };
 
 // Electrical Registers (Offset logic confirmed: 40 registers per DG set)
@@ -79,7 +77,8 @@ const electricalRegisters = {
         currentR: { primary: 4202, fallback: [4203, 4204], scaling: 0.1, name: "DG1 Current R", unit: "A" },
         currentY: { primary: 4204, fallback: [4205, 4206], scaling: 0.1, name: "DG1 Current Y", unit: "A" },
         currentB: { primary: 4206, fallback: [4207, 4208], scaling: 0.1, name: "DG1 Current B", unit: "A" },
-        frequency: { primary: 4208, fallback: [4209, 4210], scaling: 0.1, name: "DG1 Frequency", unit: "Hz" },
+        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
+        frequency: { primary: 4208, fallback: [4209, 4210], scaling: 0.01, name: "DG1 Frequency", unit: "Hz" },
         powerFactor: { primary: 4210, fallback: [4211, 4212], scaling: 0.01, name: "DG1 Power Factor", unit: "" },
         activePower: { primary: 4212, fallback: [4213, 4214], scaling: 0.1, name: "DG1 Active Power", unit: "kW" },
         reactivePower: { primary: 4214, fallback: [4215, 4216], scaling: 0.1, name: "DG1 Reactive Power", unit: "kVAR" },
@@ -95,7 +94,8 @@ const electricalRegisters = {
         currentR: { primary: 4242, fallback: [4243, 4244], scaling: 0.1, name: "DG2 Current R", unit: "A" }, // D146
         currentY: { primary: 4244, fallback: [4245, 4246], scaling: 0.1, name: "DG2 Current Y", unit: "A" }, // D148
         currentB: { primary: 4246, fallback: [4247, 4248], scaling: 0.1, name: "DG2 Current B", unit: "A" }, // D150
-        frequency: { primary: 4248, fallback: [4249, 4250], scaling: 0.1, name: "DG2 Frequency", unit: "Hz" }, // D152
+        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
+        frequency: { primary: 4248, fallback: [4249, 4250], scaling: 0.01, name: "DG2 Frequency", unit: "Hz" }, // D152
         powerFactor: { primary: 4250, fallback: [4251, 4252], scaling: 0.01, name: "DG2 Power Factor", unit: "" }, // D154
         activePower: { primary: 4252, fallback: [4253, 4254], scaling: 0.1, name: "DG2 Active Power", unit: "kW" }, // D156
         reactivePower: { primary: 4254, fallback: [4255, 4256], scaling: 0.1, name: "DG2 Reactive Power", unit: "kVAR" }, // D158
@@ -111,7 +111,8 @@ const electricalRegisters = {
         currentR: { primary: 4282, fallback: [4283, 4284], scaling: 0.1, name: "DG3 Current R", unit: "A" }, // D186
         currentY: { primary: 4284, fallback: [4285, 4286], scaling: 0.1, name: "DG3 Current Y", unit: "A" }, // D188
         currentB: { primary: 4286, fallback: [4287, 4288], scaling: 0.1, name: "DG3 Current B", unit: "A" }, // D190
-        frequency: { primary: 4288, fallback: [4289, 4290], scaling: 0.1, name: "DG3 Frequency", unit: "Hz" }, // D192
+        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
+        frequency: { primary: 4288, fallback: [4289, 4290], scaling: 0.01, name: "DG3 Frequency", unit: "Hz" }, // D192
         powerFactor: { primary: 4290, fallback: [4291, 4292], scaling: 0.01, name: "DG3 Power Factor", unit: "" }, // D194
         activePower: { primary: 4292, fallback: [4293, 4294], scaling: 0.1, name: "DG3 Active Power", unit: "kW" }, // D196
         reactivePower: { primary: 4294, fallback: [4295, 4296], scaling: 0.1, name: "DG3 Reactive Power", unit: "kVAR" }, // D198
@@ -127,7 +128,8 @@ const electricalRegisters = {
         currentR: { primary: 4322, fallback: [4323, 4324], scaling: 0.1, name: "DG4 Current R", unit: "A" }, // D226
         currentY: { primary: 4324, fallback: [4325, 4326], scaling: 0.1, name: "DG4 Current Y", unit: "A" }, // D228
         currentB: { primary: 4326, fallback: [4327, 4328], scaling: 0.1, name: "DG4 Current B", unit: "A" }, // D230
-        frequency: { primary: 4328, fallback: [4329, 4330], scaling: 0.1, name: "DG4 Frequency", unit: "Hz" }, // D232
+        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
+        frequency: { primary: 4328, fallback: [4329, 4330], scaling: 0.01, name: "DG4 Frequency", unit: "Hz" }, // D232
         powerFactor: { primary: 4330, fallback: [4331, 4332], scaling: 0.01, name: "DG4 Power Factor", unit: "" }, // D234
         activePower: { primary: 4332, fallback: [4333, 4334], scaling: 0.1, name: "DG4 Active Power", unit: "kW" }, // D236
         reactivePower: { primary: 4334, fallback: [4335, 4336], scaling: 0.1, name: "DG4 Reactive Power", unit: "kVAR" }, // D238
@@ -205,7 +207,7 @@ try {
     emailEnabled = false;
 }
 
-// --- Utility Functions (Kept for completeness) ---
+// --- Utility Functions ---
 function toSignedInt16(value) { return (value > 32767) ? value - 65536 : value; }
 function isValidReading(value) {
     const signedValue = toSignedInt16(value);
@@ -218,7 +220,7 @@ function isValidElectricalReading(value, min = -9999, max = 9999) {
 }
 function calculateChange(current, previous) { return (previous) ? current - previous : 0; }
 
-// --- Modbus Reading Functions (Kept for completeness and register tracking) ---
+// --- Modbus Reading Functions ---
 
 async function readWithRetry(readFunc, retries = RETRY_ATTEMPTS) {
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -241,7 +243,6 @@ async function readSingleRegister(registerConfig, dataKey) {
             const signedValue = toSignedInt16(rawValue);
             let value = Math.max(0, signedValue);
             
-            // Simplified smoothing logic for the final code
             const previousValue = previousDieselData[dataKey] || 0;
             const maxChangePercent = 30;
             const changePercent = Math.abs((value - previousValue) / (previousValue || 1) * 100);
@@ -525,19 +526,22 @@ async function readAllSystemData() {
     try {
         // Read Diesel Levels (DG1-DG3)
         await readSingleRegister(dgRegisters.dg1, 'dg1');
+        await new Promise(resolve => setTimeout(resolve, READ_DELAY));
         await readSingleRegister(dgRegisters.dg2, 'dg2');
+        await new Promise(resolve => setTimeout(resolve, READ_DELAY));
         await readSingleRegister(dgRegisters.dg3, 'dg3');
+        await new Promise(resolve => setTimeout(resolve, READ_DELAY));
         systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
 
         // Process DG1-DG4 Electrical
-        ['dg1', 'dg2', 'dg3', 'dg4'].forEach(async (dgKey) => {
+        for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
             const result = await readAllElectrical(dgKey);
             systemData.electrical[dgKey] = result.values;
             workingRegisters[dgKey] = result.registerMap;
             checkElectricalChanges(dgKey, result.values, result.registerMap);
             checkStartupAlert(dgKey, result.values);
-        });
-
+        }
+        
         systemData.lastUpdate = new Date().toISOString();
         checkDieselLevels(systemData);
         await saveToDatabase(systemData);
@@ -575,6 +579,7 @@ async function saveToDatabase(data) {
         });
         
         await reading.save();
+        console.log(`✓ Saved reading for ${dateString} ${currentHour}:00`);
         lastSavedHour = currentHour;
         previousReading = { dg1: data.dg1, dg2: data.dg2, dg3: data.dg3 };
     } catch (err) {
@@ -584,15 +589,18 @@ async function saveToDatabase(data) {
 
 // --- PLC Connection and Server Start ---
 function connectToPLC() {
+    console.log(`Attempting to connect to PLC on ${port}...`);
     client.connectRTU(port, plcSettings)
         .then(() => {
             client.setID(plcSlaveID);
             client.setTimeout(5000);
             isPlcConnected = true;
             errorCount = 0;
+            console.log('✓ PLC connected successfully');
             setTimeout(() => { readAllSystemData(); setInterval(readAllSystemData, 5000); }, 2000);
         })
         .catch((err) => {
+            console.error('PLC connection error:', err.message);
             isPlcConnected = false;
             client.close();
             setTimeout(connectToPLC, 10000);
@@ -604,11 +612,48 @@ const webServerPort = parseInt(process.env.PORT) || 3000;
 app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+app.use(express.static(__dirname, { maxAge: '1d', etag: true, lastModified: true }));
 app.use((req, res, next) => { if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/)) { res.setHeader('Cache-Control', 'public, max-age=86400'); } next(); });
+
+// API Endpoints
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/api/data', (req, res) => { res.json({ ...systemData }); });
+
+// Graceful Shutdown
+process.on('SIGINT', async () => {
+    console.log('\nShutting down gracefully...');
+    try {
+        client.close();
+        await mongoose.connection.close();
+        console.log('Connections closed');
+        process.exit(0);
+    } catch (err) {
+        console.error('Error during shutdown:', err);
+        process.exit(1);
+    }
+});
+
+process.on('SIGTERM', async () => {
+    console.log('\nReceived SIGTERM, shutting down...');
+    try {
+        client.close();
+        await mongoose.connection.close();
+        console.log('Connections closed');
+        process.exit(0);
+    } catch (err) {
+        console.error('Error during shutdown:', err);
+        process.exit(1);
+    }
+});
+
+// Start Server
 app.listen(webServerPort, () => {
-    console.log(`DG Monitoring System Server Started: http://localhost:${webServerPort}`);
+    console.log(`\n===========================================`);
+    console.log(`DG Monitoring System Server Started`);
+    console.log(`Web Server: http://localhost:${webServerPort}`);
+    console.log(`PLC Port: ${port}`);
+    console.log(`Email Alerts: ${emailEnabled ? 'Enabled' : 'Disabled'}`);
+    console.log(`DG Startup Alert: Enabled (Cooldown: ${STARTUP_ALERT_COOLDOWN / 60000} minutes)`);
+    console.log(`===========================================`);
     connectToPLC();
 });
-// (Graceful Shutdown Logic is omitted here but should be in your file)
