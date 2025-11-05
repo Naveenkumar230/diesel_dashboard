@@ -85,7 +85,7 @@ const electricalRegisters = {
         runningHours: { primary: 4218, fallback: [4219, 4220], scaling: 1, name: "DG1 Running Hours", unit: "hrs" },
         windingTemp: { primary: 4232, fallback: [4233, 4234], scaling: 1, name: "DG1 Winding Temperature", unit: "°C" }
     },
-    
+
     // NEW DG2 Electrical Registers (with extended fallbacks)
     dg2: {
         voltageR: { primary: 4236, fallback: [4237, 4240], scaling: 0.1, name: "DG2 Voltage R", unit: "V" },
@@ -120,7 +120,7 @@ const electricalRegisters = {
         runningHours: { primary: 4298, fallback: [4299, 4300], scaling: 1, name: "DG3 Running Hours", unit: "hrs" },
         windingTemp: { primary: 4312, fallback: [4313, 4314], scaling: 1, name: "DG3 Winding Temperature", unit: "°C" }
     },
-    
+
     // DG4 Electrical Parameters (KEEP AS IS - WORKING)
     dg4: {
         voltageR: { primary: 4316, fallback: [4317, 4318], scaling: 0.1, name: "DG4 Voltage R", unit: "V" },
@@ -224,7 +224,7 @@ function calculateChange(current, previous) { return (previous) ? current - prev
 
 async function readWithRetry(readFunc, retries = RETRY_ATTEMPTS) {
     for (let attempt = 0; attempt < retries; attempt++) {
-        try { return await readFunc(); } 
+        try { return await readFunc(); }
         catch (err) {
             if (attempt === retries - 1) throw err;
             await new Promise(resolve => setTimeout(resolve, READ_DELAY));
@@ -240,18 +240,18 @@ async function readSingleRegister(registerConfig, dataKey) {
             const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
             const rawValue = data?.data?.[0];
             if (rawValue === undefined || !isValidReading(rawValue)) continue;
-            
+
             const signedValue = toSignedInt16(rawValue);
             let value = Math.max(0, signedValue);
-            
+
             const previousValue = previousDieselData[dataKey] || 0;
             const maxChangePercent = 30;
             const changePercent = Math.abs((value - previousValue) / (previousValue || 1) * 100);
-            
+
             if (changePercent > maxChangePercent && value < previousValue) {
                 value = previousValue; // Apply smoothing for sudden drops
-            } 
-            
+            }
+
             previousDieselData[dataKey] = value;
             systemData[dataKey] = value;
             return value;
@@ -270,15 +270,15 @@ async function readElectricalRegister(regConfig, defaultValue = 0) {
             const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
             const raw = data?.data?.[0];
             if (raw === undefined || !isValidElectricalReading(raw)) continue;
-            
+
             const value = Math.round(raw * regConfig.scaling * 100) / 100;
-            
+
             // Skip NaN or zero values for Active Power and try next fallback
             if (regConfig.name.includes("Active Power") && (isNaN(value) || value === 0)) {
                 console.log(`[INFO] ${regConfig.name} returned ${value} at address ${address}, trying fallback...`);
                 continue;
             }
-            
+
             const registerInfo = {
                 address,
                 type: i === 0 ? 'PRIMARY' : `FALLBACK-${i}`,
@@ -299,7 +299,7 @@ async function readAllElectrical(dgKey) {
     const result = {};
     const registerMap = {};
     const regs = electricalRegisters[dgKey];
-    
+
     for (const key in regs) {
         const { value, registerInfo } = await readElectricalRegister(regs[key]);
         result[key] = value;
@@ -314,7 +314,7 @@ async function readAllElectrical(dgKey) {
 function getEmailTemplate(alertType, data, criticalDGs) {
     const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'full', timeStyle: 'long' });
     const dashboardUrl = `http://${process.env.PI_IP_ADDRESS || 'localhost'}:${webServerPort}`;
-    
+
     return {
         subject: `⚠️ CRITICAL ALERT: Low Diesel Levels Detected`,
         html: `
@@ -359,7 +359,7 @@ function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, regi
             `).join('')}
         </table>
     ` : '';
-    
+
     return {
         subject: `⚡ ${dgName} Electrical Parameters Alert`,
         html: `
@@ -423,7 +423,7 @@ function checkDieselLevels(data) {
     if (data.dg1 <= CRITICAL_LEVEL) criticalDGs.push('DG-1');
     if (data.dg2 <= CRITICAL_LEVEL) criticalDGs.push('DG-2');
     if (data.dg3 <= CRITICAL_LEVEL) criticalDGs.push('DG-3');
-    
+
     if (criticalDGs.length > 0) sendEmailAlert('critical', data, criticalDGs);
 }
 
@@ -432,19 +432,19 @@ function checkElectricalChanges(dgKey, newValues, registerMap) {
     const previousValues = alertState.lastElectricalValues[lastKey] || {};
     const changes = [];
     const alerts = [];
-    const IS_DG_RUNNING = newValues.activePower > DG_RUNNING_THRESHOLD; 
-    
+    const IS_DG_RUNNING = newValues.activePower > DG_RUNNING_THRESHOLD;
+
     for (const param in newValues) {
         const newVal = newValues[param];
         const oldVal = previousValues[param];
-        
+
         const regConfig = electricalRegisters[dgKey][param];
         const unit = regConfig ? regConfig.unit : '';
         const thresholds = ELECTRICAL_THRESHOLDS;
 
         // Check for threshold violations (Critical Alerts)
         if (!IS_DG_RUNNING && (param.includes('voltage') || param === 'frequency' || param === 'powerFactor')) {
-             if (newVal < 1) continue; 
+             if (newVal < 1) continue;
         }
 
         if (param.includes('voltage') && (newVal < thresholds.voltageMin || newVal > thresholds.voltageMax)) {
@@ -470,7 +470,7 @@ function checkStartupAlert(dgKey, newValues) {
     const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
     const now = Date.now();
     const IS_DG_RUNNING = newValues.activePower > DG_RUNNING_THRESHOLD;
-    
+
     if (IS_DG_RUNNING && (now - lastAlertTime) > STARTUP_ALERT_COOLDOWN) {
         const previousValues = alertState.lastElectricalValues[`electrical_${dgKey}`] || {};
         const WAS_DG_RUNNING = previousValues.activePower > DG_RUNNING_THRESHOLD;
@@ -546,20 +546,23 @@ async function readAllSystemData() {
             const result = await readAllElectrical(dgKey);
             systemData.electrical[dgKey] = result.values;
             workingRegisters[dgKey] = result.registerMap;
-            
+
             // Log Active Power readings for DG1 and DG2 for debugging
             if (dgKey === 'dg1' || dgKey === 'dg2') {
                 console.log(`[${dgKey.toUpperCase()}] Active Power: ${result.values.activePower} kW (${result.registerMap.activePower?.type || 'N/A'})`);
             }
             
-            checkElectricalChanges(dgKey, result.values, result.registerMap);
-            checkStartupAlert(dgKey, result.values);
+            // 🚨 MODIFICATION: Only run alert checks for DG1 and DG2
+            if (dgKey === 'dg1' || dgKey === 'dg2') {
+                checkElectricalChanges(dgKey, result.values, result.registerMap);
+                checkStartupAlert(dgKey, result.values);
+            }
         }
-        
+
         systemData.lastUpdate = new Date().toISOString();
-        checkDieselLevels(systemData);
+        checkDieselLevels(systemData); // Diesel alerts still run for DG1, DG2, DG3
         await saveToDatabase(systemData);
-        
+
         errorCount = 0;
     } catch (err) {
         errorCount++;
@@ -581,7 +584,7 @@ async function saveToDatabase(data) {
         const currentHour = now.getHours();
         if (currentHour === lastSavedHour) return;
         const dateString = now.toISOString().split('T')[0];
-        
+
         const reading = new DieselReading({
             timestamp: now,
             dg1: data.dg1, dg2: data.dg2, dg3: data.dg3,
@@ -591,7 +594,7 @@ async function saveToDatabase(data) {
             dg2_change: calculateChange(data.dg2, previousReading?.dg2),
             dg3_change: calculateChange(data.dg3, previousReading?.dg3)
         });
-        
+
         await reading.save();
         console.log(`✓ Saved reading for ${dateString} ${currentHour}:00`);
         lastSavedHour = currentHour;
@@ -632,11 +635,11 @@ app.use((req, res, next) => { if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|ico|
 // API Endpoints
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/api/data', (req, res) => { res.json({ ...systemData }); });
-app.get('/api/registers', (req, res) => { 
-    res.json({ 
+app.get('/api/registers', (req, res) => {
+    res.json({
         workingRegisters,
         message: 'Current working register mappings for all DGs'
-    }); 
+    });
 });
 
 // Graceful Shutdown
@@ -675,11 +678,12 @@ app.listen(webServerPort, () => {
     console.log(`Email Alerts: ${emailEnabled ? 'Enabled' : 'Disabled'}`);
     console.log(`DG Startup Alert: Enabled (Cooldown: ${STARTUP_ALERT_COOLDOWN / 60000} minutes)`);
     console.log(`\n📍 Register Mappings:`);
-    console.log(`  DG-1: NEW mapping with Active Power fallback to 5625 (D1529)`);
-    console.log(`  DG-2: NEW mapping with Active Power fallback to 5665 (D1569)`);
-    console.log(`  DG-3: ORIGINAL mapping (unchanged)`);
-    console.log(`  DG-4: ORIGINAL mapping (unchanged)`);
-    console.log(`  Diesel: ORIGINAL working addresses (unchanged)`);
+    console.log(`  DG-1: NEW mapping with Active Power fallback to 5625 (D1529)`);
+    console.log(`  DG-2: NEW mapping with Active Power fallback to 5665 (D1569)`);
+    console.log(`  DG-3: ORIGINAL mapping (unchanged)`);
+    console.log(`  DG-4: ORIGINAL mapping (unchanged)`);
+    console.log(`  Diesel: ORIGINAL working addresses (unchanged)`);
+    console.log(`\n🚨 Alert Restriction: Electrical/Startup alerts limited to DG1 and DG2.`);
     console.log(`===========================================`);
     connectToPLC();
 });
