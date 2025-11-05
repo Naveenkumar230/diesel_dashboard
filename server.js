@@ -58,67 +58,84 @@ const alertState = {
 };
 let workingRegisters = {}; // Track which registers are working
 
-// --- CONFIRMED WORKING REGISTER MAPPINGS (DG4 Electrical Added) ---
+// --- REGISTER MAPPINGS ---
 
-// Diesel Registers (User confirmed these addresses work)
+// Diesel Registers (User confirmed these addresses work - KEEP AS IS)
 const dgRegisters = {
     dg1: { primary: 4104, fallback: [4105, 4106], name: "DG-1 Diesel (D108)" },
     dg2: { primary: 4100, fallback: [4101, 4102], name: "DG-2 Diesel (D104)" },
     dg3: { primary: 4102, fallback: [4103, 4107], name: "DG-3 Diesel (D106)" },
 };
 
-// Electrical Registers (Offset logic confirmed: 40 registers per DG set)
+// NEW DG1 Electrical Registers (with extended fallbacks)
 const electricalRegisters = {
-    dg1: {
-        voltageR: { primary: 4196, scaling: 0.1, name: "DG1 Voltage R", unit: "V" }, // D100
-        currentR: { primary: 4200, scaling: 0.1, name: "DG1 Current R", unit: "A" }, // D104
-        frequency: { primary: 4204, scaling: 0.01, name: "DG1 Frequency", unit: "Hz" }, // D108
-        powerFactor: { primary: 4208, scaling: 0.01, name: "DG1 Power Factor", unit: "" }, // D112
-        activePower: { primary: 4212, scaling: 0.1, name: "DG1 Active Power", unit: "kW" }, // D116
-        windingTemp: { primary: 4232, scaling: 1, name: "DG1 Winding Temp", unit: "°C" } // D132
-    },
-    dg2: {
-        voltageR: { primary: 4296, scaling: 0.1, name: "DG2 Voltage R", unit: "V" }, // D200 (check Excel)
-        currentR: { primary: 4300, scaling: 0.1, name: "DG2 Current R", unit: "A" }, // D204
-        frequency: { primary: 4304, scaling: 0.01, name: "DG2 Frequency", unit: "Hz" }, // D208
-        powerFactor: { primary: 4308, scaling: 0.01, name: "DG2 Power Factor", unit: "" }, // D212
-        activePower: { primary: 4312, scaling: 0.1, name: "DG2 Active Power", unit: "kW" }, // D216
-        windingTemp: { primary: 4332, scaling: 1, name: "DG2 Winding Temp", unit: "°C" } // D232
-    },
-
-    // DG3 Electrical Parameters (+40 Register Offset from DG2 base)
-    dg3: {
-        voltageR: { primary: 4276, fallback: [4277, 4278], scaling: 0.1, name: "DG3 Voltage R", unit: "V" }, // D180
-        voltageY: { primary: 4278, fallback: [4279, 4280], scaling: 0.1, name: "DG3 Voltage Y", unit: "V" }, // D182
-        voltageB: { primary: 4280, fallback: [4281, 4282], scaling: 0.1, name: "DG3 Voltage B", unit: "V" }, // D184
-        currentR: { primary: 4282, fallback: [4283, 4284], scaling: 0.1, name: "DG3 Current R", unit: "A" }, // D186
-        currentY: { primary: 4284, fallback: [4285, 4286], scaling: 0.1, name: "DG3 Current Y", unit: "A" }, // D188
-        currentB: { primary: 4286, fallback: [4287, 4288], scaling: 0.1, name: "DG3 Current B", unit: "A" }, // D190
-        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
-        frequency: { primary: 4288, fallback: [4289, 4290], scaling: 0.01, name: "DG3 Frequency", unit: "Hz" }, // D192
-        powerFactor: { primary: 4290, fallback: [4291, 4292], scaling: 0.01, name: "DG3 Power Factor", unit: "" }, // D194
-        activePower: { primary: 4292, fallback: [4293, 4294], scaling: 0.1, name: "DG3 Active Power", unit: "kW" }, // D196
-        reactivePower: { primary: 4294, fallback: [4295, 4296], scaling: 0.1, name: "DG3 Reactive Power", unit: "kVAR" }, // D198
-        energyMeter: { primary: 4296, fallback: [4297, 4298], scaling: 1, name: "DG3 Energy Meter", unit: "kWh" }, // D200
-        runningHours: { primary: 4298, fallback: [4299, 4300], scaling: 1, name: "DG3 Running Hours", unit: "hrs" }, // D202
-        windingTemp: { primary: 4312, fallback: [4313, 4314], scaling: 1, name: "DG3 Winding Temperature", unit: "°C" } // D216
+    dg1: {
+        voltageR: { primary: 4196, fallback: [4197, 4200], scaling: 0.1, name: "DG1 Voltage R", unit: "V" },
+        voltageY: { primary: 4198, fallback: [4201, 4202], scaling: 0.1, name: "DG1 Voltage Y", unit: "V" },
+        voltageB: { primary: 4200, fallback: [4203, 4204], scaling: 0.1, name: "DG1 Voltage B", unit: "V" },
+        currentR: { primary: 4202, fallback: [4205, 4206], scaling: 0.1, name: "DG1 Current R", unit: "A" },
+        currentY: { primary: 4204, fallback: [4207, 4208], scaling: 0.1, name: "DG1 Current Y", unit: "A" },
+        currentB: { primary: 4206, fallback: [4209, 4210], scaling: 0.1, name: "DG1 Current B", unit: "A" },
+        frequency: { primary: 4208, fallback: [4211, 4212], scaling: 0.01, name: "DG1 Frequency", unit: "Hz" },
+        powerFactor: { primary: 4210, fallback: [4213, 4214], scaling: 0.01, name: "DG1 Power Factor", unit: "" },
+        // PRIORITY: Try special fallback 5625 FIRST, then try primary addresses
+        activePower: { primary: 5625, fallback: [4212, 4214], scaling: 0.1, name: "DG1 Active Power", unit: "kW" },
+        reactivePower: { primary: 4214, fallback: [4215, 4216], scaling: 0.1, name: "DG1 Reactive Power", unit: "kVAR" },
+        energyMeter: { primary: 4216, fallback: [4217, 4218], scaling: 1, name: "DG1 Energy Meter", unit: "kWh" },
+        runningHours: { primary: 4218, fallback: [4219, 4220], scaling: 1, name: "DG1 Running Hours", unit: "hrs" },
+        windingTemp: { primary: 4232, fallback: [4233, 4234], scaling: 1, name: "DG1 Winding Temperature", unit: "°C" }
     },
-    // DG4 Electrical Parameters (+40 Register Offset from DG3 base)
+    
+    // NEW DG2 Electrical Registers (with extended fallbacks)
+    dg2: {
+        voltageR: { primary: 4236, fallback: [4237, 4240], scaling: 0.1, name: "DG2 Voltage R", unit: "V" },
+        voltageY: { primary: 4238, fallback: [4241, 4242], scaling: 0.1, name: "DG2 Voltage Y", unit: "V" },
+        voltageB: { primary: 4240, fallback: [4243, 4244], scaling: 0.1, name: "DG2 Voltage B", unit: "V" },
+        currentR: { primary: 4242, fallback: [4245, 4246], scaling: 0.1, name: "DG2 Current R", unit: "A" },
+        currentY: { primary: 4244, fallback: [4247, 4248], scaling: 0.1, name: "DG2 Current Y", unit: "A" },
+        currentB: { primary: 4246, fallback: [4249, 4250], scaling: 0.1, name: "DG2 Current B", unit: "A" },
+        frequency: { primary: 4248, fallback: [4251, 4252], scaling: 0.01, name: "DG2 Frequency", unit: "Hz" },
+        powerFactor: { primary: 4250, fallback: [4253, 4254], scaling: 0.01, name: "DG2 Power Factor", unit: "" },
+        // PRIORITY: Try special fallback 5665 FIRST, then try primary and other fallbacks
+        activePower: { primary: 5665, fallback: [4248, 4250], scaling: 0.1, name: "DG2 Active Power", unit: "kW" },
+        reactivePower: { primary: 4254, fallback: [4255, 4256], scaling: 0.1, name: "DG2 Reactive Power", unit: "kVAR" },
+        energyMeter: { primary: 4256, fallback: [4257, 4258], scaling: 1, name: "DG2 Energy Meter", unit: "kWh" },
+        runningHours: { primary: 4258, fallback: [4259, 4260], scaling: 1, name: "DG2 Running Hours", unit: "hrs" },
+        windingTemp: { primary: 4272, fallback: [4273, 4274], scaling: 1, name: "DG2 Winding Temperature", unit: "°C" }
+    },
+
+    // DG3 Electrical Parameters (KEEP AS IS - WORKING)
+    dg3: {
+        voltageR: { primary: 4276, fallback: [4277, 4278], scaling: 0.1, name: "DG3 Voltage R", unit: "V" },
+        voltageY: { primary: 4278, fallback: [4279, 4280], scaling: 0.1, name: "DG3 Voltage Y", unit: "V" },
+        voltageB: { primary: 4280, fallback: [4281, 4282], scaling: 0.1, name: "DG3 Voltage B", unit: "V" },
+        currentR: { primary: 4282, fallback: [4283, 4284], scaling: 0.1, name: "DG3 Current R", unit: "A" },
+        currentY: { primary: 4284, fallback: [4285, 4286], scaling: 0.1, name: "DG3 Current Y", unit: "A" },
+        currentB: { primary: 4286, fallback: [4287, 4288], scaling: 0.1, name: "DG3 Current B", unit: "A" },
+        frequency: { primary: 4288, fallback: [4289, 4290], scaling: 0.01, name: "DG3 Frequency", unit: "Hz" },
+        powerFactor: { primary: 4290, fallback: [4291, 4292], scaling: 0.01, name: "DG3 Power Factor", unit: "" },
+        activePower: { primary: 4292, fallback: [4293, 4294], scaling: 0.1, name: "DG3 Active Power", unit: "kW" },
+        reactivePower: { primary: 4294, fallback: [4295, 4296], scaling: 0.1, name: "DG3 Reactive Power", unit: "kVAR" },
+        energyMeter: { primary: 4296, fallback: [4297, 4298], scaling: 1, name: "DG3 Energy Meter", unit: "kWh" },
+        runningHours: { primary: 4298, fallback: [4299, 4300], scaling: 1, name: "DG3 Running Hours", unit: "hrs" },
+        windingTemp: { primary: 4312, fallback: [4313, 4314], scaling: 1, name: "DG3 Winding Temperature", unit: "°C" }
+    },
+    
+    // DG4 Electrical Parameters (KEEP AS IS - WORKING)
     dg4: {
-        voltageR: { primary: 4316, fallback: [4317, 4318], scaling: 0.1, name: "DG4 Voltage R", unit: "V" }, // D220
-        voltageY: { primary: 4318, fallback: [4319, 4320], scaling: 0.1, name: "DG4 Voltage Y", unit: "V" }, // D222
-        voltageB: { primary: 4320, fallback: [4321, 4322], scaling: 0.1, name: "DG4 Voltage B", unit: "V" }, // D224
-        currentR: { primary: 4322, fallback: [4323, 4324], scaling: 0.1, name: "DG4 Current R", unit: "A" }, // D226
-        currentY: { primary: 4324, fallback: [4325, 4326], scaling: 0.1, name: "DG4 Current Y", unit: "A" }, // D228
-        currentB: { primary: 4326, fallback: [4327, 4328], scaling: 0.1, name: "DG4 Current B", unit: "A" }, // D230
-        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
-        frequency: { primary: 4328, fallback: [4329, 4330], scaling: 0.01, name: "DG4 Frequency", unit: "Hz" }, // D232
-        powerFactor: { primary: 4330, fallback: [4331, 4332], scaling: 0.01, name: "DG4 Power Factor", unit: "" }, // D234
-        activePower: { primary: 4332, fallback: [4333, 4334], scaling: 0.1, name: "DG4 Active Power", unit: "kW" }, // D236
-        reactivePower: { primary: 4334, fallback: [4335, 4336], scaling: 0.1, name: "DG4 Reactive Power", unit: "kVAR" }, // D238
-        energyMeter: { primary: 4336, fallback: [4337, 4338], scaling: 1, name: "DG4 Energy Meter", unit: "kWh" }, // D240
-        runningHours: { primary: 4338, fallback: [4339, 4340], scaling: 1, name: "DG4 Running Hours", unit: "hrs" }, // D242
-        windingTemp: { primary: 4352, fallback: [4353, 4354], scaling: 1, name: "DG4 Winding Temperature", unit: "°C" } // D256
+        voltageR: { primary: 4316, fallback: [4317, 4318], scaling: 0.1, name: "DG4 Voltage R", unit: "V" },
+        voltageY: { primary: 4318, fallback: [4319, 4320], scaling: 0.1, name: "DG4 Voltage Y", unit: "V" },
+        voltageB: { primary: 4320, fallback: [4321, 4322], scaling: 0.1, name: "DG4 Voltage B", unit: "V" },
+        currentR: { primary: 4322, fallback: [4323, 4324], scaling: 0.1, name: "DG4 Current R", unit: "A" },
+        currentY: { primary: 4324, fallback: [4325, 4326], scaling: 0.1, name: "DG4 Current Y", unit: "A" },
+        currentB: { primary: 4326, fallback: [4327, 4328], scaling: 0.1, name: "DG4 Current B", unit: "A" },
+        frequency: { primary: 4328, fallback: [4329, 4330], scaling: 0.01, name: "DG4 Frequency", unit: "Hz" },
+        powerFactor: { primary: 4330, fallback: [4331, 4332], scaling: 0.01, name: "DG4 Power Factor", unit: "" },
+        activePower: { primary: 4332, fallback: [4333, 4334], scaling: 0.1, name: "DG4 Active Power", unit: "kW" },
+        reactivePower: { primary: 4334, fallback: [4335, 4336], scaling: 0.1, name: "DG4 Reactive Power", unit: "kVAR" },
+        energyMeter: { primary: 4336, fallback: [4337, 4338], scaling: 1, name: "DG4 Energy Meter", unit: "kWh" },
+        runningHours: { primary: 4338, fallback: [4339, 4340], scaling: 1, name: "DG4 Running Hours", unit: "hrs" },
+        windingTemp: { primary: 4352, fallback: [4353, 4354], scaling: 1, name: "DG4 Winding Temperature", unit: "°C" }
     }
 };
 
@@ -214,6 +231,7 @@ async function readWithRetry(readFunc, retries = RETRY_ATTEMPTS) {
         }
     }
 }
+
 async function readSingleRegister(registerConfig, dataKey) {
     const addresses = [registerConfig.primary, ...(registerConfig.fallback || [])];
     for (let i = 0; i < addresses.length; i++) {
@@ -254,6 +272,13 @@ async function readElectricalRegister(regConfig, defaultValue = 0) {
             if (raw === undefined || !isValidElectricalReading(raw)) continue;
             
             const value = Math.round(raw * regConfig.scaling * 100) / 100;
+            
+            // Skip NaN or zero values for Active Power and try next fallback
+            if (regConfig.name.includes("Active Power") && (isNaN(value) || value === 0)) {
+                console.log(`[INFO] ${regConfig.name} returned ${value} at address ${address}, trying fallback...`);
+                continue;
+            }
+            
             const registerInfo = {
                 address,
                 type: i === 0 ? 'PRIMARY' : `FALLBACK-${i}`,
@@ -283,7 +308,6 @@ async function readAllElectrical(dgKey) {
     }
     return { values: result, registerMap };
 }
-
 
 // --- Email Alert Templates ---
 
@@ -393,7 +417,6 @@ function getStartupEmailTemplate(dgName, values) {
     };
 }
 
-
 // --- Alert Logic Functions ---
 function checkDieselLevels(data) {
     const criticalDGs = [];
@@ -482,6 +505,7 @@ async function sendElectricalAlert(dgKey, changes, alerts, currentValues, regist
         await emailTransporter.sendMail({ from: `"DG Monitoring System" <${process.env.EMAIL_USER}>`, to: ALERT_RECIPIENTS, subject: template.subject, html: template.html });
         alertState.currentAlerts.add(alertKey);
         setTimeout(() => alertState.currentAlerts.delete(alertKey), ELECTRICAL_ALERT_COOLDOWN);
+        console.log(`⚡ Electrical alert email sent for ${dgName}`);
     } catch (err) {
         console.error('Electrical Email sending error:', err.message);
     }
@@ -497,6 +521,7 @@ async function sendEmailAlert(alertType, data, criticalDGs) {
         await emailTransporter.sendMail({ from: `"DG Monitoring System" <${process.env.EMAIL_USER}>`, to: ALERT_RECIPIENTS, subject: template.subject, html: template.html });
         alertState.currentAlerts.add(alertKey);
         setTimeout(() => alertState.currentAlerts.delete(alertKey), ALERT_COOLDOWN);
+        console.log(`⚠️ Diesel alert email sent for ${criticalDGs.join(', ')}`);
     } catch (err) {
         console.error('Diesel Email sending error:', err.message);
     }
@@ -507,7 +532,7 @@ async function readAllSystemData() {
     if (!isPlcConnected) return;
 
     try {
-        // Read Diesel Levels (DG1-DG3)
+        // Read Diesel Levels (DG1-DG3) - KEEP AS IS (WORKING)
         await readSingleRegister(dgRegisters.dg1, 'dg1');
         await new Promise(resolve => setTimeout(resolve, READ_DELAY));
         await readSingleRegister(dgRegisters.dg2, 'dg2');
@@ -516,11 +541,17 @@ async function readAllSystemData() {
         await new Promise(resolve => setTimeout(resolve, READ_DELAY));
         systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
 
-        // Process DG1-DG4 Electrical
+        // Process DG1-DG4 Electrical (DG1 & DG2 with NEW mappings, DG3 & DG4 unchanged)
         for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
             const result = await readAllElectrical(dgKey);
             systemData.electrical[dgKey] = result.values;
             workingRegisters[dgKey] = result.registerMap;
+            
+            // Log Active Power readings for DG1 and DG2 for debugging
+            if (dgKey === 'dg1' || dgKey === 'dg2') {
+                console.log(`[${dgKey.toUpperCase()}] Active Power: ${result.values.activePower} kW (${result.registerMap.activePower?.type || 'N/A'})`);
+            }
+            
             checkElectricalChanges(dgKey, result.values, result.registerMap);
             checkStartupAlert(dgKey, result.values);
         }
@@ -601,6 +632,12 @@ app.use((req, res, next) => { if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|ico|
 // API Endpoints
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/api/data', (req, res) => { res.json({ ...systemData }); });
+app.get('/api/registers', (req, res) => { 
+    res.json({ 
+        workingRegisters,
+        message: 'Current working register mappings for all DGs'
+    }); 
+});
 
 // Graceful Shutdown
 process.on('SIGINT', async () => {
@@ -637,6 +674,12 @@ app.listen(webServerPort, () => {
     console.log(`PLC Port: ${port}`);
     console.log(`Email Alerts: ${emailEnabled ? 'Enabled' : 'Disabled'}`);
     console.log(`DG Startup Alert: Enabled (Cooldown: ${STARTUP_ALERT_COOLDOWN / 60000} minutes)`);
+    console.log(`\n📍 Register Mappings:`);
+    console.log(`  DG-1: NEW mapping with Active Power fallback to 5625 (D1529)`);
+    console.log(`  DG-2: NEW mapping with Active Power fallback to 5665 (D1569)`);
+    console.log(`  DG-3: ORIGINAL mapping (unchanged)`);
+    console.log(`  DG-4: ORIGINAL mapping (unchanged)`);
+    console.log(`  Diesel: ORIGINAL working addresses (unchanged)`);
     console.log(`===========================================`);
     connectToPLC();
 });
