@@ -69,40 +69,23 @@ const dgRegisters = {
 
 // Electrical Registers (Offset logic confirmed: 40 registers per DG set)
 const electricalRegisters = {
-    // DG1 Electrical Parameters (Base)
-    dg1: {
-        voltageR: { primary: 4196, fallback: [4197, 4198], scaling: 0.1, name: "DG1 Voltage R", unit: "V" },
-        voltageY: { primary: 4198, fallback: [4199, 4200], scaling: 0.1, name: "DG1 Voltage Y", unit: "V" },
-        voltageB: { primary: 4200, fallback: [4201, 4202], scaling: 0.1, name: "DG1 Voltage B", unit: "V" },
-        currentR: { primary: 4202, fallback: [4203, 4204], scaling: 0.1, name: "DG1 Current R", unit: "A" },
-        currentY: { primary: 4204, fallback: [4205, 4206], scaling: 0.1, name: "DG1 Current Y", unit: "A" },
-        currentB: { primary: 4206, fallback: [4207, 4208], scaling: 0.1, name: "DG1 Current B", unit: "A" },
-        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
-        frequency: { primary: 4208, fallback: [4209, 4210], scaling: 0.01, name: "DG1 Frequency", unit: "Hz" },
-        powerFactor: { primary: 4210, fallback: [4211, 4212], scaling: 0.01, name: "DG1 Power Factor", unit: "" },
-        activePower: { primary: 4212, fallback: [4213, 4214], scaling: 0.1, name: "DG1 Active Power", unit: "kW" },
-        reactivePower: { primary: 4214, fallback: [4215, 4216], scaling: 0.1, name: "DG1 Reactive Power", unit: "kVAR" },
-        energyMeter: { primary: 4216, fallback: [4217, 4218], scaling: 1, name: "DG1 Energy Meter", unit: "kWh" },
-        runningHours: { primary: 4218, fallback: [4219, 4220], scaling: 1, name: "DG1 Running Hours", unit: "hrs" },
-        windingTemp: { primary: 4232, fallback: [4233, 4234], scaling: 1, name: "DG1 Winding Temperature", unit: "°C" }
-    },
-    // DG2 Electrical Parameters (+40 Register Offset from DG1 base)
-    dg2: {
-        voltageR: { primary: 4236, fallback: [4237, 4238], scaling: 0.1, name: "DG2 Voltage R", unit: "V" }, // D140
-        voltageY: { primary: 4238, fallback: [4239, 4240], scaling: 0.1, name: "DG2 Voltage Y", unit: "V" }, // D142
-        voltageB: { primary: 4240, fallback: [4241, 4242], scaling: 0.1, name: "DG2 Voltage B", unit: "V" }, // D144
-        currentR: { primary: 4242, fallback: [4243, 4244], scaling: 0.1, name: "DG2 Current R", unit: "A" }, // D146
-        currentY: { primary: 4244, fallback: [4245, 4246], scaling: 0.1, name: "DG2 Current Y", unit: "A" }, // D148
-        currentB: { primary: 4246, fallback: [4247, 4248], scaling: 0.1, name: "DG2 Current B", unit: "A" }, // D150
-        // --- CORRECTED FREQUENCY SCALING: 0.01 based on HMI image ---
-        frequency: { primary: 4248, fallback: [4249, 4250], scaling: 0.01, name: "DG2 Frequency", unit: "Hz" }, // D152
-        powerFactor: { primary: 4250, fallback: [4251, 4252], scaling: 0.01, name: "DG2 Power Factor", unit: "" }, // D154
-        activePower: { primary: 4252, fallback: [4253, 4254], scaling: 0.1, name: "DG2 Active Power", unit: "kW" }, // D156
-        reactivePower: { primary: 4254, fallback: [4255, 4256], scaling: 0.1, name: "DG2 Reactive Power", unit: "kVAR" }, // D158
-        energyMeter: { primary: 4256, fallback: [4257, 4258], scaling: 1, name: "DG2 Energy Meter", unit: "kWh" }, // D160
-        runningHours: { primary: 4258, fallback: [4259, 4260], scaling: 1, name: "DG2 Running Hours", unit: "hrs" }, // D162
-        windingTemp: { primary: 4272, fallback: [4273, 4274], scaling: 1, name: "DG2 Winding Temperature", unit: "°C" } // D176
-    },
+    dg1: {
+        voltageR: { primary: 4196, scaling: 0.1, name: "DG1 Voltage R", unit: "V" }, // D100
+        currentR: { primary: 4200, scaling: 0.1, name: "DG1 Current R", unit: "A" }, // D104
+        frequency: { primary: 4204, scaling: 0.01, name: "DG1 Frequency", unit: "Hz" }, // D108
+        powerFactor: { primary: 4208, scaling: 0.01, name: "DG1 Power Factor", unit: "" }, // D112
+        activePower: { primary: 4212, scaling: 0.1, name: "DG1 Active Power", unit: "kW" }, // D116
+        windingTemp: { primary: 4232, scaling: 1, name: "DG1 Winding Temp", unit: "°C" } // D132
+    },
+    dg2: {
+        voltageR: { primary: 4296, scaling: 0.1, name: "DG2 Voltage R", unit: "V" }, // D200 (check Excel)
+        currentR: { primary: 4300, scaling: 0.1, name: "DG2 Current R", unit: "A" }, // D204
+        frequency: { primary: 4304, scaling: 0.01, name: "DG2 Frequency", unit: "Hz" }, // D208
+        powerFactor: { primary: 4308, scaling: 0.01, name: "DG2 Power Factor", unit: "" }, // D212
+        activePower: { primary: 4312, scaling: 0.1, name: "DG2 Active Power", unit: "kW" }, // D216
+        windingTemp: { primary: 4332, scaling: 1, name: "DG2 Winding Temp", unit: "°C" } // D232
+    },
+
     // DG3 Electrical Parameters (+40 Register Offset from DG2 base)
     dg3: {
         voltageR: { primary: 4276, fallback: [4277, 4278], scaling: 0.1, name: "DG3 Voltage R", unit: "V" }, // D180
