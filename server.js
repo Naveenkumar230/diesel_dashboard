@@ -318,18 +318,51 @@ async function readParam(dgKey, param) {
 }
 
 async function readAllElectrical(dgKey) {
-  const regs = electricalCandidates[dgKey];
-  const values = {};
-  const registerMap = {};
+    const regs = electricalCandidates[dgKey];
+    const prevValues = systemData.electrical[dgKey] || {};
+    const newValues = {};
+    const registerMap = {};
+    
+    // Determine if DG is running from previous cycle value (sticky logic anchor)
+    const wasRunning = prevValues.activePower > DG_RUNNING_THRESHOLD;
 
-  for (const param of Object.keys(regs)) {
-    const { value, registerInfo } = await readParam(dgKey, param);
-    values[param] = value;
-    if (registerInfo) registerMap[param] = registerInfo;
-    await wait(READ_DELAY);
-  }
-  return { values, registerMap };
+    for (const param of Object.keys(regs)) {
+        const { value, registerInfo } = await readParam(dgKey, param);
+
+        // Apply Sticky Freeze Logic ONLY for DG-1 & DG-2
+        if ((dgKey === "dg1" || dgKey === "dg2")) {
+            
+            // If param has no valid value OR is misleading zero → freeze last good value
+            if (!isFinite(value) || value <= 0) {
+                // Keep sticky previous value if exists
+                newValues[param] = prevValues[param] ?? 0;
+            }
+            else {
+                // We have a good and valid update ✅
+                newValues[param] = value;
+            }
+        }
+        else {
+            // DG3 & DG4 unchanged logic
+            newValues[param] = value;
+        }
+
+        if (registerInfo) registerMap[param] = registerInfo;
+        await wait(READ_DELAY);
+    }
+
+    // Detect current running state (after Freeze filtering)
+    const isRunning = newValues.activePower > DG_RUNNING_THRESHOLD;
+
+    // If DG turned OFF → keep ALL last values (full freeze)
+    if ((dgKey === "dg1" || dgKey === "dg2") && !isRunning && wasRunning) {
+        console.log(`⏸️ ${dgKey.toUpperCase()} STOPPED → Freezing last values`);
+        return { values: { ...prevValues }, registerMap };
+    }
+
+    return { values: newValues, registerMap };
 }
+
 
 // -------------------- Alerts (unchanged logic) --------------------
 function getEmailTemplate(alertType, data, criticalDGs) {
