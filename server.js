@@ -1,6 +1,11 @@
 /**
- * DG Monitoring System - Enhanced Server
- * Features: Multi-page dashboard, analytics, Excel exports
+ * DG Monitoring – ultra-robust Modbus reader
+ * Focus: DG1 & DG2 electrical parameters with MANY fallbacks + last-good caching.
+ * Notes:
+ *  - Uses candidate address arrays per parameter
+ *  - Remembers the last good address (per DG, per param) to read fast next time
+ *  - Validates values, smooths obvious glitches, and skips 0/NaN for Active Power
+ *  - Your diesel level registers are left untouched
  */
 
 require('dotenv').config();
@@ -11,7 +16,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const compression = require('compression');
-const ExcelJS = require('exceljs');
 
 // -------------------- Config --------------------
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dieselDB';
@@ -26,7 +30,7 @@ const ELECTRICAL_ALERT_COOLDOWN = parseInt(process.env.ELECTRICAL_ALERT_COOLDOWN
 const STARTUP_ALERT_COOLDOWN = parseInt(process.env.STARTUP_ALERT_COOLDOWN) || 600000;
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || 'your_email@example.com';
-const DG_RUNNING_THRESHOLD = 5;
+const DG_RUNNING_THRESHOLD = 5; // kW
 
 const ELECTRICAL_THRESHOLDS = {
   voltageMin: 200,
@@ -69,21 +73,27 @@ const alertState = {
   lastStartupAlerts: {}
 };
 
+// remembers last good register per param to try first next time
 const lastGoodRegister = {
   dg1: {}, dg2: {}, dg3: {}, dg4: {}
 };
 
+// for /api/registers
 let workingRegisters = {};
 
 // -------------------- REGISTER MAPS --------------------
+// Diesel (confirmed working)
 const dgRegisters = {
   dg1: { primary: 4104, fallback: [4105, 4106], name: 'DG-1 Diesel (D108)' },
   dg2: { primary: 4100, fallback: [4101, 4102], name: 'DG-2 Diesel (D104)' },
   dg3: { primary: 4102, fallback: [4103, 4107], name: 'DG-3 Diesel (D106)' }
 };
 
+// helper to build candidate objects
 const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
+// Based on your working sets + extra breadth.
+// NOTE: Active Power has many candidates including your noted D116/D136/D156/D120 → 4212/4232/4252/4216.
 const electricalCandidates = {
   dg1: {
     voltageR: [C(4196), C(4197), C(4200)],
@@ -94,6 +104,7 @@ const electricalCandidates = {
     currentB: [C(4206), C(4209), C(4210)],
     frequency: [C(4208, 0.01), C(4211, 0.01), C(4212, 0.01)],
     powerFactor: [C(4210, 0.01), C(4213, 0.01), C(4214, 0.01)],
+    // Active Power – primary special (5625 / D1529), plus your notes (4212/4232/4252/4216) and near-by addresses
     activePower: [
       C(5625, 0.1), C(4212, 0.1), C(4232, 0.1), C(4252, 0.1), C(4216, 0.1),
       C(4214, 0.1), C(4213, 0.1)
@@ -112,6 +123,7 @@ const electricalCandidates = {
     currentB: [C(4246), C(4249), C(4250)],
     frequency: [C(4248, 0.01), C(4251, 0.01), C(4252, 0.01)],
     powerFactor: [C(4250, 0.01), C(4253, 0.01), C(4254, 0.01)],
+    // Active Power – primary special (5665 / D1569), plus mirrors of DG1 fallbacks (4252/4232/4212/4216) and nearby
     activePower: [
       C(5665, 0.1), C(4252, 0.1), C(4232, 0.1), C(4212, 0.1), C(4216, 0.1),
       C(4250, 0.1), C(4248, 0.1)
@@ -121,6 +133,7 @@ const electricalCandidates = {
     runningHours: [C(4258, 1), C(4259, 1), C(4260, 1)],
     windingTemp: [C(4272, 1), C(4273, 1), C(4274, 1)]
   },
+  // DG3 & DG4 kept same (already working)
   dg3: {
     voltageR: [C(4276)], voltageY: [C(4278)], voltageB: [C(4280)],
     currentR: [C(4282)], currentY: [C(4284)], currentB: [C(4286)],
@@ -161,16 +174,16 @@ async function connectMongoDB() {
   } catch (err) {
     console.error('MongoDB Connection Error:', err.message);
     if (connectionAttempts < MAX_RETRY_ATTEMPTS) setTimeout(connectMongoDB, 5000);
-    else console.log('MongoDB unavailable. Running without persistence.');
+    else console.log('MongoDB unavailable after multiple attempts. Running without persistence.');
     isMongoConnected = false;
   }
 }
-
-mongoose.connection.on('connected', () => { isMongoConnected = true; console.log('MongoDB established'); });
-mongoose.connection.on('disconnected', () => { isMongoConnected = false; console.log('MongoDB disconnected'); setTimeout(connectMongoDB, 5000); });
+mongoose.connection.on('connected', () => { isMongoConnected = true; console.log('MongoDB connection established'); });
+mongoose.connection.on('disconnected', () => { isMongoConnected = false; console.log('MongoDB disconnected, attempting reconnection...'); setTimeout(connectMongoDB, 5000); });
 mongoose.connection.on('error', (err) => { isMongoConnected = false; console.error('MongoDB error:', err); });
+connectMongoDB();
 
-// Schemas
+// Schema
 const DieselReadingSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now, index: true },
   dg1: { type: Number, required: true },
@@ -183,30 +196,7 @@ const DieselReadingSchema = new mongoose.Schema({
   hour: { type: Number, index: true },
   date: { type: String, index: true }
 });
-
-const ElectricalLogSchema = new mongoose.Schema({
-  timestamp: { type: Date, default: Date.now, index: true },
-  dg: { type: String, required: true, index: true },
-  voltageR: Number,
-  voltageY: Number,
-  voltageB: Number,
-  currentR: Number,
-  currentY: Number,
-  currentB: Number,
-  frequency: Number,
-  powerFactor: Number,
-  activePower: Number,
-  reactivePower: Number,
-  energyMeter: Number,
-  runningHours: Number,
-  windingTemp: Number,
-  isRunning: Boolean
-});
-
 const DieselReading = mongoose.model('DieselReading', DieselReadingSchema);
-const ElectricalLog = mongoose.model('ElectricalLog', ElectricalLogSchema);
-
-connectMongoDB();
 
 // -------------------- Email --------------------
 let emailTransporter = null;
@@ -219,6 +209,8 @@ try {
     });
     emailEnabled = true;
     console.log('Email alerts enabled');
+  } else {
+    console.log('Email configuration missing - alerts disabled');
   }
 } catch (err) {
   console.error('Email setup error:', err);
@@ -246,7 +238,7 @@ async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
   }
 }
 
-// -------------------- Diesel Readers --------------------
+// -------------------- Diesel Readers (unchanged) --------------------
 async function readSingleRegister(registerConfig, dataKey) {
   const addresses = [registerConfig.primary, ...(registerConfig.fallback || [])];
   for (let i = 0; i < addresses.length; i++) {
@@ -274,11 +266,18 @@ async function readSingleRegister(registerConfig, dataKey) {
   return systemData[dataKey] || 0;
 }
 
-// -------------------- Electrical Readers --------------------
+// -------------------- Electrical Readers (NEW robust logic) --------------------
+/**
+ * Reads a parameter using:
+ * 1) last good register (if any)
+ * 2) full candidate list
+ * Caches the first success and returns { value, registerInfo }
+ */
 async function readParam(dgKey, param) {
   const candidates = electricalCandidates[dgKey][param];
   if (!candidates || candidates.length === 0) return { value: 0, registerInfo: null };
 
+  // Build try-order: last good first, then the rest (unique)
   const tried = new Set();
   const order = [];
   const last = lastGoodRegister[dgKey][param];
@@ -294,8 +293,13 @@ async function readParam(dgKey, param) {
 
       const scaled = Math.round(raw * (scaling ?? 0.1) * 100) / 100;
 
-      if (param === 'activePower' && (!isFinite(scaled) || scaled === 0)) continue;
+      // For Active Power, skip NaN or zero/near-zero, try other candidates
+      if (param === 'activePower' && (!isFinite(scaled) || scaled === 0)) {
+        // console.log(`[INFO] ${dgKey}.${param} ${addr} returned ${scaled}, trying next...`);
+        continue;
+      }
 
+      // success → cache last good
       lastGoodRegister[dgKey][param] = { addr, scaling };
       const info = {
         address: addr,
@@ -306,47 +310,152 @@ async function readParam(dgKey, param) {
         hexAddress: `0x${addr.toString(16).toUpperCase()}`
       };
       return { value: scaled, registerInfo: info };
-    } catch (_) {}
+    } catch (_) {
+      // try next
+    }
   }
   return { value: 0, registerInfo: null };
 }
 
 async function readAllElectrical(dgKey) {
-  const regs = electricalCandidates[dgKey];
-  const prevValues = systemData.electrical[dgKey] || {};
-  const newValues = {};
-  const registerMap = {};
-  
-  const wasRunning = prevValues.activePower > DG_RUNNING_THRESHOLD;
+    const regs = electricalCandidates[dgKey];
+    const prevValues = systemData.electrical[dgKey] || {};
+    const newValues = {};
+    const registerMap = {};
+    
+    // Determine if DG is running from previous cycle value (sticky logic anchor)
+    const wasRunning = prevValues.activePower > DG_RUNNING_THRESHOLD;
 
-  for (const param of Object.keys(regs)) {
-    const { value, registerInfo } = await readParam(dgKey, param);
+    for (const param of Object.keys(regs)) {
+        const { value, registerInfo } = await readParam(dgKey, param);
 
-    if ((dgKey === "dg1" || dgKey === "dg2")) {
-      if (!isFinite(value) || value <= 0) {
-        newValues[param] = prevValues[param] ?? 0;
-      } else {
-        newValues[param] = value;
-      }
-    } else {
-      newValues[param] = value;
+        // Apply Sticky Freeze Logic ONLY for DG-1 & DG-2
+        if ((dgKey === "dg1" || dgKey === "dg2")) {
+            
+            // If param has no valid value OR is misleading zero → freeze last good value
+            if (!isFinite(value) || value <= 0) {
+                // Keep sticky previous value if exists
+                newValues[param] = prevValues[param] ?? 0;
+            }
+            else {
+                // We have a good and valid update ✅
+                newValues[param] = value;
+            }
+        }
+        else {
+            // DG3 & DG4 unchanged logic
+            newValues[param] = value;
+        }
+
+        if (registerInfo) registerMap[param] = registerInfo;
+        await wait(READ_DELAY);
     }
 
-    if (registerInfo) registerMap[param] = registerInfo;
-    await wait(READ_DELAY);
-  }
+    // Detect current running state (after Freeze filtering)
+    const isRunning = newValues.activePower > DG_RUNNING_THRESHOLD;
 
-  const isRunning = newValues.activePower > DG_RUNNING_THRESHOLD;
+    // If DG turned OFF → keep ALL last values (full freeze)
+    if ((dgKey === "dg1" || dgKey === "dg2") && !isRunning && wasRunning) {
+        console.log(`⏸️ ${dgKey.toUpperCase()} STOPPED → Freezing last values`);
+        return { values: { ...prevValues }, registerMap };
+    }
 
-  if ((dgKey === "dg1" || dgKey === "dg2") && !isRunning && wasRunning) {
-    console.log(`⏸️ ${dgKey.toUpperCase()} STOPPED → Freezing last values`);
-    return { values: { ...prevValues }, registerMap };
-  }
-
-  return { values: newValues, registerMap };
+    return { values: newValues, registerMap };
 }
 
-// -------------------- Alerts --------------------
+
+// -------------------- Alerts (unchanged logic) --------------------
+function getEmailTemplate(alertType, data, criticalDGs) {
+  const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'full', timeStyle: 'long' });
+  const dashboardUrl = `http://${process.env.PI_IP_ADDRESS || 'localhost'}:${webServerPort}`;
+  return {
+    subject: `⚠️ CRITICAL ALERT: Low Diesel Levels Detected`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
+        <div style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;padding:20px;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;">⚠️ CRITICAL DIESEL ALERT</h1>
+        </div>
+        <div style="padding:20px;background:#f9fafb;color:#333;">
+          <p style="font-weight:bold;color:#ef4444;">URGENT: Low diesel levels detected in ${criticalDGs.join(', ')}</p>
+          <ul style="list-style:none;padding:0;">
+            <li style="padding:8px;border-bottom:1px solid #eee;">DG-1: <b style="color:${data.dg1 <= CRITICAL_LEVEL ? '#ef4444' : '#10b981'}">${data.dg1} L</b></li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">DG-2: <b style="color:${data.dg2 <= CRITICAL_LEVEL ? '#ef4444' : '#10b981'}">${data.dg2} L</b></li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">DG-3: <b style="color:${data.dg3 <= CRITICAL_LEVEL ? '#ef4444' : '#10b981'}">${data.dg3} L</b></li>
+          </ul>
+          <p style="font-size:14px;margin-top:20px;">Alert Time: ${timestamp}</p>
+          <a href="${dashboardUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">View Dashboard</a>
+        </div>
+      </div>`
+  };
+}
+
+function getElectricalAlertTemplate(dgName, changes, alerts, currentValues, registerMap) {
+  const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'full', timeStyle: 'long' });
+  const dashboardUrl = `http://${process.env.PI_IP_ADDRESS || 'localhost'}:${webServerPort}`;
+  return {
+    subject: `⚡ ${dgName} Electrical Parameters Alert`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
+        <div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:20px;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;">⚡ Electrical Parameters Alert - ${dgName}</h1>
+        </div>
+        <div style="padding:20px;background:#f9fafb;color:#333;">
+          ${alerts.length ? `
+          <h3>🚨 THRESHOLD VIOLATIONS</h3>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:15px;">
+            <tr style="background:#fee2e2;"><th>Parameter</th><th>Current Value</th><th>Threshold</th><th>Severity</th></tr>
+            ${alerts.map(a => `
+              <tr>
+                <td style="border:1px solid #fecaca;padding:8px;">${a.parameter}</td>
+                <td style="border:1px solid #fecaca;padding:8px;font-weight:bold;color:#dc2626;">${a.value}</td>
+                <td style="border:1px solid #fecaca;padding:8px;">${a.threshold}</td>
+                <td style="border:1px solid #fecaca;padding:8px;">
+                  <span style="background:${a.severity === 'critical' ? '#dc2626' : '#f59e0b'};color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;">${a.severity.toUpperCase()}</span>
+                </td>
+              </tr>`).join('')}
+          </table>` : ''}
+          <h3 style="margin-top:20px;">📍 Working Register Map</h3>
+          <table style="width:100%;border-collapse:collapse;background:#fff;">
+            <tr style="background:#dbeafe;"><th>Parameter</th><th>D Register</th><th>Decimal Addr</th><th>Value</th><th>Type</th></tr>
+            ${Object.entries(registerMap).map(([p, info]) => `
+              <tr>
+                <td style="border:1px solid #93c5fd;padding:8px;font-weight:bold;">${p}</td>
+                <td style="border:1px solid #93c5fd;padding:8px;">${info.registerName}</td>
+                <td style="border:1px solid #93c5fd;padding:8px;">${info.decimalAddress}</td>
+                <td style="border:1px solid #93c5fd;padding:8px;">${info.value}</td>
+                <td style="border:1px solid #93c5fd;padding:8px;color:${info.type === 'PRIMARY' || info.type === 'CACHED' ? '#10b981' : '#f59e0b'};font-weight:bold;">${info.type}</td>
+              </tr>`).join('')}
+          </table>
+          <p style="margin-top:20px;">Alert Time: ${timestamp}</p>
+          <a href="${dashboardUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">View Dashboard</a>
+        </div>
+      </div>`
+  };
+}
+
+function getStartupEmailTemplate(dgName, values) {
+  const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', timeStyle: 'long' });
+  const dashboardUrl = `http://${process.env.PI_IP_ADDRESS || 'localhost'}:${webServerPort}`;
+  return {
+    subject: `🟢 NOTIFICATION: ${dgName} Has Started Running`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
+        <div style="background:linear-gradient(135deg,#10b981,#34d399);color:#fff;padding:20px;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;">🟢 DG STARTUP NOTIFICATION</h1>
+        </div>
+        <div style="padding:20px;background:#f9fafb;color:#333;">
+          <ul style="list-style:none;padding:0;">
+            <li style="padding:8px;border-bottom:1px solid #eee;">Active Power: <b>${values.activePower?.toFixed(1) || '0.0'} kW</b></li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">Voltage R: <b>${values.voltageR?.toFixed(1) || '0.0'} V</b></li>
+            <li style="padding:8px;">Frequency: <b>${values.frequency?.toFixed(1) || '0.0'} Hz</b></li>
+          </ul>
+          <p style="font-size:14px;margin-top:20px;">Event Time: ${timestamp}</p>
+          <a href="${dashboardUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">View Live Dashboard</a>
+        </div>
+      </div>`
+  };
+}
+
 function checkDieselLevels(data) {
   const criticalDGs = [];
   if (data.dg1 <= CRITICAL_LEVEL) criticalDGs.push('DG-1');
@@ -365,91 +474,108 @@ function checkElectricalChanges(dgKey, newValues, registerMap) {
   for (const param in newValues) {
     const v = newValues[param];
     if (!IS_DG_RUNNING && (param.includes('voltage') || param === 'frequency' || param === 'powerFactor')) {
-      if (v < 1) continue;
+      if (v < 1) continue; // ignore floating zeros when OFF
     }
-    if (param.includes('voltage') && (v < T.voltageMin || v > T.voltageMax)) 
-      alerts.push({ parameter: param, value: v, threshold: `${T.voltageMin}-${T.voltageMax}V`, severity: 'critical' });
-    else if (param.includes('current') && v > T.currentMax) 
-      alerts.push({ parameter: param, value: v, threshold: `Max ${T.currentMax}A`, severity: 'warning' });
-    else if (param === 'frequency' && (v < T.frequencyMin || v > T.frequencyMax)) 
-      alerts.push({ parameter: param, value: v, threshold: `${T.frequencyMin}-${T.frequencyMax}Hz`, severity: 'critical' });
-    else if (param === 'powerFactor' && v < T.powerFactorMin) 
-      alerts.push({ parameter: param, value: v, threshold: `Min ${T.powerFactorMin}`, severity: 'warning' });
-    else if (param === 'windingTemp' && v > T.temperatureMax) 
-      alerts.push({ parameter: param, value: v, threshold: `Max ${T.temperatureMax}°C`, severity: 'critical' });
+    if (param.includes('voltage') && (v < T.voltageMin || v > T.voltageMax)) alerts.push({ parameter: param, value: v, threshold: `${T.voltageMin}-${T.voltageMax}V`, severity: 'critical' });
+    else if (param.includes('current') && v > T.currentMax) alerts.push({ parameter: param, value: v, threshold: `Max ${T.currentMax}A`, severity: 'warning' });
+    else if (param === 'frequency' && (v < T.frequencyMin || v > T.frequencyMax)) alerts.push({ parameter: param, value: v, threshold: `${T.frequencyMin}-${T.frequencyMax}Hz`, severity: 'critical' });
+    else if (param === 'powerFactor' && v < T.powerFactorMin) alerts.push({ parameter: param, value: v, threshold: `Min ${T.powerFactorMin}`, severity: 'warning' });
+    else if (param === 'windingTemp' && v > T.temperatureMax) alerts.push({ parameter: param, value: v, threshold: `Max ${T.temperatureMax}°C`, severity: 'critical' });
   }
 
   alertState.lastElectricalValues[lastKey] = { ...newValues };
-  if (alerts.length > 0 && emailEnabled) sendElectricalAlert(dgKey, [], alerts, newValues, registerMap);
+  if (alerts.length > 0) sendElectricalAlert(dgKey, [], alerts, newValues, registerMap);
 }
 
 function checkStartupAlert(dgKey, newValues) {
-  if (!(dgKey === "dg1" || dgKey === "dg2")) return;
+    if (!(dgKey === "dg1" || dgKey === "dg2")) return; // Only for DG1 & DG2
 
-  const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
-  const now = Date.now();
-  
-  const activePower = newValues.activePower || 0;
-  const isRunning = activePower > DG_RUNNING_THRESHOLD;
+    const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
+    const now = Date.now();
+    
+    const activePower = newValues.activePower || 0;
+    const isRunning = activePower > DG_RUNNING_THRESHOLD;
 
-  let validCount = 0;
-  for (const param in newValues) {
-    const val = newValues[param];
-    if (isFinite(val) && val > 0) validCount++;
-  }
+    // Count valid non-zero electrical parameters
+    let validCount = 0;
+    for (const param in newValues) {
+        const val = newValues[param];
+        if (isFinite(val) && val > 0) validCount++;
+    }
 
-  const MIN_REQUIRED_PARAMETERS = 4;
-  const fullyRunning = isRunning && validCount >= MIN_REQUIRED_PARAMETERS;
+    // Require minimum 4 valid values to confirm DG has really started
+    const MIN_REQUIRED_PARAMETERS = 4;
+    const fullyRunning = isRunning && validCount >= MIN_REQUIRED_PARAMETERS;
 
-  const lastValues = alertState.lastElectricalValues[`electrical_${dgKey}`] || {};
-  const wasRunningBefore = (lastValues.activePower || 0) > DG_RUNNING_THRESHOLD;
+    const lastValues = alertState.lastElectricalValues[`electrical_${dgKey}`] || {};
+    const wasRunningBefore = (lastValues.activePower || 0) > DG_RUNNING_THRESHOLD;
 
-  if (fullyRunning && !wasRunningBefore && (now - lastAlertTime) > STARTUP_ALERT_COOLDOWN) {
-    const dgName = dgKey.toUpperCase().replace("DG", "DG-");
-    if (emailEnabled) sendStartupEmail(dgName, newValues);
-    alertState.lastStartupAlerts[dgKey] = now;
-    console.log(`✅ Startup alert for ${dgName}`);
-  }
+    // Only send alert when transitioning from OFF ➜ ON with enough data
+    if (fullyRunning && !wasRunningBefore && (now - lastAlertTime) > STARTUP_ALERT_COOLDOWN) {
+        const dgName = dgKey.toUpperCase().replace("DG", "DG-");
+        sendStartupEmail(dgName, newValues);
+        alertState.lastStartupAlerts[dgKey] = now;
+
+        console.log(`✅ Startup alert triggered for ${dgName} with ${validCount} valid parameters`);
+    }
 }
 
+
 async function sendStartupEmail(dgName, values) {
-  if (!emailEnabled) return;
-  // Email template code omitted for brevity
+  if (!emailEnabled || !ALERT_RECIPIENTS) return;
+  const tpl = getStartupEmailTemplate(dgName, values);
+  try {
+    await emailTransporter.sendMail({ from: `"DG Monitoring System" <${process.env.EMAIL_USER}>`, to: ALERT_RECIPIENTS, subject: tpl.subject, html: tpl.html });
+    console.log(`🟢 Startup alert email sent for ${dgName}`);
+  } catch (err) { console.error('Startup Email sending error:', err.message); }
 }
 
 async function sendElectricalAlert(dgKey, changes, alerts, currentValues, registerMap) {
-  if (!emailEnabled) return;
-  // Email template code omitted for brevity
+  if (!emailEnabled || !ALERT_RECIPIENTS) return;
+  const key = `electrical_${dgKey}_${Math.floor(Date.now() / ELECTRICAL_ALERT_COOLDOWN)}`;
+  if (alertState.currentAlerts.has(key)) return;
+  const tpl = getElectricalAlertTemplate(dgKey.toUpperCase().replace('DG', 'DG-'), changes, alerts, currentValues, registerMap);
+  try {
+    await emailTransporter.sendMail({ from: `"DG Monitoring System" <${process.env.EMAIL_USER}>`, to: ALERT_RECIPIENTS, subject: tpl.subject, html: tpl.html });
+    alertState.currentAlerts.add(key);
+    setTimeout(() => alertState.currentAlerts.delete(key), ELECTRICAL_ALERT_COOLDOWN);
+    console.log(`⚡ Electrical alert email sent for ${dgKey}`);
+  } catch (err) { console.error('Electrical Email sending error:', err.message); }
 }
 
 async function sendEmailAlert(alertType, data, criticalDGs) {
-  if (!emailEnabled) return;
-  // Email template code omitted for brevity
+  if (!emailEnabled || !ALERT_RECIPIENTS) return;
+  const key = `${alertType}_${Math.floor(Date.now() / ALERT_COOLDOWN)}`;
+  if (alertState.currentAlerts.has(key)) return;
+  const tpl = getEmailTemplate(alertType, data, criticalDGs);
+  try {
+    await emailTransporter.sendMail({ from: `"DG Monitoring System" <${process.env.EMAIL_USER}>`, to: ALERT_RECIPIENTS, subject: tpl.subject, html: tpl.html });
+    alertState.currentAlerts.add(key);
+    setTimeout(() => alertState.currentAlerts.delete(key), ALERT_COOLDOWN);
+    console.log(`⚠️ Diesel alert email sent for ${criticalDGs.join(', ')}`);
+  } catch (err) { console.error('Diesel Email sending error:', err.message); }
 }
 
 // -------------------- Main Loop --------------------
 async function readAllSystemData() {
   if (!isPlcConnected) return;
   try {
+    // Diesel (unchanged)
     await readSingleRegister(dgRegisters.dg1, 'dg1'); await wait(READ_DELAY);
     await readSingleRegister(dgRegisters.dg2, 'dg2'); await wait(READ_DELAY);
     await readSingleRegister(dgRegisters.dg3, 'dg3'); await wait(READ_DELAY);
     systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
 
+    // Electrical DG1..DG4 (DG1 & DG2 have extended fallbacks + caching)
     for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
       const result = await readAllElectrical(dgKey);
       systemData.electrical[dgKey] = result.values;
       workingRegisters[dgKey] = result.registerMap;
 
       if (dgKey === 'dg1' || dgKey === 'dg2') {
-        console.log(`[${dgKey.toUpperCase()}] Active Power = ${result.values.activePower} kW`);
+        console.log(`[${dgKey.toUpperCase()}] Active Power = ${result.values.activePower} kW (${result.registerMap.activePower?.registerName || 'n/a'})`);
         checkElectricalChanges(dgKey, result.values, result.registerMap);
         checkStartupAlert(dgKey, result.values);
-      }
-
-      // Save electrical logs when running
-      if (result.values.activePower > DG_RUNNING_THRESHOLD) {
-        await saveElectricalLog(dgKey, result.values);
       }
     }
 
@@ -497,30 +623,16 @@ async function saveToDatabase(data) {
   }
 }
 
-async function saveElectricalLog(dgKey, values) {
-  if (!isMongoConnected) return;
-  try {
-    const log = new ElectricalLog({
-      dg: dgKey,
-      ...values,
-      isRunning: values.activePower > DG_RUNNING_THRESHOLD
-    });
-    await log.save();
-  } catch (err) {
-    console.error('Electrical log save error:', err.message);
-  }
-}
-
 // -------------------- PLC + Web --------------------
 function connectToPLC() {
-  console.log(`Connecting to PLC on ${port}...`);
+  console.log(`Attempting to connect to PLC on ${port}...`);
   client.connectRTU(port, plcSettings)
     .then(() => {
       client.setID(plcSlaveID);
       client.setTimeout(5000);
       isPlcConnected = true;
       errorCount = 0;
-      console.log('✓ PLC connected');
+      console.log('✓ PLC connected successfully');
       setTimeout(() => { readAllSystemData(); setInterval(readAllSystemData, 5000); }, 2000);
     })
     .catch((err) => {
@@ -537,204 +649,35 @@ app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname, { maxAge: '1d', etag: true, lastModified: true }));
+app.use((req, res, next) => { if (/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/.test(req.url)) res.setHeader('Cache-Control', 'public, max-age=86400'); next(); });
 
-// API Routes
+// API
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/diesel', (req, res) => res.sendFile(path.join(__dirname, 'diesel.html')));
-app.get('/electrical', (req, res) => res.sendFile(path.join(__dirname, 'electrical.html')));
 app.get('/api/data', (req, res) => res.json({ ...systemData }));
-app.get('/api/registers', (req, res) => res.json({ workingRegisters, lastGoodRegister }));
-
-// Analytics API
-app.get('/api/diesel/history', async (req, res) => {
-  try {
-    const { days = 7 } = req.query;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(days));
-    
-    const data = await DieselReading.find({
-      timestamp: { $gte: startDate }
-    }).sort({ timestamp: 1 }).lean();
-    
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/electrical/history', async (req, res) => {
-  try {
-    const { dg, days = 7 } = req.query;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(days));
-    
-    const query = { timestamp: { $gte: startDate }, isRunning: true };
-    if (dg) query.dg = dg;
-    
-    const data = await ElectricalLog.find(query).sort({ timestamp: 1 }).lean();
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Excel Export Routes
-app.get('/api/export/diesel', async (req, res) => {
-  try {
-    const { days = 30 } = req.query;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(days));
-    
-    const data = await DieselReading.find({
-      timestamp: { $gte: startDate }
-    }).sort({ timestamp: 1 }).lean();
-
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Diesel Consumption');
-    
-    sheet.columns = [
-      { header: 'Timestamp', key: 'timestamp', width: 20 },
-      { header: 'DG-1 Level (L)', key: 'dg1', width: 15 },
-      { header: 'DG-2 Level (L)', key: 'dg2', width: 15 },
-      { header: 'DG-3 Level (L)', key: 'dg3', width: 15 },
-      { header: 'Total (L)', key: 'total', width: 15 },
-      { header: 'DG-1 Change', key: 'dg1_change', width: 15 },
-      { header: 'DG-2 Change', key: 'dg2_change', width: 15 },
-      { header: 'DG-3 Change', key: 'dg3_change', width: 15 }
-    ];
-
-    data.forEach(row => {
-      sheet.addRow({
-        timestamp: new Date(row.timestamp).toLocaleString('en-IN'),
-        dg1: row.dg1,
-        dg2: row.dg2,
-        dg3: row.dg3,
-        total: row.total,
-        dg1_change: row.dg1_change,
-        dg2_change: row.dg2_change,
-        dg3_change: row.dg3_change
-      });
-    });
-
-    sheet.getRow(1).font = { bold: true };
-    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
-    sheet.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
-
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=DG_Diesel_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
-    
-    await workbook.xlsx.write(res);
-    res.end();
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/export/electrical', async (req, res) => {
-  try {
-    const { days = 30 } = req.query;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(days));
-    
-    const data = await ElectricalLog.find({
-      timestamp: { $gte: startDate },
-      isRunning: true
-    }).sort({ timestamp: 1 }).lean();
-
-    const workbook = new ExcelJS.Workbook();
-    
-    ['dg1', 'dg2', 'dg3', 'dg4'].forEach(dg => {
-      const dgData = data.filter(d => d.dg === dg);
-      if (dgData.length === 0) return;
-      
-      const sheet = workbook.addWorksheet(dg.toUpperCase());
-      
-      sheet.columns = [
-        { header: 'Timestamp', key: 'timestamp', width: 20 },
-        { header: 'Voltage R (V)', key: 'voltageR', width: 15 },
-        { header: 'Voltage Y (V)', key: 'voltageY', width: 15 },
-        { header: 'Voltage B (V)', key: 'voltageB', width: 15 },
-        { header: 'Current R (A)', key: 'currentR', width: 15 },
-        { header: 'Current Y (A)', key: 'currentY', width: 15 },
-        { header: 'Current B (A)', key: 'currentB', width: 15 },
-        { header: 'Frequency (Hz)', key: 'frequency', width: 15 },
-        { header: 'Power Factor', key: 'powerFactor', width: 15 },
-        { header: 'Active Power (kW)', key: 'activePower', width: 18 },
-        { header: 'Reactive Power (kVAR)', key: 'reactivePower', width: 20 },
-        { header: 'Energy Meter', key: 'energyMeter', width: 15 },
-        { header: 'Running Hours', key: 'runningHours', width: 15 },
-        { header: 'Winding Temp (°C)', key: 'windingTemp', width: 18 }
-      ];
-
-      dgData.forEach(row => {
-        sheet.addRow({
-          timestamp: new Date(row.timestamp).toLocaleString('en-IN'),
-          voltageR: row.voltageR?.toFixed(1),
-          voltageY: row.voltageY?.toFixed(1),
-          voltageB: row.voltageB?.toFixed(1),
-          currentR: row.currentR?.toFixed(1),
-          currentY: row.currentY?.toFixed(1),
-          currentB: row.currentB?.toFixed(1),
-          frequency: row.frequency?.toFixed(2),
-          powerFactor: row.powerFactor?.toFixed(2),
-          activePower: row.activePower?.toFixed(1),
-          reactivePower: row.reactivePower?.toFixed(1),
-          energyMeter: row.energyMeter,
-          runningHours: row.runningHours,
-          windingTemp: row.windingTemp
-        });
-      });
-
-      sheet.getRow(1).font = { bold: true };
-      sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } };
-      sheet.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
-    });
-
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=DG_Electrical_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
-    
-    await workbook.xlsx.write(res);
-    res.end();
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/registers', (req, res) => res.json({ workingRegisters, lastGoodRegister, message: 'Current working register mappings & caches' }));
 
 // Shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
-  try { 
-    client.close(); 
-    await mongoose.connection.close(); 
-    console.log('Connections closed'); 
-    process.exit(0); 
-  } catch (err) { 
-    console.error('Error during shutdown:', err); 
-    process.exit(1); 
-  }
+  try { client.close(); await mongoose.connection.close(); console.log('Connections closed'); process.exit(0); }
+  catch (err) { console.error('Error during shutdown:', err); process.exit(1); }
 });
-
 process.on('SIGTERM', async () => {
-  console.log('\nReceived SIGTERM...');
-  try { 
-    client.close(); 
-    await mongoose.connection.close(); 
-    console.log('Connections closed'); 
-    process.exit(0); 
-  } catch (err) { 
-    console.error('Error during shutdown:', err); 
-    process.exit(1); 
-  }
+  console.log('\nReceived SIGTERM, shutting down...');
+  try { client.close(); await mongoose.connection.close(); console.log('Connections closed'); process.exit(0); }
+  catch (err) { console.error('Error during shutdown:', err); process.exit(1); }
 });
 
 // Start
 app.listen(webServerPort, () => {
   console.log(`\n===========================================`);
-  console.log(`DG Monitoring System - Enhanced Server`);
+  console.log(`DG Monitoring System Server Started`);
   console.log(`Web Server: http://localhost:${webServerPort}`);
   console.log(`PLC Port: ${port}`);
   console.log(`Email Alerts: ${emailEnabled ? 'Enabled' : 'Disabled'}`);
-  console.log(`Features: Multi-page dashboard, Analytics, Excel Export`);
+  console.log(`DG Startup Alert: Enabled (Cooldown: ${STARTUP_ALERT_COOLDOWN / 60000} minutes)`);
+  console.log(`\n📍 Electrical fallbacks tuned for DG-1 & DG-2 (with last-good caching).`);
+  console.log(`   ActivePower candidates include D116/D136/D156/D120 etc.`);
   console.log(`===========================================`);
   connectToPLC();
 });
