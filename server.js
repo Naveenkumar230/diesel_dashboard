@@ -488,20 +488,38 @@ function checkElectricalChanges(dgKey, newValues, registerMap) {
 }
 
 function checkStartupAlert(dgKey, newValues) {
-  const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
-  const now = Date.now();
-  const IS_DG_RUNNING = newValues.activePower > DG_RUNNING_THRESHOLD;
+    if (!(dgKey === "dg1" || dgKey === "dg2")) return; // Only for DG1 & DG2
 
-  if (IS_DG_RUNNING && (now - lastAlertTime) > STARTUP_ALERT_COOLDOWN) {
-    const previousValues = alertState.lastElectricalValues[`electrical_${dgKey}`] || {};
-    const WAS_DG_RUNNING = previousValues.activePower > DG_RUNNING_THRESHOLD;
-    if (!WAS_DG_RUNNING) {
-      const dgName = dgKey.toUpperCase().replace('DG', 'DG-');
-      sendStartupEmail(dgName, newValues);
-      alertState.lastStartupAlerts[dgKey] = now;
+    const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
+    const now = Date.now();
+    
+    const activePower = newValues.activePower || 0;
+    const isRunning = activePower > DG_RUNNING_THRESHOLD;
+
+    // Count valid non-zero electrical parameters
+    let validCount = 0;
+    for (const param in newValues) {
+        const val = newValues[param];
+        if (isFinite(val) && val > 0) validCount++;
     }
-  }
+
+    // Require minimum 4 valid values to confirm DG has really started
+    const MIN_REQUIRED_PARAMETERS = 4;
+    const fullyRunning = isRunning && validCount >= MIN_REQUIRED_PARAMETERS;
+
+    const lastValues = alertState.lastElectricalValues[`electrical_${dgKey}`] || {};
+    const wasRunningBefore = (lastValues.activePower || 0) > DG_RUNNING_THRESHOLD;
+
+    // Only send alert when transitioning from OFF ➜ ON with enough data
+    if (fullyRunning && !wasRunningBefore && (now - lastAlertTime) > STARTUP_ALERT_COOLDOWN) {
+        const dgName = dgKey.toUpperCase().replace("DG", "DG-");
+        sendStartupEmail(dgName, newValues);
+        alertState.lastStartupAlerts[dgKey] = now;
+
+        console.log(`✅ Startup alert triggered for ${dgName} with ${validCount} valid parameters`);
+    }
 }
+
 
 async function sendStartupEmail(dgName, values) {
   if (!emailEnabled || !ALERT_RECIPIENTS) return;
