@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DG Electrical Details</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #0052cc; --success: #00875a; --warning: #ffab00; --danger: #de350b;
+    --bg-primary: #ffffff; --bg-secondary: #f4f5f7; --bg-tertiary: #ffffff;
+    --text-primary: #172b4d; --text-secondary: #42526e; --text-muted: #6b778c;
+    --border: #dfe1e6;
+    
+    /* Colors for chart lines */
+    --volt-r: #fa8231; /* Orange */
+    --volt-y: #f7b731; /* Yellow */
+    --volt-b: #0065ff; /* Blue */
+    --curr-r: #eb3b5a; /* Red */
+    --curr-y: #a55eea; /* Purple */
+    --curr-b: #2bcbba; /* Teal */
+    --power-kw: #20bf6b; /* Green */
+    --power-kvar: #4b6584; /* Grey-Blue */
+    --freq: #3c_a_9_f_5; /* Dark Pink */
+    --pf: #172b4d;   /* Dark */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg-primary); font-family: 'Segoe UI', Tahoma, sans-serif; color: var(--text-primary); min-height: 100vh; padding: 15px; }
+  .container { max-width: 1600px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 20px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border); flex-wrap: wrap; gap: 15px; }
+  .header-left h1 { font-size: 1.8rem; background: linear-gradient(90deg, #0052cc, #0065ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 5px; }
+  .header-left .subtitle { font-size: 0.9rem; color: var(--text-muted); }
+  .header-right { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: all 0.3s; text-decoration: none; display: inline-block; font-size: 0.95rem; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: #0041a3; transform: translateY(-2px); }
+  .btn-success { background: var(--success); color: white; }
+  .btn-success:hover { background: #006644; transform: translateY(-2px); }
+  .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: #dfe1e6; }
+  .filters { background: var(--bg-secondary); border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+  .filter-group { display: flex; flex-direction: column; gap: 8px; }
+  label { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
+  input, select { padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.95rem; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+  .stat-card { background: var(--bg-tertiary); border: 1px solid var(--border); padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid var(--primary); }
+  .stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 2.2rem; font-weight: 800; margin-bottom: 5px; color: var(--text-primary); }
+  .stat-unit { font-size: 0.85rem; color: var(--text-muted); }
+  .chart-section { background: var(--bg-secondary); border: 1px solid var(--border); padding: 25px; border-radius: 12px; margin-bottom: 20px; }
+  .chart-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 20px; color: var(--text-primary); border-left: 4px solid var(--primary); padding-left: 15px; }
+  
+  /* Grid for the 4 split charts */
+  .chart-grid-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .chart-container-split { position: relative; height: 350px; }
+  
+  /* Container for the single combined chart */
+  .chart-container-combined { position: relative; height: 450px; }
+
+  .timeline-section { background: var(--bg-secondary); border: 1px solid var(--border); padding: 25px; border-radius: 12px; margin-bottom: 20px; }
+  .timeline-item { display: flex; align-items: center; gap: 15px; padding: 15px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; border-left: 4px solid var(--success); }
+  .timeline-item.stopped { border-left-color: var(--danger); }
+  .timeline-time { font-weight: 700; min-width: 150px; font-size: 0.95rem; color: var(--text-primary); }
+  .timeline-status { padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+  .timeline-status.running { background: var(--success); color: white; }
+  .timeline-status.stopped { background: var(--danger); color: white; }
+  .timeline-details { font-size: 0.9rem; color: var(--text-secondary); }
+  .loading, .empty-state { text-align: center; padding: 60px; color: var(--text-muted); font-size: 1.2rem; }
+  .empty-state { background: var(--bg-secondary); border-radius: 12px; }
+  .empty-state-icon { font-size: 4rem; margin-bottom: 20px; opacity: 0.5; }
+
+  @media (max-width: 1024px) { .chart-grid-split { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) { .header { flex-direction: column; align-items: flex-start; } .header-right { width: 100%; flex-direction: column; } .btn { width: 100%; text-align: center; } }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-left">
+        <h1 id="page-title">DG Electrical Details</h1>
+        <div class="subtitle" id="date-range">Loading...</div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-success" onclick="exportElectricalData()">📥 Download Electrical Data</button>
+        <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group">
+        <label>From Date</label>
+        <input type="date" id="start-date" />
+      </div>
+      <div class="filter-group">
+        <label>To Date</label>
+        <input type="date" id="end-date" />
+      </div>
+      <div class="filter-group">
+        <label>Quick Select</label>
+        <select id="quick-select">
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="week">Last 7 Days</option>
+          <option value="month">Last 30 Days</option>
+          <option value="custom">Custom Range</option>
+        </select>
+      </div>
+      <div class="filter-group" style="justify-content: flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn btn-primary" onclick="loadData()">Apply Filter</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card" style="border-top-color: var(--success);">
+        <div class="stat-label">Total Running Hours</div>
+        <div class="stat-value" id="total-hours">--</div>
+        <div class="stat-unit">Hours</div>
+      </div>
+      <div class="stat-card" style="border-top-color: var(--primary);">
+        <div class="stat-label">Total Energy (kWh)</div>
+        <div class="stat-value" id="total-kwh">--</div>
+        <div class="stat-unit">kWh</div>
+      </div>
+      <div class="stat-card" style="border-top-color: var(--warning);">
+        <div class="stat-label">Average Load %</div>
+        <div class="stat-value" id="avg-load">--</div>
+        <div class="stat-unit">Percent</div>
+      </div>
+      <div class="stat-card" style="border-top-color: var(--danger);">
+        <div class="stat-label">Peak Active Power</div>
+        <div class="stat-value" id="peak-kw">--</div>
+        <div class="stat-unit">kW</div>
+      </div>
+    </div>
+
+    <div class="chart-grid-split">
+      <div class="chart-section">
+        <div class="chart-title">Voltage (V)</div>
+        <div class="chart-container-split">
+          <canvas id="voltageChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-section">
+        <div class="chart-title">Current (A)</div>
+        <div class="chart-container-split">
+          <canvas id="currentChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-section">
+        <div class="chart-title">Power (kW / kVAR)</div>
+        <div class="chart-container-split">
+          <canvas id="powerChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-section">
+        <div class="chart-title">Frequency (Hz) & Power Factor</div>
+        <div class="chart-container-split">
+          <canvas id="freqPfChart"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">All Parameters Combined</div>
+      <div class="chart-container-combined">
+        <canvas id="combinedChart"></canvas>
+      </div>
+    </div>
+    <div class="timeline-section">
+      <div class="chart-title">⏱️ DG Run Timeline (Started / Stopped)</div>
+      <div id="timeline-container">
+        </div>
+    </div>
+
+    <div id="loading" class="loading" style="display:none;">⏳ Loading data...</div>
+    <div id="empty-state" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">📭</div>
+      <h2>No Data Available</h2>
+      <p>No electrical data found for this DG in the selected date range.</p>
+    </div>
+  </div>
+
+<script>
+    // UPDATED: All 5 chart variables
+    let voltageChart, currentChart, powerChart, freqPfChart, combinedChart;
+    
+    let dgType = 'dg1';
+    let currentChartData = [];
+    const DG_RUNNING_THRESHOLD = 5; // 5 kW
+
+    const DG_MAX_KW = {
+      dg1: 500, dg2: 500, dg3: 380, dg4: 380 // PLEASE UPDATE
+    };
+    
+    // Get DG type from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    dgType = urlParams.get('dg') || 'dg1';
+
+    document.getElementById('page-title').textContent = `⚙️ ${dgType.toUpperCase().replace('DG', 'DG-')} Electrical Details`;
+
+    // Initialize date range
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('start-date').value = today;
+    document.getElementById('end-date').value = today;
+
+    // Quick select handler
+    document.getElementById('quick-select').addEventListener('change', function() {
+      const value = this.value;
+      const startDateInput = document.getElementById('start-date');
+      const endDateInput = document.getElementById('end-date');
+      const endDate = new Date();
+      let startDate = new Date();
+      switch(value) {
+        case 'today': startDate = new Date(); break;
+        case 'yesterday': startDate.setDate(startDate.getDate() - 1); endDate.setDate(endDate.getDate() - 1); break;
+        case 'week': startDate.setDate(startDate.getDate() - 6); break;
+        case 'month': startDate.setDate(startDate.getDate() - 29); break;
+        case 'custom': return;
+      }
+      startDateInput.value = startDate.toISOString().split('T')[0];
+      endDateInput.value = endDate.toISOString().split('T')[0];
+    });
+
+    // Load data from API
+    async function loadData() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      if (!startDate || !endDate) { alert('Please select a start and end date'); return; }
+      if (new Date(endDate) < new Date(startDate)) { alert('End date cannot be before start date'); return; }
+
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('empty-state').style.display = 'none';
+      clearCharts();
+
+      try {
+        const query = `startDate=${startDate}&endDate=${endDate}`;
+        const url = `/api/electrical/${dgType}?${query}`;
+        const response = await fetch(url);
+        const result = await response.json();
+
+        if (result.success && result.data.length > 0) {
+          currentChartData = result.data;
+          processData(result.data, startDate, endDate);
+          document.getElementById('empty-state').style.display = 'none';
+        } else {
+          showEmptyState();
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+        showEmptyState();
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function showEmptyState() {
+      document.getElementById('empty-state').style.display = 'block';
+      clearCharts();
+      clearStats();
+      document.getElementById('timeline-container').innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No timeline data available</p>';
+    }
+
+    // UPDATED: Clear all 5 charts
+    function clearCharts() {
+      if (voltageChart) voltageChart.destroy();
+      if (currentChart) currentChart.destroy();
+      if (powerChart) powerChart.destroy();
+      if (freqPfChart) freqPfChart.destroy();
+      if (combinedChart) combinedChart.destroy();
+    }
+
+    function clearStats() {
+      document.getElementById('total-hours').textContent = '--';
+      document.getElementById('total-kwh').textContent = '--';
+      document.getElementById('avg-load').textContent = '--';
+      document.getElementById('peak-kw').textContent = '--';
+    }
+
+    // Process data for stats, charts, and timeline
+    function processData(data, startDate, endDate) {
+      // 1. Update Subtitle
+      const startStr = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
+      const endStr = new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+      document.getElementById('date-range').textContent = (startStr === endStr) ? startStr : `From ${startStr} to ${endStr}`;
+
+      // 2. Calculate Stats
+      let totalRunningHours = 0;
+      let totalKwh = 0;
+      let peakKw = 0;
+      let loadSum = 0;
+      let runningDataPoints = 0;
+      const maxKw = DG_MAX_KW[dgType] || 500;
+      const intervalHours = 0.5; // We assume 30-min intervals
+
+      if (data.length > 0) {
+          totalKwh = data[data.length - 1].energyMeter - data[0].energyMeter;
+      }
+
+      data.forEach(r => {
+        if (r.activePower > DG_RUNNING_THRESHOLD) {
+          totalRunningHours += intervalHours;
+          runningDataPoints++;
+          if (r.activePower > peakKw) peakKw = r.activePower;
+          loadSum += (r.activePower / maxKw) * 100;
+        }
+      });
+      const avgLoad = (runningDataPoints > 0) ? (loadSum / runningDataPoints) : 0;
+
+      // 3. Update Stat Cards
+      document.getElementById('total-hours').textContent = totalRunningHours.toFixed(1);
+      document.getElementById('total-kwh').textContent = totalKwh.toFixed(0);
+      document.getElementById('avg-load').textContent = avgLoad.toFixed(1);
+      document.getElementById('peak-kw').textContent = peakKw.toFixed(1);
+
+      // 4. Update Charts
+      // NEW: Call both chart functions
+      updateSplitCharts(data);
+      updateCombinedChart(data);
+      
+      // 5. Update Timeline
+      updateTimeline(data);
+    }
+
+    // --- NEW FUNCTION: updateSplitCharts ---
+    // This creates the 4 separate charts
+    function updateSplitCharts(data) {
+      const isMultiDay = (new Date(data[data.length - 1].timestamp) - new Date(data[0].timestamp)) > (1000 * 60 * 60 * 24);
+      const labels = data.map(r => {
+        const d = new Date(r.timestamp);
+        return isMultiDay 
+          ? d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      });
+
+      const chartTextColor = '#172b4d';
+      const chartGridColor = 'rgba(23, 43, 77, 0.1)';
+      const lineOptions = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false };
+      const xAxeOptions = {
+          ticks: { color: chartTextColor, font: { size: 10 }, maxRotation: isMultiDay ? 90 : 45, minRotation: isMultiDay ? 90 : 45 },
+          grid: { color: 'rgba(0,0,0,0)' }
+      };
+      const yAxeOptions = (title) => ({
+          beginAtZero: true,
+          ticks: { color: chartTextColor, font: { size: 12 } },
+          grid: { color: chartGridColor },
+          title: { display: true, text: title, color: chartTextColor }
+      });
+      const legendOptions = { labels: { color: chartTextColor, font: { size: 12 }, usePointStyle: true } };
+
+      // 1. Voltage Chart
+      if (voltageChart) voltageChart.destroy();
+      const ctxV = document.getElementById('voltageChart').getContext('2d');
+      voltageChart = new Chart(ctxV, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'V-R', data: data.map(r => r.voltageR), borderColor: 'var(--volt-r)', ...lineOptions },
+            { label: 'V-Y', data: data.map(r => r.voltageY), borderColor: 'var(--volt-y)', ...lineOptions },
+            { label: 'V-B', data: data.map(r => r.voltageB), borderColor: 'var(--volt-b)', ...lineOptions }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: legendOptions }, scales: { x: xAxeOptions, y: yAxeOptions('Volts') } }
+      });
+
+      // 2. Current Chart
+      if (currentChart) currentChart.destroy();
+      const ctxC = document.getElementById('currentChart').getContext('2d');
+      currentChart = new Chart(ctxC, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'C-R', data: data.map(r => r.currentR), borderColor: 'var(--curr-r)', ...lineOptions },
+            { label: 'C-Y', data: data.map(r => r.currentY), borderColor: 'var(--curr-y)', ...lineOptions },
+            { label: 'C-B', data: data.map(r => r.currentB), borderColor: 'var(--curr-b)', ...lineOptions }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: legendOptions }, scales: { x: xAxeOptions, y: yAxeOptions('Amps') } }
+      });
+
+      // 3. Power Chart
+      if (powerChart) powerChart.destroy();
+      const ctxP = document.getElementById('powerChart').getContext('2d');
+      powerChart = new Chart(ctxP, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Active Power (kW)', data: data.map(r => r.activePower), borderColor: 'var(--power-kw)', ...lineOptions },
+            { label: 'Reactive Power (kVAR)', data: data.map(r => r.reactivePower), borderColor: 'var(--power-kvar)', ...lineOptions, borderDash: [5, 5] }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: legendOptions }, scales: { x: xAxeOptions, y: yAxeOptions('Power') } }
+      });
+
+      // 4. Frequency & PF Chart
+      if (freqPfChart) freqPfChart.destroy();
+      const ctxF = document.getElementById('freqPfChart').getContext('2d');
+      freqPfChart = new Chart(ctxF, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Frequency (Hz)', data: data.map(r => r.frequency), borderColor: 'var(--freq)', yAxisID: 'yHz', ...lineOptions },
+            { label: 'Power Factor', data: data.map(r => r.powerFactor), borderColor: 'var(--pf)', yAxisID: 'yPF', ...lineOptions }
+          ]
+        },
+        options: { 
+          responsive: true, maintainAspectRatio: false, plugins: { legend: legendOptions },
+          scales: { 
+            x: xAxeOptions, 
+            yHz: { ...yAxeOptions('Hz'), position: 'left', min: 45, max: 55 },
+            yPF: { ...yAxeOptions('PF'), position: 'right', min: 0, max: 1, grid: { drawOnChartArea: false } }
+          } 
+        }
+      });
+    }
+
+    // --- NEW FUNCTION: updateCombinedChart ---
+    // This creates the single combined chart
+    function updateCombinedChart(data) {
+      const isMultiDay = (new Date(data[data.length - 1].timestamp) - new Date(data[0].timestamp)) > (1000 * 60 * 60 * 24);
+      const labels = data.map(r => {
+        const d = new Date(r.timestamp);
+        return isMultiDay 
+          ? d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      });
+
+      const chartTextColor = '#172b4d';
+      const chartGridColor = 'rgba(23, 43, 77, 0.1)';
+      const lineOptions = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false };
+
+      if (combinedChart) combinedChart.destroy();
+      const ctx = document.getElementById('combinedChart').getContext('2d');
+      combinedChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'V-R', data: data.map(r => r.voltageR), borderColor: 'var(--volt-r)', yAxisID: 'yV', ...lineOptions },
+            { label: 'V-Y', data: data.map(r => r.voltageY), borderColor: 'var(--volt-y)', yAxisID: 'yV', ...lineOptions, hidden: true }, // Hide by default
+            { label: 'V-B', data: data.map(r => r.voltageB), borderColor: 'var(--volt-b)', yAxisID: 'yV', ...lineOptions, hidden: true }, // Hide by default
+            { label: 'C-R', data: data.map(r => r.currentR), borderColor: 'var(--curr-r)', yAxisID: 'yA', ...lineOptions },
+            { label: 'C-Y', data: data.map(r => r.currentY), borderColor: 'var(--curr-y)', yAxisID: 'yA', ...lineOptions, hidden: true }, // Hide by default
+            { label: 'C-B', data: data.map(r => r.currentB), borderColor: 'var(--curr-b)', yAxisID: 'yA', ...lineOptions, hidden: true }, // Hide by default
+            { label: 'kW', data: data.map(r => r.activePower), borderColor: 'var(--power-kw)', yAxisID: 'yP', ...lineOptions, borderWidth: 3 },
+            { label: 'kVAR', data: data.map(r => r.reactivePower), borderColor: 'var(--power-kvar)', yAxisID: 'yP', ...lineOptions, borderDash: [5, 5], hidden: true }, // Hide by default
+            { label: 'Hz', data: data.map(r => r.frequency), borderColor: 'var(--freq)', yAxisID: 'yF', ...lineOptions },
+            { label: 'PF', data: data.map(r => r.powerFactor), borderColor: 'var(--pf)', yAxisID: 'yPF', ...lineOptions }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: chartTextColor, font: { size: 12 }, usePointStyle: true } },
+            tooltip: { position: 'nearest' }
+          },
+          scales: {
+            x: {
+              ticks: { color: chartTextColor, font: { size: 10 }, maxRotation: 90, minRotation: 90 },
+              grid: { color: 'rgba(0,0,0,0)' }
+            },
+            yV: {
+              type: 'linear', position: 'left',
+              grid: { color: chartGridColor },
+              ticks: { color: 'var(--volt-b)' },
+              title: { display: true, text: 'Voltage (V)', color: 'var(--volt-b)' }
+            },
+            yA: {
+              type: 'linear', position: 'right',
+              grid: { drawOnChartArea: false },
+              ticks: { color: 'var(--curr-r)' },
+              title: { display: true, text: 'Current (A)', color: 'var(--curr-r)' }
+            },
+            yP: {
+              type: 'linear', position: 'right',
+              grid: { drawOnChartArea: false },
+              ticks: { color: 'var(--power-kw)' },
+              title: { display: true, text: 'Power (kW/kVAR)', color: 'var(--power-kw)' },
+              offset: true // Offset to prevent overlap with yA
+            },
+            yF: {
+              type: 'linear', position: 'left',
+              min: 45, max: 55, // Tight range for Frequency
+              grid: { drawOnChartArea: false },
+              ticks: { color: 'var(--freq)' },
+              title: { display: true, text: 'Freq (Hz)', color: 'var(--freq)' },
+               offset: true // Offset to prevent overlap with yV
+            },
+            yPF: {
+              type: 'linear', position: 'right',
+              min: 0, max: 1, // Range for Power Factor
+              grid: { drawOnChartArea: false },
+              ticks: { color: 'var(--pf)' },
+              title: { display: true, text: 'PF', color: 'var(--pf)' },
+              offset: true // Offset to prevent overlap
+            }
+          }
+        }
+      });
+    }
+
+    // Generate Start/Stop Timeline
+    function updateTimeline(data) {
+      const container = document.getElementById('timeline-container');
+      container.innerHTML = '';
+      if (data.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No run events found in this range.</p>';
+        return;
+      }
+
+      let wasRunning = data[0].activePower > DG_RUNNING_THRESHOLD;
+      let timelineEvents = [];
+
+      timelineEvents.push({
+        type: wasRunning ? 'start' : 'stop',
+        time: new Date(data[0].timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }),
+        power: data[0].activePower
+      });
+
+      data.forEach((r, index) => {
+        const isRunning = r.activePower > DG_RUNNING_THRESHOLD;
+        const time = new Date(r.timestamp);
+        const timeStr = time.toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
+
+        if (isRunning && !wasRunning) {
+          timelineEvents.push({ type: 'start', time: timeStr, power: r.activePower });
+        } else if (!isRunning && wasRunning) {
+          timelineEvents.push({ type: 'stop', time: timeStr, power: r.activePower });
+        }
+        wasRunning = isRunning;
+      });
+
+      timelineEvents.reverse();
+      
+      if (timelineEvents.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No run events found in this range.</p>';
+        return;
+      }
+
+      timelineEvents.forEach(event => {
+        const isStart = event.type === 'start';
+        const item = document.createElement('div');
+        item.className = `timeline-item ${isStart ? '' : 'stopped'}`;
+        item.innerHTML = `
+          <div class="timeline-time">${event.time}</div>
+          <div class="timeline-status ${isStart ? 'running' : 'stopped'}">
+            ${isStart ? '🟢 DG Started' : '🔴 DG Stopped'}
+          </div>
+          <div class="timeline-details">
+            (Active Power: ${event.power.toFixed(1)} kW)
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    // Download function
+    function exportElectricalData() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      if (!startDate || !endDate) { alert('Please select a date range first.'); return; }
+      window.location.href = `/api/export/electrical/${dgType}?startDate=${startDate}&endDate=${endDate}`;
+    }
+
+    // Load initial data
+    loadData();
+</script>
+</body>
+</html>

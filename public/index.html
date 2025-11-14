@@ -6,23 +6,24 @@
 <title>DG Monitoring System Dashboard</title>
 <style>
   :root {
-    --primary: #2563eb;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --border: #334155;
+    /* Blue-and-White Theme */
+    --primary: #0052cc;  /* Strong blue */
+    --success: #00875a;  /* Green */
+    --warning: #ffab00;  /* Yellow */
+    --danger: #de350b;   /* Red */
+    --bg-primary: #ffffff;      /* White background */
+    --bg-secondary: #f4f5f7;  /* Light grey background for cards */
+    --bg-tertiary: #ffffff;   /* Card content background (was --bg-tertiary) */
+    --text-primary: #172b4d;  /* Dark blue/black text */
+    --text-secondary: #42526e; /* Secondary text */
+    --text-muted: #6b778c;   /* Muted text */
+    --border: #dfe1e6;       /* Border color */
   }
   
   * { box-sizing: border-box; margin: 0; padding: 0; }
   
   body {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    background: var(--bg-primary);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: var(--text-primary);
     min-height: 100vh;
@@ -37,13 +38,14 @@
     padding: 20px;
     background: var(--bg-secondary);
     border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
   }
   
   h1 {
     margin: 0 0 10px 0;
     font-size: 1.8rem;
-    background: linear-gradient(90deg, #60a5fa, #34d399);
+    background: linear-gradient(90deg, #0052cc, #0065ff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
@@ -76,7 +78,8 @@
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
   }
   
   .section-header {
@@ -99,21 +102,24 @@
   
   .diesel-card {
     background: var(--bg-tertiary);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 20px;
     text-align: center;
     position: relative;
     overflow: hidden;
-    transition: transform 0.3s;
+    transition: all 0.3s;
     cursor: pointer;
-    text-decoration: none;
-    color: inherit;
+    text-decoration: none; /* For <a> tag */
+    color: inherit;       /* For <a> tag */
     display: block;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
   
   .diesel-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary);
   }
   
   .diesel-card::before {
@@ -122,7 +128,7 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 3px;
+    height: 4px;
   }
   
   .diesel-card.normal::before { background: linear-gradient(90deg, #10b981, #34d399); }
@@ -142,6 +148,7 @@
     font-weight: 800;
     line-height: 1;
     margin-bottom: 5px;
+    color: var(--text-primary);
   }
   
   .diesel-unit {
@@ -152,12 +159,19 @@
   /* Electrical Sections */
   .dg-electrical-section {
     background: var(--bg-secondary);
+    border: 1px solid var(--border);
     border-radius: 12px;
     margin-bottom: 15px;
     overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   }
   
+  .dg-header-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+
   .dg-header {
     padding: 18px 20px;
     display: flex;
@@ -168,8 +182,8 @@
     border-bottom: 1px solid var(--border);
   }
   
-  .dg-header:hover {
-    background: rgba(255, 255, 255, 0.02);
+  .dg-header-link:hover .dg-header {
+    background: rgba(0, 82, 204, 0.05); /* Light blue hover */
   }
   
   .dg-title {
@@ -182,6 +196,7 @@
   .dg-name {
     font-size: 1.2rem;
     font-weight: 700;
+    color: var(--text-primary);
   }
   
   .status-badge {
@@ -220,21 +235,25 @@
   }
   
   .dg-electrical-section.expanded .dg-content {
-    max-height: 2000px;
+    max-height: 2000px; 
   }
   
+  /* UPDATED: Grid layout for 12 parameters */
   .param-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    /* This will fit 6 columns on large screens, 4 on medium, 2 on small */
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 12px;
     padding: 20px;
   }
   
   .param-card {
     background: var(--bg-tertiary);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 15px;
     text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
   
   .param-label {
@@ -249,6 +268,7 @@
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 3px;
+    color: var(--text-primary);
   }
   
   .param-unit {
@@ -281,6 +301,7 @@
     .diesel-value { font-size: 2rem; }
     .param-value { font-size: 1.3rem; }
     .diesel-grid { grid-template-columns: repeat(2, 1fr); }
+    /* 2 columns on small screens */
     .param-grid { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
@@ -297,294 +318,142 @@
 
     <div id="alert-container"></div>
 
-    <!-- DIESEL LEVELS SECTION -->
-    <div class="diesel-section">
+        <div class="diesel-section">
       <div class="section-header">
-        🛢️ Diesel Levels
+        🛢️ Diesel Levels (Click for Details)
       </div>
       <div class="diesel-grid">
-        <div class="diesel-card normal" id="dg1-diesel-card">
+        <a href="/consumption.html?dg=dg1" class="diesel-card normal" id="dg1-diesel-card">
           <div class="diesel-label">DG-1 Diesel</div>
           <div class="diesel-value" id="dg1-diesel">--</div>
           <div class="diesel-unit">Liters</div>
-        </div>
-        
-        <div class="diesel-card normal" id="dg2-diesel-card">
+        </a>
+        <a href="/consumption.html?dg=dg2" class="diesel-card normal" id="dg2-diesel-card">
           <div class="diesel-label">DG-2 Diesel</div>
           <div class="diesel-value" id="dg2-diesel">--</div>
           <div class="diesel-unit">Liters</div>
-        </div>
-        
-        <div class="diesel-card normal" id="dg3-diesel-card">
+        </a>
+        <a href="/consumption.html?dg=dg3" class="diesel-card normal" id="dg3-diesel-card">
           <div class="diesel-label">DG-3 Diesel</div>
           <div class="diesel-value" id="dg3-diesel">--</div>
           <div class="diesel-unit">Liters</div>
-        </div>
-        
-        <div class="diesel-card normal">
+        </a>
+        <a href="/consumption.html?dg=total" class="diesel-card normal">
           <div class="diesel-label">Total Diesel</div>
           <div class="diesel-value" id="total-diesel">--</div>
           <div class="diesel-unit">Liters</div>
+        </a>
+      </div>
+    </div>
+
+    <div class="dg-electrical-section expanded" id="dg1-section">
+      <a href="/electrical.html?dg=dg1" class="dg-header-link">
+        <div class="dg-header">
+          <div class="dg-title">
+            <div class="dg-name">⚙️ DG-1 Electrical Parameters</div>
+            <div class="status-badge status-off" id="dg1-status">OFF</div>
+          </div>
+          <div class="expand-icon" data-target="dg1-content">▼</div>
+        </div>
+      </a>
+      <div class="dg-content" id="dg1-content">
+        <div class="param-grid">
+          <div class="param-card"><div class="param-label">Voltage R-Phase</div><div class="param-value" id="dg1-voltage-r">--</div><div class="param-unit">V</div></div>
+          <div class="param-card"><div class="param-label">Voltage Y-Phase</div><div class="param-value" id="dg1-voltage-y">--</div><div class="param-unit">V</div></div>
+          <div class="param-card"><div class="param-label">Voltage B-Phase</div><div class="param-value" id="dg1-voltage-b">--</div><div class="param-unit">V</div></div>
+          <div class="param-card"><div class="param-label">Current R-Phase</div><div class="param-value" id="dg1-current-r">--</div><div class="param-unit">A</div></div>
+          <div class="param-card"><div class="param-label">Current Y-Phase</div><div class="param-value" id="dg1-current-y">--</div><div class="param-unit">A</div></div>
+          <div class="param-card"><div class="param-label">Current B-Phase</div><div class="param-value" id="dg1-current-b">--</div><div class="param-unit">A</div></div>
+          <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg1-frequency">--</div><div class="param-unit">Hz</div></div>
+          <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg1-power-factor">--</div><div class="param-unit"></div></div>
+          <div class="param-card"><div class="param-label">Active Power</div><div class="param-value" id="dg1-active-power">--</div><div class="param-unit">kW</div></div>
+          <div class="param-card"><div class="param-label">Reactive Power</div><div class="param-value" id="dg1-reactive-power">--</div><div class="param-unit">kVAR</div></div>
+          <div class="param-card"><div class="param-label">Energy (kWh)</div><div class="param-value" id="dg1-energy-meter">--</div><div class="param-unit">kWh</div></div>
+          <div class="param-card"><div class="param-label">Load</div><div class="param-value" id="dg1-load-percent">--</div><div class="param-unit">%</div></div>
         </div>
       </div>
     </div>
 
-    <!-- DG-1 ELECTRICAL PARAMETERS -->
-    <div class="dg-electrical-section" id="dg1-section">
-      <div class="dg-header" onclick="toggleSection('dg1')">
-        <div class="dg-title">
-          <div class="dg-name">⚙️ DG-1 Electrical Parameters</div>
-          <div class="status-badge status-off" id="dg1-status">OFF</div>
+    <div class="dg-electrical-section expanded" id="dg2-section">
+      <a href="/electrical.html?dg=dg2" class="dg-header-link">
+        <div class="dg-header">
+          <div class="dg-title">
+            <div class="dg-name">⚙️ DG-2 Electrical Parameters</div>
+            <div class="status-badge status-off" id="dg2-status">OFF</div>
+          </div>
+          <div class="expand-icon" data-target="dg2-content">▼</div>
         </div>
-        <div class="expand-icon">▼</div>
-      </div>
-      <div class="dg-content">
+      </a>
+      <div class="dg-content" id="dg2-content">
         <div class="param-grid">
-          <div class="param-card">
-            <div class="param-label">Voltage R-Phase</div>
-            <div class="param-value" id="dg1-voltage-r">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage Y-Phase</div>
-            <div class="param-value" id="dg1-voltage-y">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage B-Phase</div>
-            <div class="param-value" id="dg1-voltage-b">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current R-Phase</div>
-            <div class="param-value" id="dg1-current-r">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current Y-Phase</div>
-            <div class="param-value" id="dg1-current-y">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current B-Phase</div>
-            <div class="param-value" id="dg1-current-b">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Frequency</div>
-            <div class="param-value" id="dg1-frequency">--</div>
-            <div class="param-unit">Hz</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Power Factor</div>
-            <div class="param-value" id="dg1-power-factor">--</div>
-            <div class="param-unit"></div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Active Power</div>
-            <div class="param-value" id="dg1-active-power">--</div>
-            <div class="param-unit">kW</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Reactive Power</div>
-            <div class="param-value" id="dg1-reactive-power">--</div>
-            <div class="param-unit">kVAR</div>
-          </div>
+            <div class="param-card"><div class="param-label">Voltage R-Phase</div><div class="param-value" id="dg2-voltage-r">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Voltage Y-Phase</div><div class="param-value" id="dg2-voltage-y">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Voltage B-Phase</div><div class="param-value" id="dg2-voltage-b">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Current R-Phase</div><div class="param-value" id="dg2-current-r">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Current Y-Phase</div><div class="param-value" id="dg2-current-y">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Current B-Phase</div><div class="param-value" id="dg2-current-b">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg2-frequency">--</div><div class="param-unit">Hz</div></div>
+            <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg2-power-factor">--</div><div class="param-unit"></div></div>
+            <div class="param-card"><div class="param-label">Active Power</div><div class="param-value" id="dg2-active-power">--</div><div class="param-unit">kW</div></div>
+            <div class="param-card"><div class="param-label">Reactive Power</div><div class="param-value" id="dg2-reactive-power">--</div><div class="param-unit">kVAR</div></div>
+            <div class="param-card"><div class="param-label">Energy (kWh)</div><div class="param-value" id="dg2-energy-meter">--</div><div class="param-unit">kWh</div></div>
+            <div class="param-card"><div class="param-label">Load</div><div class="param-value" id="dg2-load-percent">--</div><div class="param-unit">%</div></div>
         </div>
       </div>
     </div>
 
-    <!-- DG-2 ELECTRICAL PARAMETERS -->
-    <div class="dg-electrical-section" id="dg2-section">
-      <div class="dg-header" onclick="toggleSection('dg2')">
-        <div class="dg-title">
-          <div class="dg-name">⚙️ DG-2 Electrical Parameters</div>
-          <div class="status-badge status-off" id="dg2-status">OFF</div>
+    <div class="dg-electrical-section expanded" id="dg3-section">
+      <a href="/electrical.html?dg=dg3" class="dg-header-link">
+        <div class="dg-header">
+          <div class="dg-title">
+            <div class="dg-name">⚙️ DG-3 Electrical Parameters</div>
+            <div class="status-badge status-off" id="dg3-status">OFF</div>
+          </div>
+          <div class="expand-icon" data-target="dg3-content">▼</div>
         </div>
-        <div class="expand-icon">▼</div>
-      </div>
-      <div class="dg-content">
+      </a>
+      <div class="dg-content" id="dg3-content">
         <div class="param-grid">
-          <div class="param-card">
-            <div class="param-label">Voltage R-Phase</div>
-            <div class="param-value" id="dg2-voltage-r">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage Y-Phase</div>
-            <div class="param-value" id="dg2-voltage-y">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage B-Phase</div>
-            <div class="param-value" id="dg2-voltage-b">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current R-Phase</div>
-            <div class="param-value" id="dg2-current-r">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current Y-Phase</div>
-            <div class="param-value" id="dg2-current-y">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current B-Phase</div>
-            <div class="param-value" id="dg2-current-b">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Frequency</div>
-            <div class="param-value" id="dg2-frequency">--</div>
-            <div class="param-unit">Hz</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Power Factor</div>
-            <div class="param-value" id="dg2-power-factor">--</div>
-            <div class="param-unit"></div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Active Power</div>
-            <div class="param-value" id="dg2-active-power">--</div>
-            <div class="param-unit">kW</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Reactive Power</div>
-            <div class="param-value" id="dg2-reactive-power">--</div>
-            <div class="param-unit">kVAR</div>
-          </div>
+            <div class="param-card"><div class="param-label">Voltage R-Phase</div><div class="param-value" id="dg3-voltage-r">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Voltage Y-Phase</div><div class="param-value" id="dg3-voltage-y">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Voltage B-Phase</div><div class="param-value" id="dg3-voltage-b">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Current R-Phase</div><div class="param-value" id="dg3-current-r">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Current Y-Phase</div><div class="param-value" id="dg3-current-y">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Current B-Phase</div><div class="param-value" id="dg3-current-b">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg3-frequency">--</div><div class="param-unit">Hz</div></div>
+            <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg3-power-factor">--</div><div class="param-unit"></div></div>
+            <div class="param-card"><div class="param-label">Active Power</div><div class="param-value" id="dg3-active-power">--</div><div class="param-unit">kW</div></div>
+            <div class="param-card"><div class="param-label">Reactive Power</div><div class="param-value" id="dg3-reactive-power">--</div><div class="param-unit">kVAR</div></div>
+            <div class="param-card"><div class="param-label">Energy (kWh)</div><div class="param-value" id="dg3-energy-meter">--</div><div class="param-unit">kWh</div></div>
+            <div class="param-card"><div class="param-label">Load</div><div class="param-value" id="dg3-load-percent">--</div><div class="param-unit">%</div></div>
         </div>
       </div>
     </div>
-
-    <!-- DG-3 ELECTRICAL PARAMETERS -->
-    <div class="dg-electrical-section" id="dg3-section">
-      <div class="dg-header" onclick="toggleSection('dg3')">
-        <div class="dg-title">
-          <div class="dg-name">⚙️ DG-3 Electrical Parameters</div>
-          <div class="status-badge status-off" id="dg3-status">OFF</div>
+    
+    <div class="dg-electrical-section expanded" id="dg4-section">
+      <a href="/electrical.html?dg=dg4" class="dg-header-link">
+        <div class="dg-header">
+          <div class="dg-title">
+            <div class="dg-name">⚙️ DG-4 Electrical Parameters</div>
+            <div class="status-badge status-off" id="dg4-status">OFF</div>
+          </div>
+          <div class="expand-icon" data-target="dg4-content">▼</div>
         </div>
-        <div class="expand-icon">▼</div>
-      </div>
-      <div class="dg-content">
+      </a>
+      <div class="dg-content" id="dg4-content">
         <div class="param-grid">
-          <div class="param-card">
-            <div class="param-label">Voltage R-Phase</div>
-            <div class="param-value" id="dg3-voltage-r">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage Y-Phase</div>
-            <div class="param-value" id="dg3-voltage-y">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage B-Phase</div>
-            <div class="param-value" id="dg3-voltage-b">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current R-Phase</div>
-            <div class="param-value" id="dg3-current-r">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current Y-Phase</div>
-            <div class="param-value" id="dg3-current-y">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current B-Phase</div>
-            <div class="param-value" id="dg3-current-b">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Frequency</div>
-            <div class="param-value" id="dg3-frequency">--</div>
-            <div class="param-unit">Hz</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Power Factor</div>
-            <div class="param-value" id="dg3-power-factor">--</div>
-            <div class="param-unit"></div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Active Power</div>
-            <div class="param-value" id="dg3-active-power">--</div>
-            <div class="param-unit">kW</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Reactive Power</div>
-            <div class="param-value" id="dg3-reactive-power">--</div>
-            <div class="param-unit">kVAR</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- DG-4 ELECTRICAL PARAMETERS -->
-    <div class="dg-electrical-section" id="dg4-section">
-      <div class="dg-header" onclick="toggleSection('dg4')">
-        <div class="dg-title">
-          <div class="dg-name">⚙️ DG-4 Electrical Parameters</div>
-          <div class="status-badge status-off" id="dg4-status">OFF</div>
-        </div>
-        <div class="expand-icon">▼</div>
-      </div>
-      <div class="dg-content">
-        <div class="param-grid">
-          <div class="param-card">
-            <div class="param-label">Voltage R-Phase</div>
-            <div class="param-value" id="dg4-voltage-r">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage Y-Phase</div>
-            <div class="param-value" id="dg4-voltage-y">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Voltage B-Phase</div>
-            <div class="param-value" id="dg4-voltage-b">--</div>
-            <div class="param-unit">V</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current R-Phase</div>
-            <div class="param-value" id="dg4-current-r">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current Y-Phase</div>
-            <div class="param-value" id="dg4-current-y">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Current B-Phase</div>
-            <div class="param-value" id="dg4-current-b">--</div>
-            <div class="param-unit">A</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Frequency</div>
-            <div class="param-value" id="dg4-frequency">--</div>
-            <div class="param-unit">Hz</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Power Factor</div>
-            <div class="param-value" id="dg4-power-factor">--</div>
-            <div class="param-unit"></div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Active Power</div>
-            <div class="param-value" id="dg4-active-power">--</div>
-            <div class="param-unit">kW</div>
-          </div>
-          <div class="param-card">
-            <div class="param-label">Reactive Power</div>
-            <div class="param-value" id="dg4-reactive-power">--</div>
-            <div class="param-unit">kVAR</div>
-          </div>
+            <div class="param-card"><div class="param-label">Voltage R-Phase</div><div class="param-value" id="dg4-voltage-r">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Voltage Y-Phase</div><div class="param-value" id="dg4-voltage-y">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Voltage B-Phase</div><div class="param-value" id="dg4-voltage-b">--</div><div class="param-unit">V</div></div>
+            <div class="param-card"><div class="param-label">Current R-Phase</div><div class="param-value" id="dg4-current-r">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Current Y-Phase</div><div class="param-value" id="dg4-current-y">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Current B-Phase</div><div class="param-value" id="dg4-current-b">--</div><div class="param-unit">A</div></div>
+            <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg4-frequency">--</div><div class="param-unit">Hz</div></div>
+            <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg4-power-factor">--</div><div class="param-unit"></div></div>
+            <div class="param-card"><div class="param-label">Active Power</div><div class="param-value" id="dg4-active-power">--</div><div class="param-unit">kW</div></div>
+            <div class="param-card"><div class="param-label">Reactive Power</div><div class="param-value" id="dg4-reactive-power">--</div><div class="param-unit">kVAR</div></div>
+            <div class="param-card"><div class="param-label">Energy (kWh)</div><div class="param-value" id="dg4-energy-meter">--</div><div class="param-unit">kWh</div></div>
+            <div class="param-card"><div class="param-label">Load</div><div class="param-value" id="dg4-load-percent">--</div><div class="param-unit">%</div></div>
         </div>
       </div>
     </div>
@@ -593,13 +462,42 @@
 
   <script>
     const CRITICAL_LEVEL = 50;
-    const WARNING_LEVEL = 100;
+    const WARNING_LEVEL = 150;
     const DG_RUNNING_THRESHOLD = 5;
 
-    function toggleSection(dgId) {
-      const section = document.getElementById(`${dgId}-section`);
-      section.classList.toggle('expanded');
-    }
+    // !! IMPORTANT !!
+    const DG_MAX_KW = {
+      dg1: 500, // (e.g., 500kW) - PLEASE UPDATE
+      dg2: 500, // (e.g., 500kW) - PLEASE UPDATE
+      dg3: 380, // (e.g., 380kW) - PLEASE UPDATE
+      dg4: 380  // (e.g., 380kW) - PLEASE UPDATE
+    };
+
+    // Toggle section
+    document.querySelectorAll('.expand-icon').forEach(icon => {
+      icon.addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent <a> tag link
+        e.stopPropagation(); // Stop click from bubbling to <a> tag
+        const contentId = icon.getAttribute('data-target');
+        const content = document.getElementById(contentId);
+        const section = content.closest('.dg-electrical-section');
+        section.classList.toggle('expanded');
+        content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
+      });
+    });
+
+    // --- Auto-expand/collapse script ---
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.dg-content').forEach(content => {
+            const section = content.closest('.dg-electrical-section');
+            if (section.classList.contains('expanded')) {
+                content.style.maxHeight = '2000px';
+            } else {
+                content.style.maxHeight = '0';
+            }
+        });
+    });
+
 
     async function fetchData() {
       try {
@@ -625,20 +523,16 @@
         const level = levels[dg];
         const card = document.getElementById(`${dg}-diesel-card`);
         const valueEl = document.getElementById(`${dg}-diesel`);
-
         if (valueEl) valueEl.textContent = formatNum(level, 0);
-
         if (card) {
-          card.className = 'diesel-card';
+          card.className = 'diesel-card'; // Reset classes
           if (level <= CRITICAL_LEVEL) card.classList.add('critical');
           else if (level <= WARNING_LEVEL) card.classList.add('warning');
           else card.classList.add('normal');
         }
       });
-
       document.getElementById('total-diesel').textContent = formatNum(data.total, 0);
 
-      // Check alerts
       const criticalDGs = Object.entries(levels)
         .filter(([_, value]) => value <= CRITICAL_LEVEL)
         .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
@@ -654,6 +548,7 @@
       }
     }
 
+    // UPDATED: Full JS function to update all 12 parameters
     function updateElectricalParams(data) {
       if (!data.electrical) return;
 
@@ -691,6 +586,19 @@
 
         const rpEl = document.getElementById(`${dg}-reactive-power`);
         if (rpEl) rpEl.textContent = formatNum(e.reactivePower);
+        
+        // Update new fields
+        const enEl = document.getElementById(`${dg}-energy-meter`);
+        if (enEl) enEl.textContent = formatNum(e.energyMeter, 0);
+
+        const loadEl = document.getElementById(`${dg}-load-percent`);
+        if (loadEl) {
+          const maxKw = DG_MAX_KW[dg];
+          const loadPercent = (e.activePower > 0 && maxKw > 0) 
+            ? (e.activePower / maxKw) * 100 
+            : 0;
+          loadEl.textContent = formatNum(loadPercent, 1);
+        }
       });
     }
 

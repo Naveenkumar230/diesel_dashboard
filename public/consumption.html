@@ -7,22 +7,24 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --primary: #2563eb;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
+    /* Blue-and-White Theme */
+    --primary: #0052cc;  /* Strong blue */
+    --success: #00875a;  /* Green */
+    --warning: #ffab00;  /* Yellow */
+    --danger: #de350b;   /* Red */
+    --bg-primary: #ffffff;      /* White background */
+    --bg-secondary: #f4f5f7;  /* Light grey background for cards */
+    --bg-tertiary: #ffffff;   /* Card content background */
+    --text-primary: #172b4d;  /* Dark blue/black text */
+    --text-secondary: #42526e; /* Secondary text */
+    --text-muted: #6b778c;   /* Muted text */
+    --border: #dfe1e6;
   }
   
   * { box-sizing: border-box; margin: 0; padding: 0; }
   
   body {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    background: var(--bg-primary);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: var(--text-primary);
     min-height: 100vh;
@@ -39,13 +41,14 @@
     padding: 20px;
     background: var(--bg-secondary);
     border-radius: 12px;
+    border: 1px solid var(--border);
     flex-wrap: wrap;
     gap: 15px;
   }
   
   .header-left h1 {
     font-size: 1.8rem;
-    background: linear-gradient(90deg, #60a5fa, #34d399);
+    background: linear-gradient(90deg, #0052cc, #0065ff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 5px;
@@ -79,7 +82,7 @@
   }
   
   .btn-primary:hover {
-    background: #1e40af;
+    background: #0041a3; /* Darker blue */
     transform: translateY(-2px);
   }
   
@@ -89,27 +92,31 @@
   }
   
   .btn-success:hover {
-    background: #059669;
+    background: #006644; /* Darker green */
     transform: translateY(-2px);
   }
   
   .btn-secondary {
     background: var(--bg-tertiary);
     color: var(--text-primary);
+    border: 1px solid var(--border);
   }
   
   .btn-secondary:hover {
-    background: #475569;
+    background: #dfe1e6; /* Darker grey */
   }
   
+  /* Updated Filters Layout for Range Inputs */
   .filters {
     background: var(--bg-secondary);
+    border: 1px solid var(--border);
     padding: 20px;
     border-radius: 12px;
     margin-bottom: 20px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 15px;
+    align-items: end; /* Align buttons with inputs */
   }
   
   .filter-group {
@@ -131,6 +138,7 @@
     background: var(--bg-tertiary);
     color: var(--text-primary);
     font-size: 0.95rem;
+    width: 100%;
   }
   
   .stats-grid {
@@ -141,11 +149,12 @@
   }
   
   .stat-card {
-    background: var(--bg-secondary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
     padding: 20px;
     border-radius: 12px;
     text-align: center;
-    border-top: 3px solid var(--primary);
+    border-top: 4px solid var(--primary);
   }
   
   .stat-label {
@@ -160,6 +169,7 @@
     font-size: 2.2rem;
     font-weight: 800;
     margin-bottom: 5px;
+    color: var(--text-primary);
   }
   
   .stat-unit {
@@ -169,6 +179,7 @@
   
   .chart-section {
     background: var(--bg-secondary);
+    border: 1px solid var(--border);
     padding: 25px;
     border-radius: 12px;
     margin-bottom: 20px;
@@ -190,6 +201,7 @@
   
   .running-hours-section {
     background: var(--bg-secondary);
+    border: 1px solid var(--border);
     padding: 25px;
     border-radius: 12px;
     margin-bottom: 20px;
@@ -208,6 +220,7 @@
     gap: 15px;
     padding: 15px;
     background: var(--bg-tertiary);
+    border: 1px solid var(--border);
     border-radius: 8px;
     border-left: 4px solid var(--success);
   }
@@ -220,6 +233,7 @@
     font-weight: 700;
     min-width: 120px;
     font-size: 0.95rem;
+    color: var(--text-primary);
   }
   
   .timeline-status {
@@ -257,6 +271,8 @@
     text-align: center;
     padding: 60px;
     color: var(--text-muted);
+    background: var(--bg-secondary);
+    border-radius: 12px;
   }
   
   .empty-state-icon {
@@ -300,7 +316,7 @@
   <div class="container">
     <div class="header">
       <div class="header-left">
-        <h1 id="page-title">📊 DG Consumption Details</h1>
+        <h1 id="page-title">DG Consumption Details</h1>
         <div class="subtitle" id="date-range">Loading...</div>
       </div>
       <div class="header-right">
@@ -311,15 +327,21 @@
 
     <div class="filters">
       <div class="filter-group">
-        <label>Select Date</label>
-        <input type="date" id="filter-date" />
+        <label>From Date</label>
+        <input type="date" id="start-date" />
+      </div>
+      <div class="filter-group">
+        <label>To Date</label>
+        <input type="date" id="end-date" />
       </div>
       <div class="filter-group">
         <label>Quick Select</label>
         <select id="quick-select">
           <option value="today">Today</option>
           <option value="yesterday">Yesterday</option>
-          <option value="custom">Custom Date</option>
+          <option value="week">Last 7 Days</option>
+          <option value="month">Last 30 Days</option>
+          <option value="custom">Custom Range</option>
         </select>
       </div>
       <div class="filter-group" style="justify-content: flex-end;">
@@ -330,13 +352,13 @@
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">Start Level (7:00 AM)</div>
+        <div class="stat-label">Start Level</div>
         <div class="stat-value" id="start-level">--</div>
         <div class="stat-unit">Liters</div>
       </div>
       
       <div class="stat-card">
-        <div class="stat-label">End Level (8:00 PM)</div>
+        <div class="stat-label">End Level (Current)</div>
         <div class="stat-value" id="end-level">--</div>
         <div class="stat-unit">Liters</div>
       </div>
@@ -358,17 +380,23 @@
         <div class="stat-value" id="avg-consumption" style="color: var(--warning);">--</div>
         <div class="stat-unit">L/Hour</div>
       </div>
+
+      <div class="stat-card" id="refill-card" style="border-top-color: var(--primary); display: none;">
+        <div class="stat-label">Refill Prediction</div>
+        <div class="stat-value" id="refill-prediction" style="color: var(--primary);">--</div>
+        <div class="stat-unit">Days until 50L</div>
+      </div>
     </div>
 
     <div class="chart-section">
-      <div class="chart-title">📈 Hourly Diesel Consumption (7 AM - 8 PM)</div>
+      <div class="chart-title">📈 Diesel Consumption</div>
       <div class="chart-container">
         <canvas id="consumptionChart"></canvas>
       </div>
     </div>
 
     <div class="chart-section">
-      <div class="chart-title">📉 Diesel Level Over Time</div>
+      <div class="chart-title" id="level-chart-title">📉 Diesel Level Over Time</div>
       <div class="chart-container">
         <canvas id="levelChart"></canvas>
       </div>
@@ -377,8 +405,7 @@
     <div class="running-hours-section">
       <div class="chart-title">⏱️ Running Timeline (Every 30 Minutes)</div>
       <div id="timeline-container">
-        <!-- Timeline items will be inserted here -->
-      </div>
+        </div>
     </div>
 
     <div id="loading" class="loading" style="display:none;">
@@ -388,7 +415,7 @@
     <div id="empty-state" class="empty-state" style="display:none;">
       <div class="empty-state-icon">📭</div>
       <h2>No Data Available</h2>
-      <p>No consumption data found for the selected date.</p>
+      <p>No consumption data found for the selected date range.</p>
       <p style="margin-top:10px; color: var(--text-muted); font-size: 0.9rem;">
         Data is recorded every 30 minutes from 7:00 AM to 8:00 PM.
       </p>
@@ -399,6 +426,7 @@
     let consumptionChart, levelChart;
     let currentData = [];
     let dgType = 'dg1';
+    const CRITICAL_LEVEL = 50; // Alert threshold
 
     // Get DG type from URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -406,36 +434,67 @@
 
     // Set page title
     const titles = {
-      'dg1': '📊 DG-1 Consumption Details',
-      'dg2': '📊 DG-2 Consumption Details',
-      'dg3': '📊 DG-3 Consumption Details',
-      'total': '📊 Total Diesel Consumption Details'
+      'dg1': 'DG-1 Consumption Details',
+      'dg2': 'DG-2 Consumption Details',
+      'dg3': 'DG-3 Consumption Details',
+      'total': 'Total Diesel Consumption Details'
     };
     document.getElementById('page-title').textContent = titles[dgType] || titles['dg1'];
 
-    // Initialize date
+    // Update level chart title for 'total'
+    if (dgType === 'total') {
+      document.getElementById('level-chart-title').textContent = '📉 Diesel Level Comparison';
+      document.getElementById('refill-card').style.display = 'block';
+    }
+
+    // Initialize date range to today
     const today = new Date().toISOString().split('T')[0];
-    document.getElementById('filter-date').value = today;
+    document.getElementById('start-date').value = today;
+    document.getElementById('end-date').value = today;
 
     // Quick select handler
     document.getElementById('quick-select').addEventListener('change', function() {
       const value = this.value;
-      const dateInput = document.getElementById('filter-date');
+      const startDateInput = document.getElementById('start-date');
+      const endDateInput = document.getElementById('end-date');
       
-      if (value === 'today') {
-        dateInput.value = new Date().toISOString().split('T')[0];
-      } else if (value === 'yesterday') {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        dateInput.value = yesterday.toISOString().split('T')[0];
+      const endDate = new Date();
+      let startDate = new Date();
+
+      switch(value) {
+        case 'today':
+          startDate = new Date();
+          break;
+        case 'yesterday':
+          startDate.setDate(startDate.getDate() - 1);
+          endDate.setDate(endDate.getDate() - 1);
+          break;
+        case 'week':
+          startDate.setDate(startDate.getDate() - 6); // 7 days range
+          break;
+        case 'month':
+          startDate.setDate(startDate.getDate() - 29); // 30 days range
+          break;
+        case 'custom':
+          // Do nothing, let user pick
+          return;
       }
+
+      startDateInput.value = startDate.toISOString().split('T')[0];
+      endDateInput.value = endDate.toISOString().split('T')[0];
     });
 
     async function loadData() {
-      const date = document.getElementById('filter-date').value;
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
       
-      if (!date) {
-        alert('Please select a date');
+      if (!startDate || !endDate) {
+        alert('Please select a start and end date');
+        return;
+      }
+
+      if (new Date(endDate) < new Date(startDate)) {
+        alert('End date cannot be before start date');
         return;
       }
 
@@ -444,10 +503,13 @@
 
       try {
         let url;
+        // Construct Query
+        const query = `startDate=${startDate}&endDate=${endDate}`;
+        
         if (dgType === 'total') {
-          url = `/api/consumption?date=${date}`;
+          url = `/api/consumption?${query}`;
         } else {
-          url = `/api/consumption?dg=${dgType}&date=${date}`;
+          url = `/api/consumption?dg=${dgType}&${query}`;
         }
 
         const response = await fetch(url);
@@ -455,7 +517,7 @@
 
         if (result.success && result.data.length > 0) {
           currentData = result.data;
-          processData(result.data, date);
+          processData(result.data, startDate, endDate);
           document.getElementById('empty-state').style.display = 'none';
         } else {
           showEmptyState();
@@ -486,18 +548,27 @@
       document.getElementById('total-consumption').textContent = '--';
       document.getElementById('running-hours').textContent = '--';
       document.getElementById('avg-consumption').textContent = '--';
+      if (dgType === 'total') {
+        document.getElementById('refill-prediction').textContent = '--';
+      }
     }
 
-    function processData(data, date) {
-      // Update date range
-      document.getElementById('date-range').textContent = 
-        `Data from ${new Date(date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+    function processData(data, startDate, endDate) {
+      // Update date range subtitle
+      const startStr = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+      const endStr = new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+      
+      if (startStr === endStr) {
+        document.getElementById('date-range').textContent = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } else {
+        document.getElementById('date-range').textContent = `From ${startStr} to ${endStr}`;
+      }
 
       // Calculate statistics
       let startLevel, endLevel, totalConsumption, runningHours;
 
       if (dgType === 'total') {
-        startLevel = data[0]?.total?.level || 0;
+        startLevel = data[0]?.total?.level || 0; 
         endLevel = data[data.length - 1]?.total?.level || 0;
         totalConsumption = data.reduce((sum, r) => sum + (r.total?.consumption || 0), 0);
         
@@ -505,6 +576,28 @@
         runningHours = data.filter(r => 
           (r.dg1?.isRunning || r.dg2?.isRunning || r.dg3?.isRunning)
         ).length * 0.5;
+
+        // --- Refill Prediction Logic ---
+        const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0; // L/hr
+        let daysRemaining = '--';
+        
+        if (avgConsumptionRate > 0) {
+          const usableDiesel = endLevel - CRITICAL_LEVEL;
+          if (usableDiesel > 0) {
+            // Get number of days in the selected range to predict average daily usage
+            const daysInRange = Math.max(1, (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24) + 1);
+            const avgRunningHoursPerDay = runningHours / daysInRange;
+            
+            if (avgRunningHoursPerDay > 0) {
+              const avgDailyConsumption = avgConsumptionRate * avgRunningHoursPerDay; // Avg L/day
+              daysRemaining = (usableDiesel / avgDailyConsumption).toFixed(1);
+            }
+          } else {
+            daysRemaining = '0.0'; // Already below critical
+          }
+        }
+        document.getElementById('refill-prediction').textContent = daysRemaining;
+
       } else {
         startLevel = data[0]?.level || 0;
         endLevel = data[data.length - 1]?.level || 0;
@@ -530,20 +623,70 @@
 
     function updateCharts(data) {
       const labels = data.map(r => {
+        // Show Date + Time if range > 1 day, else just Time
         const d = new Date(r.timestamp);
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        if (startDate !== endDate) {
+            return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        }
         return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
       });
 
       let consumptionData, levelData;
+      let levelChartDatasets = []; // For comparison graph
 
       if (dgType === 'total') {
         consumptionData = data.map(r => r.total?.consumption || 0);
-        levelData = data.map(r => r.total?.level || 0);
+        
+        // --- Comparison Datasets ---
+        levelChartDatasets = [
+          {
+            label: 'DG-1 Level (L)',
+            data: data.map(r => r.dg1?.level || null),
+            borderColor: 'rgba(0, 82, 204, 1)', // Blue
+            backgroundColor: 'rgba(0, 82, 204, 0.1)',
+            borderWidth: 2, fill: true, tension: 0.1, pointRadius: 1
+          },
+          {
+            label: 'DG-2 Level (L)',
+            data: data.map(r => r.dg2?.level || null),
+            borderColor: 'rgba(0, 135, 90, 1)', // Green
+            backgroundColor: 'rgba(0, 135, 90, 0.1)',
+            borderWidth: 2, fill: true, tension: 0.1, pointRadius: 1
+          },
+          {
+            label: 'DG-3 Level (L)',
+            data: data.map(r => r.dg3?.level || null),
+            borderColor: 'rgba(255, 171, 0, 1)', // Orange
+            backgroundColor: 'rgba(255, 171, 0, 0.1)',
+            borderWidth: 2, fill: true, tension: 0.1, pointRadius: 1
+          }
+        ];
+
       } else {
         consumptionData = data.map(r => r.consumption || 0);
         levelData = data.map(r => r.level || 0);
+
+        // --- Single Dataset ---
+        levelChartDatasets = [{
+          label: 'Diesel Level (L)',
+          data: levelData,
+          borderColor: 'rgba(0, 135, 90, 1)',
+          backgroundColor: 'rgba(0, 135, 90, 0.1)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 4
+        }];
       }
 
+      // --- Chart Colors ---
+      const chartTextColor = '#172b4d';
+      const chartGridColor = 'rgba(23, 43, 77, 0.1)';
+      
       // Consumption chart
       if (consumptionChart) consumptionChart.destroy();
       const ctx1 = document.getElementById('consumptionChart').getContext('2d');
@@ -554,8 +697,8 @@
           datasets: [{
             label: 'Consumption (L)',
             data: consumptionData,
-            backgroundColor: 'rgba(239, 68, 68, 0.8)',
-            borderColor: 'rgba(239, 68, 68, 1)',
+            backgroundColor: 'rgba(222, 53, 11, 0.8)',
+            borderColor: 'rgba(222, 53, 11, 1)',
             borderWidth: 1
           }]
         },
@@ -564,7 +707,7 @@
           maintainAspectRatio: false,
           plugins: {
             legend: { 
-              labels: { color: '#f1f5f9', font: { size: 14 } }
+              labels: { color: chartTextColor, font: { size: 14 } }
             },
             tooltip: {
               callbacks: {
@@ -577,13 +720,13 @@
           scales: {
             y: {
               beginAtZero: true,
-              ticks: { color: '#cbd5e1', font: { size: 12 } },
-              grid: { color: 'rgba(203, 213, 225, 0.1)' },
-              title: { display: true, text: 'Liters', color: '#cbd5e1' }
+              ticks: { color: chartTextColor, font: { size: 12 } },
+              grid: { color: chartGridColor },
+              title: { display: true, text: 'Liters', color: chartTextColor }
             },
             x: {
-              ticks: { color: '#cbd5e1', font: { size: 11 }, maxRotation: 45, minRotation: 45 },
-              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+              ticks: { color: chartTextColor, font: { size: 11 }, maxRotation: 45, minRotation: 45 },
+              grid: { color: chartGridColor }
             }
           }
         }
@@ -596,43 +739,33 @@
         type: 'line',
         data: {
           labels: labels,
-          datasets: [{
-            label: 'Diesel Level (L)',
-            data: levelData,
-            borderColor: 'rgba(16, 185, 129, 1)',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            borderWidth: 3,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 4,
-            pointHoverRadius: 6
-          }]
+          datasets: levelChartDatasets
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
             legend: { 
-              labels: { color: '#f1f5f9', font: { size: 14 } }
+              labels: { color: chartTextColor, font: { size: 14 } }
             },
             tooltip: {
               callbacks: {
                 label: function(context) {
-                  return 'Level: ' + context.parsed.y.toFixed(0) + ' L';
+                  return context.dataset.label + ': ' + context.parsed.y.toFixed(0) + ' L';
                 }
               }
             }
           },
           scales: {
             y: {
-              beginAtZero: true,
-              ticks: { color: '#cbd5e1', font: { size: 12 } },
-              grid: { color: 'rgba(203, 213, 225, 0.1)' },
-              title: { display: true, text: 'Liters', color: '#cbd5e1' }
+              beginAtZero: false, // Levels may not start at 0
+              ticks: { color: chartTextColor, font: { size: 12 } },
+              grid: { color: chartGridColor },
+              title: { display: true, text: 'Liters', color: chartTextColor }
             },
             x: {
-              ticks: { color: '#cbd5e1', font: { size: 11 }, maxRotation: 45, minRotation: 45 },
-              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+              ticks: { color: chartTextColor, font: { size: 11 }, maxRotation: 45, minRotation: 45 },
+              grid: { color: chartGridColor }
             }
           }
         }
@@ -648,9 +781,17 @@
         return;
       }
 
-      data.forEach(record => {
+      // For performance on large date ranges, limit timeline items
+      // or show newest first. Let's show newest first (reverse)
+      // and limit to last 100 items if the list is huge
+      const displayData = [...data].reverse().slice(0, 100);
+
+      displayData.forEach(record => {
         const time = new Date(record.timestamp);
-        const timeStr = time.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        // Format: "14 Nov 10:30 AM"
+        const timeStr = time.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + 
+                        ' ' + 
+                        time.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
         
         let isRunning, consumption;
         
@@ -675,6 +816,15 @@
         `;
         container.appendChild(item);
       });
+      
+      if (data.length > 100) {
+         const moreItem = document.createElement('div');
+         moreItem.style.textAlign = 'center';
+         moreItem.style.padding = '10px';
+         moreItem.style.color = 'var(--text-muted)';
+         moreItem.innerHTML = `...and ${data.length - 100} older records`;
+         container.appendChild(moreItem);
+      }
     }
 
     function exportToExcel() {
@@ -683,24 +833,30 @@
         return;
       }
 
-      const date = document.getElementById('filter-date').value;
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
       
       // Generate CSV
       let csv = '';
       
       if (dgType === 'total') {
-        csv = 'Time,DG1 Level (L),DG1 Consumption (L),DG1 Running,DG2 Level (L),DG2 Consumption (L),DG2 Running,DG3 Level (L),DG3 Consumption (L),DG3 Running,Total Level (L),Total Consumption (L)\n';
+        csv = 'Timestamp,Date,Time,DG1 Level (L),DG1 Consumption (L),DG1 Running,DG2 Level (L),DG2 Consumption (L),DG2 Running,DG3 Level (L),DG3 Consumption (L),DG3 Running,Total Level (L),Total Consumption (L)\n';
         
         currentData.forEach(r => {
-          const time = new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-          csv += `${time},${r.dg1?.level || 0},${r.dg1?.consumption || 0},${r.dg1?.isRunning ? 'Yes' : 'No'},${r.dg2?.level || 0},${r.dg2?.consumption || 0},${r.dg2?.isRunning ? 'Yes' : 'No'},${r.dg3?.level || 0},${r.dg3?.consumption || 0},${r.dg3?.isRunning ? 'Yes' : 'No'},${r.total?.level || 0},${r.total?.consumption || 0}\n`;
+          const d = new Date(r.timestamp);
+          const dateStr = d.toLocaleDateString('en-IN');
+          const timeStr = d.toLocaleTimeString('en-IN');
+          
+          csv += `${r.timestamp},${dateStr},${timeStr},${r.dg1?.level || 0},${r.dg1?.consumption || 0},${r.dg1?.isRunning ? 'Yes' : 'No'},${r.dg2?.level || 0},${r.dg2?.consumption || 0},${r.dg2?.isRunning ? 'Yes' : 'No'},${r.dg3?.level || 0},${r.dg3?.consumption || 0},${r.dg3?.isRunning ? 'Yes' : 'No'},${r.total?.level || 0},${r.total?.consumption || 0}\n`;
         });
       } else {
-        csv = 'Time,Diesel Level (L),Consumption (L),Is Running\n';
+        csv = `Timestamp,Date,Time,${dgType.toUpperCase()} Level (L),${dgType.toUpperCase()} Consumption (L),Is Running\n`;
         
         currentData.forEach(r => {
-          const time = new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-          csv += `${time},${r.level || 0},${r.consumption || 0},${r.isRunning ? 'Yes' : 'No'}\n`;
+          const d = new Date(r.timestamp);
+          const dateStr = d.toLocaleDateString('en-IN');
+          const timeStr = d.toLocaleTimeString('en-IN');
+          csv += `${r.timestamp},${dateStr},${timeStr},${r.level || 0},${r.consumption || 0},${r.isRunning ? 'Yes' : 'No'}\n`;
         });
       }
 
@@ -710,7 +866,7 @@
       const url = URL.createObjectURL(blob);
       
       link.setAttribute('href', url);
-      link.setAttribute('download', `${dgType}_consumption_${date}.csv`);
+      link.setAttribute('download', `${dgType}_consumption_${startDate}_to_${endDate}.csv`);
       link.style.visibility = 'hidden';
       
       document.body.appendChild(link);

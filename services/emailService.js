@@ -6,8 +6,9 @@ const nodemailer = require('nodemailer');
 
 // Configuration
 const ALERT_COOLDOWN = parseInt(process.env.ALERT_COOLDOWN) || 1800000; // 30 mins
-const ELECTRICAL_ALERT_COOLDOWN = parseInt(process.env.ELECTRICAL_ALERT_COOLDOWN) || 300000; // 5 mins
-const STARTUP_ALERT_COOLDOWN = parseInt(process.env.STARTUP_ALERT_COOLDOWN) || 600000; // 10 mins
+// --- UPDATED: Cooldown set to 0 to send email on EVERY startup ---
+const STARTUP_ALERT_COOLDOWN = 0; // Was 600000 (10 mins)
+// ---
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || '';
 
@@ -17,7 +18,6 @@ let emailEnabled = false;
 // Alert state tracking
 const alertState = {
   currentAlerts: new Set(),
-  lastElectricalValues: {},
   lastStartupAlerts: {}
 };
 
@@ -181,11 +181,15 @@ function getDailySummaryTemplate(summary, previousDay) {
   };
 }
 
+// --- UPDATED: Startup Email Template ---
+// Now includes all 12 key parameters in a simple list.
 function getStartupEmailTemplate(dgName, values) {
   const timestamp = new Date().toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
     timeStyle: 'long'
   });
+
+  const f = (val, dec = 1) => (val || 0).toFixed(dec);
 
   return {
     subject: `🟢 NOTIFICATION: ${dgName} Has Started Running`,
@@ -196,19 +200,31 @@ function getStartupEmailTemplate(dgName, values) {
           <h2 style="margin:10px 0 0 0;">${dgName}</h2>
         </div>
         <div style="padding:20px;background:#f9fafb;color:#333;">
-          <h3 style="color:#059669;">Generator is now running</h3>
-          <ul style="list-style:none;padding:0;">
+          <h3 style="color:#059669;">Generator is now running. Initial parameters:</h3>
+          <ul style="list-style:none;padding:0;font-size:14px;">
             <li style="padding:8px;border-bottom:1px solid #eee;">
-              Active Power: <b>${values.activePower?.toFixed(1) || '0.0'} kW</b>
+              Active Power: <b>${f(values.activePower, 1)} kW</b>
             </li>
             <li style="padding:8px;border-bottom:1px solid #eee;">
-              Voltage R: <b>${values.voltageR?.toFixed(1) || '0.0'} V</b>
+              Frequency: <b>${f(values.frequency, 2)} Hz</b>
             </li>
             <li style="padding:8px;border-bottom:1px solid #eee;">
-              Frequency: <b>${values.frequency?.toFixed(1) || '0.0'} Hz</b>
+              Power Factor: <b>${f(values.powerFactor, 2)}</b>
+            </li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">
+              Voltage R/Y/B: <b>${f(values.voltageR)}V / ${f(values.voltageY)}V / ${f(values.voltageB)}V</b>
+            </li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">
+              Current R/Y/B: <b>${f(values.currentR)}A / ${f(values.currentY)}A / ${f(values.currentB)}A</b>
+            </li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">
+              Reactive Power: <b>${f(values.reactivePower, 1)} kVAR</b>
+            </li>
+            <li style="padding:8px;border-bottom:1px solid #eee;">
+              Total Energy: <b>${f(values.energyMeter, 0)} kWh</b>
             </li>
             <li style="padding:8px;">
-              Power Factor: <b>${values.powerFactor?.toFixed(2) || '0.00'}</b>
+              Total Run Hours: <b>${f(values.runningHours, 1)} hrs</b>
             </li>
           </ul>
           <p style="font-size:14px;margin-top:20px;">Event Time: ${timestamp}</p>
@@ -220,6 +236,8 @@ function getStartupEmailTemplate(dgName, values) {
     `
   };
 }
+// --- END OF UPDATE ---
+
 
 // ============ SEND EMAIL FUNCTIONS ============
 
@@ -271,6 +289,7 @@ async function sendStartupAlert(dgName, values) {
   const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
   const now = Date.now();
 
+  // This check will now pass every time because STARTUP_ALERT_COOLDOWN is 0
   if ((now - lastAlertTime) < STARTUP_ALERT_COOLDOWN) return;
 
   const template = getStartupEmailTemplate(dgName, values);
