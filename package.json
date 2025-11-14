@@ -1,7 +1,7 @@
 {
   "name": "dg-monitoring-system",
   "version": "2.0.0",
-  "description": "Advanced DG Monitoring System with Analytics and Excel Export",
+  "description": "DG Monitoring System with Modbus RTU, consumption tracking, and email alerts",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,26 +9,23 @@
   },
   "keywords": [
     "modbus",
-    "diesel-generator",
+    "diesel",
     "monitoring",
-    "analytics"
+    "dg"
   ],
-  "author": "Your Name",
-  "license": "MIT",
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "compression": "^1.8.1",
+    "compression": "^1.7.4",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "exceljs": "^4.4.0",
-    "express": "^4.21.2",
-    "modbus-serial": "^8.0.23",
-    "mongoose": "^8.19.3",
-    "nodemailer": "^6.10.1"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "modbus-serial": "^8.0.13",
+    "mongoose": "^8.0.3",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.7"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
-  },
-  "engines": {
-    "node": ">=16.0.0"
+    "nodemon": "^3.0.2"
   }
 }

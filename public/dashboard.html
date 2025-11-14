@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DG Consumption Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+  }
+  
+  * { box-sizing: border-box; }
+  
+  body {
+    margin: 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+  
+  .container { max-width: 1600px; margin: 0 auto; }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    flex-wrap: wrap;
+    gap: 15px;
+  }
+  
+  h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    background: linear-gradient(90deg, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .back-btn {
+    padding: 10px 20px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.3s;
+  }
+  
+  .back-btn:hover {
+    background: #1e40af;
+    transform: translateY(-2px);
+  }
+  
+  .filters {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+  }
+  
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  
+  input, select, button {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+  }
+  
+  button {
+    cursor: pointer;
+    transition: all 0.3s;
+    border: none;
+    font-weight: 600;
+  }
+  
+  .btn-primary {
+    background: var(--primary);
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background: #1e40af;
+  }
+  
+  .btn-success {
+    background: var(--success);
+    color: white;
+  }
+  
+  .btn-success:hover {
+    background: #059669;
+  }
+  
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+  }
+  
+  .stat-card {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+  }
+  
+  .stat-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+  }
+  
+  .stat-unit {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 5px;
+  }
+  
+  .chart-container {
+    background: var(--bg-secondary);
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    position: relative;
+    height: 400px;
+  }
+  
+  .chart-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+  }
+  
+  .export-section {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .export-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .filters {
+      grid-template-columns: 1fr;
+    }
+    
+    .chart-container {
+      height: 300px;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 id="page-title">⚡ DG Consumption Dashboard</h1>
+      <a href="/" class="back-btn">← Back to Main</a>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group">
+        <label>Date Range</label>
+        <input type="date" id="start-date" />
+      </div>
+      <div class="filter-group">
+        <label>To</label>
+        <input type="date" id="end-date" />
+      </div>
+      <div class="filter-group">
+        <label>Quick Select</label>
+        <select id="quick-select">
+          <option value="">Custom</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="week">Last 7 Days</option>
+          <option value="month">Last 30 Days</option>
+        </select>
+      </div>
+      <div class="filter-group" style="justify-content: flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn-primary" onclick="loadData()">Apply Filters</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Consumption</div>
+        <div class="stat-value" id="total-consumption">--</div>
+        <div class="stat-unit">Liters</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Running Hours</div>
+        <div class="stat-value" id="running-hours">--</div>
+        <div class="stat-unit">Hours</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Current Level</div>
+        <div class="stat-value" id="current-level">--</div>
+        <div class="stat-unit">Liters</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Consumption</div>
+        <div class="stat-value" id="avg-consumption">--</div>
+        <div class="stat-unit">L/hr</div>
+      </div>
+    </div>
+
+    <div class="export-section">
+      <h3 style="margin-top:0;">📊 Export Data</h3>
+      <div class="export-buttons">
+        <button class="btn-success" onclick="exportConsumption()">Export Consumption CSV</button>
+        <button class="btn-success" onclick="exportElectrical()">Export Electrical CSV</button>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Hourly Diesel Consumption</div>
+      <canvas id="consumptionChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Diesel Level Over Time</div>
+      <canvas id="levelChart"></canvas>
+    </div>
+
+    <div id="loading" class="loading" style="display:none;">
+      Loading data...
+    </div>
+  </div>
+
+  <script>
+    let consumptionChart, levelChart;
+    const DG = window.location.pathname.split('/').pop() || 'dg1';
+
+    // Initialize page
+    document.getElementById('page-title').textContent = 
+      `⚡ ${DG.toUpperCase().replace('DG', 'DG-')} Consumption Dashboard`;
+
+    // Set default date (today)
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('end-date').value = today;
+    document.getElementById('start-date').value = today;
+
+    // Quick select handler
+    document.getElementById('quick-select').addEventListener('change', function() {
+      const value = this.value;
+      const endDate = new Date();
+      let startDate = new Date();
+
+      switch(value) {
+        case 'today':
+          startDate = new Date();
+          break;
+        case 'yesterday':
+          startDate = new Date(endDate.getTime() - 24*60*60*1000);
+          endDate.setTime(endDate.getTime() - 24*60*60*1000);
+          break;
+        case 'week':
+          startDate = new Date(endDate.getTime() - 7*24*60*60*1000);
+          break;
+        case 'month':
+          startDate = new Date(endDate.getTime() - 30*24*60*60*1000);
+          break;
+      }
+
+      document.getElementById('start-date').value = startDate.toISOString().split('T')[0];
+      document.getElementById('end-date').value = endDate.toISOString().split('T')[0];
+    });
+
+    async function loadData() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+
+      if (!startDate || !endDate) {
+        alert('Please select date range');
+        return;
+      }
+
+      document.getElementById('loading').style.display = 'block';
+
+      try {
+        const response = await fetch(`/api/consumption?dg=${DG}&startDate=${startDate}&endDate=${endDate}`);
+        const result = await response.json();
+
+        if (result.success) {
+          updateCharts(result.data);
+          updateStats(result.data);
+        } else {
+          console.error('Failed to load data');
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function updateStats(data) {
+      const totalConsumption = data.reduce((sum, r) => sum + (r.consumption || 0), 0);
+      const runningCount = data.filter(r => r.isRunning).length;
+      const runningHours = runningCount * 0.5;
+      const currentLevel = data.length > 0 ? data[data.length - 1].level : 0;
+      const avgConsumption = runningHours > 0 ? totalConsumption / runningHours : 0;
+
+      document.getElementById('total-consumption').textContent = totalConsumption.toFixed(1);
+      document.getElementById('running-hours').textContent = runningHours.toFixed(1);
+      document.getElementById('current-level').textContent = currentLevel.toFixed(0);
+      document.getElementById('avg-consumption').textContent = avgConsumption.toFixed(2);
+    }
+
+    function updateCharts(data) {
+      const labels = data.map(r => {
+        const d = new Date(r.timestamp);
+        return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      });
+
+      const consumptionData = data.map(r => r.consumption || 0);
+      const levelData = data.map(r => r.level || 0);
+
+      // Consumption chart
+      if (consumptionChart) consumptionChart.destroy();
+      const ctx1 = document.getElementById('consumptionChart').getContext('2d');
+      consumptionChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Consumption (L)',
+            data: consumptionData,
+            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+            borderColor: 'rgba(239, 68, 68, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#f1f5f9' } }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+            }
+          }
+        }
+      });
+
+      // Level chart
+      if (levelChart) levelChart.destroy();
+      const ctx2 = document.getElementById('levelChart').getContext('2d');
+      levelChart = new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Diesel Level (L)',
+            data: levelData,
+            borderColor: 'rgba(16, 185, 129, 1)',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#f1f5f9' } }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+            }
+          }
+        }
+      });
+    }
+
+    function exportConsumption() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      window.location.href = `/api/export/consumption?dg=${DG}&startDate=${startDate}&endDate=${endDate}`;
+    }
+
+    function exportElectrical() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      window.location.href = `/api/export/electrical/${DG}?startDate=${startDate}&endDate=${endDate}`;
+    }
+
+    // Load initial data
+    loadData();
+  </script>
+</body>
+</html>
