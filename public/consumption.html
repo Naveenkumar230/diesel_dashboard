@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DG Consumption Details</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 15px;
+  }
+  
+  .container { max-width: 1600px; margin: 0 auto; }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    flex-wrap: wrap;
+    gap: 15px;
+  }
+  
+  .header-left h1 {
+    font-size: 1.8rem;
+    background: linear-gradient(90deg, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 5px;
+  }
+  
+  .header-left .subtitle {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+  
+  .header-right {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 0.95rem;
+  }
+  
+  .btn-primary {
+    background: var(--primary);
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background: #1e40af;
+    transform: translateY(-2px);
+  }
+  
+  .btn-success {
+    background: var(--success);
+    color: white;
+  }
+  
+  .btn-success:hover {
+    background: #059669;
+    transform: translateY(-2px);
+  }
+  
+  .btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+  
+  .btn-secondary:hover {
+    background: #475569;
+  }
+  
+  .filters {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+  }
+  
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  
+  input, select {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+  }
+  
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+  }
+  
+  .stat-card {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    border-top: 3px solid var(--primary);
+  }
+  
+  .stat-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .stat-value {
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-bottom: 5px;
+  }
+  
+  .stat-unit {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  
+  .chart-section {
+    background: var(--bg-secondary);
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .chart-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+    border-left: 4px solid var(--primary);
+    padding-left: 15px;
+  }
+  
+  .chart-container {
+    position: relative;
+    height: 400px;
+  }
+  
+  .running-hours-section {
+    background: var(--bg-secondary);
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  
+  .timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    border-left: 4px solid var(--success);
+  }
+  
+  .timeline-item.stopped {
+    border-left-color: var(--danger);
+  }
+  
+  .timeline-time {
+    font-weight: 700;
+    min-width: 120px;
+    font-size: 0.95rem;
+  }
+  
+  .timeline-status {
+    padding: 5px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  
+  .timeline-status.running {
+    background: var(--success);
+    color: white;
+  }
+  
+  .timeline-status.stopped {
+    background: var(--danger);
+    color: white;
+  }
+  
+  .timeline-consumption {
+    margin-left: auto;
+    font-weight: 700;
+    color: var(--danger);
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 60px;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+  }
+  
+  .empty-state {
+    text-align: center;
+    padding: 60px;
+    color: var(--text-muted);
+  }
+  
+  .empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    opacity: 0.5;
+  }
+
+  @media (max-width: 768px) {
+    .header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .header-right {
+      width: 100%;
+      flex-direction: column;
+    }
+    
+    .btn {
+      width: 100%;
+      text-align: center;
+    }
+    
+    .chart-container {
+      height: 300px;
+    }
+    
+    .timeline-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .timeline-consumption {
+      margin-left: 0;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-left">
+        <h1 id="page-title">📊 DG Consumption Details</h1>
+        <div class="subtitle" id="date-range">Loading...</div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-success" onclick="exportToExcel()">📥 Download Excel</button>
+        <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group">
+        <label>Select Date</label>
+        <input type="date" id="filter-date" />
+      </div>
+      <div class="filter-group">
+        <label>Quick Select</label>
+        <select id="quick-select">
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="custom">Custom Date</option>
+        </select>
+      </div>
+      <div class="filter-group" style="justify-content: flex-end;">
+        <label>&nbsp;</label>
+        <button class="btn btn-primary" onclick="loadData()">Apply Filter</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Start Level (7:00 AM)</div>
+        <div class="stat-value" id="start-level">--</div>
+        <div class="stat-unit">Liters</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">End Level (8:00 PM)</div>
+        <div class="stat-value" id="end-level">--</div>
+        <div class="stat-unit">Liters</div>
+      </div>
+      
+      <div class="stat-card" style="border-top-color: var(--danger);">
+        <div class="stat-label">Total Consumption</div>
+        <div class="stat-value" id="total-consumption" style="color: var(--danger);">--</div>
+        <div class="stat-unit">Liters</div>
+      </div>
+      
+      <div class="stat-card" style="border-top-color: var(--success);">
+        <div class="stat-label">Running Hours</div>
+        <div class="stat-value" id="running-hours" style="color: var(--success);">--</div>
+        <div class="stat-unit">Hours</div>
+      </div>
+      
+      <div class="stat-card" style="border-top-color: var(--warning);">
+        <div class="stat-label">Avg Consumption</div>
+        <div class="stat-value" id="avg-consumption" style="color: var(--warning);">--</div>
+        <div class="stat-unit">L/Hour</div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-title">📈 Hourly Diesel Consumption (7 AM - 8 PM)</div>
+      <div class="chart-container">
+        <canvas id="consumptionChart"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-title">📉 Diesel Level Over Time</div>
+      <div class="chart-container">
+        <canvas id="levelChart"></canvas>
+      </div>
+    </div>
+
+    <div class="running-hours-section">
+      <div class="chart-title">⏱️ Running Timeline (Every 30 Minutes)</div>
+      <div id="timeline-container">
+        <!-- Timeline items will be inserted here -->
+      </div>
+    </div>
+
+    <div id="loading" class="loading" style="display:none;">
+      ⏳ Loading data...
+    </div>
+
+    <div id="empty-state" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">📭</div>
+      <h2>No Data Available</h2>
+      <p>No consumption data found for the selected date.</p>
+      <p style="margin-top:10px; color: var(--text-muted); font-size: 0.9rem;">
+        Data is recorded every 30 minutes from 7:00 AM to 8:00 PM.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    let consumptionChart, levelChart;
+    let currentData = [];
+    let dgType = 'dg1';
+
+    // Get DG type from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    dgType = urlParams.get('dg') || 'dg1';
+
+    // Set page title
+    const titles = {
+      'dg1': '📊 DG-1 Consumption Details',
+      'dg2': '📊 DG-2 Consumption Details',
+      'dg3': '📊 DG-3 Consumption Details',
+      'total': '📊 Total Diesel Consumption Details'
+    };
+    document.getElementById('page-title').textContent = titles[dgType] || titles['dg1'];
+
+    // Initialize date
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('filter-date').value = today;
+
+    // Quick select handler
+    document.getElementById('quick-select').addEventListener('change', function() {
+      const value = this.value;
+      const dateInput = document.getElementById('filter-date');
+      
+      if (value === 'today') {
+        dateInput.value = new Date().toISOString().split('T')[0];
+      } else if (value === 'yesterday') {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        dateInput.value = yesterday.toISOString().split('T')[0];
+      }
+    });
+
+    async function loadData() {
+      const date = document.getElementById('filter-date').value;
+      
+      if (!date) {
+        alert('Please select a date');
+        return;
+      }
+
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('empty-state').style.display = 'none';
+
+      try {
+        let url;
+        if (dgType === 'total') {
+          url = `/api/consumption?date=${date}`;
+        } else {
+          url = `/api/consumption?dg=${dgType}&date=${date}`;
+        }
+
+        const response = await fetch(url);
+        const result = await response.json();
+
+        if (result.success && result.data.length > 0) {
+          currentData = result.data;
+          processData(result.data, date);
+          document.getElementById('empty-state').style.display = 'none';
+        } else {
+          showEmptyState();
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+        showEmptyState();
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function showEmptyState() {
+      document.getElementById('empty-state').style.display = 'block';
+      clearCharts();
+      clearStats();
+      document.getElementById('timeline-container').innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No timeline data available</p>';
+    }
+
+    function clearCharts() {
+      if (consumptionChart) consumptionChart.destroy();
+      if (levelChart) levelChart.destroy();
+    }
+
+    function clearStats() {
+      document.getElementById('start-level').textContent = '--';
+      document.getElementById('end-level').textContent = '--';
+      document.getElementById('total-consumption').textContent = '--';
+      document.getElementById('running-hours').textContent = '--';
+      document.getElementById('avg-consumption').textContent = '--';
+    }
+
+    function processData(data, date) {
+      // Update date range
+      document.getElementById('date-range').textContent = 
+        `Data from ${new Date(date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+
+      // Calculate statistics
+      let startLevel, endLevel, totalConsumption, runningHours;
+
+      if (dgType === 'total') {
+        startLevel = data[0]?.total?.level || 0;
+        endLevel = data[data.length - 1]?.total?.level || 0;
+        totalConsumption = data.reduce((sum, r) => sum + (r.total?.consumption || 0), 0);
+        
+        // Count running intervals for any DG
+        runningHours = data.filter(r => 
+          (r.dg1?.isRunning || r.dg2?.isRunning || r.dg3?.isRunning)
+        ).length * 0.5;
+      } else {
+        startLevel = data[0]?.level || 0;
+        endLevel = data[data.length - 1]?.level || 0;
+        totalConsumption = data.reduce((sum, r) => sum + (r.consumption || 0), 0);
+        runningHours = data.filter(r => r.isRunning).length * 0.5;
+      }
+
+      const avgConsumption = runningHours > 0 ? (totalConsumption / runningHours) : 0;
+
+      // Update stats
+      document.getElementById('start-level').textContent = startLevel.toFixed(0);
+      document.getElementById('end-level').textContent = endLevel.toFixed(0);
+      document.getElementById('total-consumption').textContent = totalConsumption.toFixed(1);
+      document.getElementById('running-hours').textContent = runningHours.toFixed(1);
+      document.getElementById('avg-consumption').textContent = avgConsumption.toFixed(2);
+
+      // Update charts
+      updateCharts(data);
+      
+      // Update timeline
+      updateTimeline(data);
+    }
+
+    function updateCharts(data) {
+      const labels = data.map(r => {
+        const d = new Date(r.timestamp);
+        return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      });
+
+      let consumptionData, levelData;
+
+      if (dgType === 'total') {
+        consumptionData = data.map(r => r.total?.consumption || 0);
+        levelData = data.map(r => r.total?.level || 0);
+      } else {
+        consumptionData = data.map(r => r.consumption || 0);
+        levelData = data.map(r => r.level || 0);
+      }
+
+      // Consumption chart
+      if (consumptionChart) consumptionChart.destroy();
+      const ctx1 = document.getElementById('consumptionChart').getContext('2d');
+      consumptionChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Consumption (L)',
+            data: consumptionData,
+            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+            borderColor: 'rgba(239, 68, 68, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { 
+              labels: { color: '#f1f5f9', font: { size: 14 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return 'Consumption: ' + context.parsed.y.toFixed(1) + ' L';
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#cbd5e1', font: { size: 12 } },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' },
+              title: { display: true, text: 'Liters', color: '#cbd5e1' }
+            },
+            x: {
+              ticks: { color: '#cbd5e1', font: { size: 11 }, maxRotation: 45, minRotation: 45 },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+            }
+          }
+        }
+      });
+
+      // Level chart
+      if (levelChart) levelChart.destroy();
+      const ctx2 = document.getElementById('levelChart').getContext('2d');
+      levelChart = new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Diesel Level (L)',
+            data: levelData,
+            borderColor: 'rgba(16, 185, 129, 1)',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { 
+              labels: { color: '#f1f5f9', font: { size: 14 } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return 'Level: ' + context.parsed.y.toFixed(0) + ' L';
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#cbd5e1', font: { size: 12 } },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' },
+              title: { display: true, text: 'Liters', color: '#cbd5e1' }
+            },
+            x: {
+              ticks: { color: '#cbd5e1', font: { size: 11 }, maxRotation: 45, minRotation: 45 },
+              grid: { color: 'rgba(203, 213, 225, 0.1)' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateTimeline(data) {
+      const container = document.getElementById('timeline-container');
+      container.innerHTML = '';
+
+      if (data.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No timeline data available</p>';
+        return;
+      }
+
+      data.forEach(record => {
+        const time = new Date(record.timestamp);
+        const timeStr = time.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        
+        let isRunning, consumption;
+        
+        if (dgType === 'total') {
+          isRunning = record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning;
+          consumption = record.total?.consumption || 0;
+        } else {
+          isRunning = record.isRunning;
+          consumption = record.consumption || 0;
+        }
+
+        const item = document.createElement('div');
+        item.className = `timeline-item ${isRunning ? '' : 'stopped'}`;
+        item.innerHTML = `
+          <div class="timeline-time">${timeStr}</div>
+          <div class="timeline-status ${isRunning ? 'running' : 'stopped'}">
+            ${isRunning ? '🟢 Running' : '🔴 Stopped'}
+          </div>
+          <div class="timeline-consumption">
+            ${consumption.toFixed(1)} L consumed
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function exportToExcel() {
+      if (currentData.length === 0) {
+        alert('No data to export. Please load data first.');
+        return;
+      }
+
+      const date = document.getElementById('filter-date').value;
+      
+      // Generate CSV
+      let csv = '';
+      
+      if (dgType === 'total') {
+        csv = 'Time,DG1 Level (L),DG1 Consumption (L),DG1 Running,DG2 Level (L),DG2 Consumption (L),DG2 Running,DG3 Level (L),DG3 Consumption (L),DG3 Running,Total Level (L),Total Consumption (L)\n';
+        
+        currentData.forEach(r => {
+          const time = new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+          csv += `${time},${r.dg1?.level || 0},${r.dg1?.consumption || 0},${r.dg1?.isRunning ? 'Yes' : 'No'},${r.dg2?.level || 0},${r.dg2?.consumption || 0},${r.dg2?.isRunning ? 'Yes' : 'No'},${r.dg3?.level || 0},${r.dg3?.consumption || 0},${r.dg3?.isRunning ? 'Yes' : 'No'},${r.total?.level || 0},${r.total?.consumption || 0}\n`;
+        });
+      } else {
+        csv = 'Time,Diesel Level (L),Consumption (L),Is Running\n';
+        
+        currentData.forEach(r => {
+          const time = new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+          csv += `${time},${r.level || 0},${r.consumption || 0},${r.isRunning ? 'Yes' : 'No'}\n`;
+        });
+      }
+
+      // Download CSV
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${dgType}_consumption_${date}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Load initial data
+    loadData();
+  </script>
+</body>
+</html>

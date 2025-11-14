@@ -51,6 +51,9 @@ router.get('/consumption', async (req, res) => {
         consumption: r[dg].consumption,
         isRunning: r[dg].isRunning
       }));
+    } else if (dg === 'total') {
+      // Return full records for total view
+      filteredData = records;
     }
 
     res.json({
