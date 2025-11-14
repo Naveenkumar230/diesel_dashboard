@@ -6,9 +6,7 @@ const nodemailer = require('nodemailer');
 
 // Configuration
 const ALERT_COOLDOWN = parseInt(process.env.ALERT_COOLDOWN) || 1800000; // 30 mins
-// --- UPDATED: Cooldown set to 0 to send email on EVERY startup ---
-const STARTUP_ALERT_COOLDOWN = 0; // Was 600000 (10 mins)
-// ---
+const STARTUP_ALERT_COOLDOWN = 0; // Send email on every startup
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const ALERT_RECIPIENTS = process.env.ALERT_RECIPIENTS || '';
 
@@ -103,7 +101,6 @@ function getDailySummaryTemplate(summary, previousDay) {
     const consumption = data.totalConsumption.toFixed(1);
     const change = prevData ? (data.endLevel - prevData.endLevel).toFixed(1) : 0;
     const changeColor = change < 0 ? '#ef4444' : '#10b981';
-    
     return `
       <tr>
         <td style="padding:12px;border:1px solid #e5e7eb;">DG-${dgNum}</td>
@@ -124,10 +121,8 @@ function getDailySummaryTemplate(summary, previousDay) {
           <h1 style="margin:0;">📊 Daily Diesel Consumption Report</h1>
           <p style="margin:5px 0 0 0;opacity:0.9;">${formattedDate}</p>
         </div>
-        
         <div style="padding:20px;background:#f9fafb;color:#333;">
           <h2 style="color:#2563eb;margin-top:0;">Today's Summary</h2>
-          
           <table style="width:100%;border-collapse:collapse;margin-bottom:20px;background:#fff;">
             <thead>
               <tr style="background:#dbeafe;">
@@ -153,25 +148,6 @@ function getDailySummaryTemplate(summary, previousDay) {
               </tr>
             </tbody>
           </table>
-
-          ${summary.dg1.endLevel <= CRITICAL_LEVEL || summary.dg2.endLevel <= CRITICAL_LEVEL || summary.dg3.endLevel <= CRITICAL_LEVEL ? `
-          <div style="background:#fee2e2;border-left:4px solid #ef4444;padding:15px;margin-top:20px;border-radius:4px;">
-            <h3 style="color:#dc2626;margin:0 0 10px 0;">⚠️ Critical Levels Detected</h3>
-            <p style="margin:0;color:#991b1b;">
-              ${[
-                summary.dg1.endLevel <= CRITICAL_LEVEL ? `DG-1: ${summary.dg1.endLevel} L` : null,
-                summary.dg2.endLevel <= CRITICAL_LEVEL ? `DG-2: ${summary.dg2.endLevel} L` : null,
-                summary.dg3.endLevel <= CRITICAL_LEVEL ? `DG-3: ${summary.dg3.endLevel} L` : null
-              ].filter(Boolean).join(' | ')}
-            </p>
-            <p style="margin:10px 0 0 0;color:#991b1b;font-weight:bold;">Immediate refueling required!</p>
-          </div>
-          ` : ''}
-
-          <p style="font-size:14px;color:#6b7280;margin-top:25px;">
-            Report generated at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-          </p>
-          
           <a href="${getDashboardUrl()}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">
             View Live Dashboard
           </a>
@@ -182,52 +158,91 @@ function getDailySummaryTemplate(summary, previousDay) {
 }
 
 // --- UPDATED: Startup Email Template ---
-// Now includes all 12 key parameters in a simple list.
-function getStartupEmailTemplate(dgName, values) {
+// Now shows all 4 DGs in separate tables
+
+/**
+ * Helper function to build an HTML table for a single DG's data
+ * @param {string} dgName - e.g., "DG-1"
+ * @param {object} values - The electrical data object for that DG
+ * @returns {string} - An HTML string
+ */
+function generateDGHtmlBlock(dgName, values) {
+  // Helper to format numbers
+  const f = (val, dec = 1) => (val || 0).toFixed(dec);
+  const isRunning = (values.activePower || 0) > 5;
+  const statusColor = isRunning ? '#00875a' : '#de350b';
+  const statusText = isRunning ? 'RUNNING' : 'OFF';
+
+  return `
+    <h3 style="color: #172b4d; border-bottom: 2px solid #dfe1e6; padding-bottom: 5px;">
+      ${dgName} Status: <span style="color: ${statusColor};">${statusText}</span>
+    </h3>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px;">
+      <tbody>
+        <tr>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Active Power (kW)</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.activePower, 1)}</b></td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Frequency (Hz)</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.frequency, 2)}</b></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Power Factor</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.powerFactor, 2)}</b></td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Reactive Power (kVAR)</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.reactivePower, 1)}</b></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Voltage R-Y-B (V)</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;" colspan="3">
+            <b>${f(values.voltageR)} / ${f(values.voltageY)} / ${f(values.voltageB)}</b>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Current R-Y-B (A)</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;" colspan="3">
+            <b>${f(values.currentR)} / ${f(values.currentY)} / ${f(values.currentB)}</b>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Total Energy (kWh)</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.energyMeter, 0)}</b></td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;">Total Run Hours</td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.runningHours, 1)}</b></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+/**
+ * Main template function
+ * @param {string} triggeredDG - The DG that triggered the alert (e.g., "DG-1")
+ * @param {object} allDGValues - The object containing { dg1: {...}, dg2: {...}, ... }
+ */
+function getStartupEmailTemplate(triggeredDG, allDGValues) {
   const timestamp = new Date().toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
-    timeStyle: 'long'
+    timeStyle: 'long',
+    dateStyle: 'short'
   });
 
-  const f = (val, dec = 1) => (val || 0).toFixed(dec);
-
   return {
-    subject: `🟢 NOTIFICATION: ${dgName} Has Started Running`,
+    subject: `🟢 NOTIFICATION: ${triggeredDG} Has Started Running`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
         <div style="background:linear-gradient(135deg,#10b981,#34d399);color:#fff;padding:20px;border-radius:8px 8px 0 0;">
           <h1 style="margin:0;">🟢 DG STARTUP NOTIFICATION</h1>
-          <h2 style="margin:10px 0 0 0;">${dgName}</h2>
+          <h2 style="margin:10px 0 0 0;">${triggeredDG} has started.</h2>
         </div>
         <div style="padding:20px;background:#f9fafb;color:#333;">
-          <h3 style="color:#059669;">Generator is now running. Initial parameters:</h3>
-          <ul style="list-style:none;padding:0;font-size:14px;">
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Active Power: <b>${f(values.activePower, 1)} kW</b>
-            </li>
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Frequency: <b>${f(values.frequency, 2)} Hz</b>
-            </li>
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Power Factor: <b>${f(values.powerFactor, 2)}</b>
-            </li>
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Voltage R/Y/B: <b>${f(values.voltageR)}V / ${f(values.voltageY)}V / ${f(values.voltageB)}V</b>
-            </li>
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Current R/Y/B: <b>${f(values.currentR)}A / ${f(values.currentY)}A / ${f(values.currentB)}A</b>
-            </li>
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Reactive Power: <b>${f(values.reactivePower, 1)} kVAR</b>
-            </li>
-            <li style="padding:8px;border-bottom:1px solid #eee;">
-              Total Energy: <b>${f(values.energyMeter, 0)} kWh</b>
-            </li>
-            <li style="padding:8px;">
-              Total Run Hours: <b>${f(values.runningHours, 1)} hrs</b>
-            </li>
-          </ul>
-          <p style="font-size:14px;margin-top:20px;">Event Time: ${timestamp}</p>
+          <p style="font-size:14px;">Event Time: ${timestamp}</p>
+          <p style="font-size:16px;">Here is a full system snapshot:</p>
+          
+          ${generateDGHtmlBlock('DG-1', allDGValues.dg1 || {})}
+          ${generateDGHtmlBlock('DG-2', allDGValues.dg2 || {})}
+          ${generateDGHtmlBlock('DG-3', allDGValues.dg3 || {})}
+          ${generateDGHtmlBlock('DG-4', allDGValues.dg4 || {})}
+          
           <a href="${getDashboardUrl()}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">
             View Live Dashboard
           </a>
@@ -284,15 +299,16 @@ async function sendDailySummary(summary, previousDay = null) {
   }
 }
 
-async function sendStartupAlert(dgName, values) {
+// --- UPDATED: sendStartupAlert ---
+// Now expects allDGValues instead of just one
+async function sendStartupAlert(dgName, allDGValues) {
   const dgKey = dgName.toLowerCase().replace('-', '');
   const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
   const now = Date.now();
 
-  // This check will now pass every time because STARTUP_ALERT_COOLDOWN is 0
   if ((now - lastAlertTime) < STARTUP_ALERT_COOLDOWN) return;
 
-  const template = getStartupEmailTemplate(dgName, values);
+  const template = getStartupEmailTemplate(dgName, allDGValues);
   const sent = await sendEmail(ALERT_RECIPIENTS, template.subject, template.html);
 
   if (sent) {
@@ -300,6 +316,7 @@ async function sendStartupAlert(dgName, values) {
     console.log(`🟢 Startup alert email sent for ${dgName}`);
   }
 }
+// --- END UPDATE ---
 
 module.exports = {
   initializeEmail,

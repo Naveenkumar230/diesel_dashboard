@@ -1,11 +1,14 @@
 /**
  * PLC Service - Modbus RTU Communication
- * FINAL, ROBUST VERSION
+ * FINAL, ROBUST VERSION (v4)
  *
  * This version includes:
- * 1. Smart fallback logic with prioritized 'last known good' registers.
- * 2. 'Zero-Out' logic: If Active Power is 0, all other parameters are zeroed out.
- * 3. Prioritized Active Power registers based on vendor notes.
+ * 1. A REBUILT register map based on your handwritten notes and test logs.
+ * 2. Implemented fallbacks for DG1, DG2, and DG4 using your notes (D416, D418, etc.).
+ * 3. A new experimental map for DG3 to find the missing '0' values.
+ * 4. Corrected scaling for DG3's Power Factor.
+ * 5. 'Zero-Out' logic (if kW is 0, all else is 0).
+ * 6. Startup check that sends all 4 DG parameters in the email.
  */
 
 const ModbusRTU = require('modbus-serial');
@@ -41,14 +44,8 @@ let systemData = {
   electrical: { dg1: {}, dg2: {}, dg3: {}, dg4: {} }
 };
 
-// --- THIS IS THE NEW INTELLIGENCE ---
-// 1. 'lastGoodRegister' stores the last address that worked.
-// 2. 'workingRegisters' is for debugging (we can ignore for now).
-// 3. 'lastGoodValues' stores the last *running* values to prevent false "0" readings.
 let lastGoodRegister = { dg1: {}, dg2: {}, dg3: {}, dg4: {} };
-let workingRegisters = {};
 let lastGoodValues = { dg1: {}, dg2: {}, dg3: {}, dg4: {} };
-// --- END NEW ---
 
 // --- DIESEL REGISTERS (Confirmed) ---
 const dgRegisters = {
@@ -59,71 +56,81 @@ const dgRegisters = {
 
 const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
-// --- UPDATED ELECTRICAL REGISTERS WITH FALLBACKS ---
-// The *known* addresses from your notes are placed FIRST in the 'activePower' list.
+// ---
+//
+// --- THE FINAL CORRECTED ELECTRICAL MAP (v4) ---
+// Based on all vendor documents, notes, and test logs.
+//
+// ---
 const electricalCandidates = {
-  dg1: { // DG1: We know Active Power is 4212 (D116)
-    activePower:   [C(4212), C(5625), C(4232), C(4252), C(4216), C(4214), C(4213)],
-    voltageR:      [C(4196), C(4197), C(4200)],
-    voltageY:      [C(4198), C(4201), C(4202)],
-    voltageB:      [C(4200), C(4203), C(4204)],
-    currentR:      [C(4202), C(4205), C(4206)],
-    currentY:      [C(4204), C(4207), C(4208)],
-    currentB:      [C(4206), C(4209), C(4210)],
-    frequency:     [C(4208, 0.01), C(4211, 0.01), C(4212, 0.01)],
-    powerFactor:   [C(4210, 0.01), C(4213, 0.01), C(4214, 0.01)],
-    reactivePower: [C(4214), C(4215), C(4216)],
-    energyMeter:   [C(4216, 1), C(4217, 1), C(4218, 1)],
-    runningHours:  [C(4218, 1), C(4219, 1), C(4220, 1)],
-    windingTemp:   [C(4232, 1), C(4233, 1), C(4234, 1)] // Your note mentioned D416 (4232)
+  dg1: { // DG1: Based on D100 block (4196) + Your Notes as Fallbacks
+    activePower:   [C(4212), C(5625)],        // D116=4212 (from note) is PRIMARY
+    voltageR:      [C(4196), C(4197)],
+    voltageY:      [C(4198), C(4199)],
+    voltageB:      [C(4200), C(4201)],
+    currentR:      [C(4202), C(4203)],
+    currentY:      [C(4204), C(4205)],
+    currentB:      [C(4206), C(4207)],
+    frequency:     [C(4208, 0.01), C(4209, 0.01)],
+    powerFactor:   [C(4210, 0.01), C(4211, 0.01)],
+    reactivePower: [C(4214), C(4215)],
+    energyMeter:   [C(4216, 1), C(4217, 1)],
+    runningHours:  [C(4218, 1), C(4219, 1)],
+    windingTemp:   [C(4232, 1), C(4512, 1)] // D136=4232 (note) PRIMARY, D416=4512 (note) FALLBACK
   },
-  dg2: { // DG2: We know Active Power is 4252 (D156 or D136 in your note)
-    activePower:   [C(4252), C(5665), C(4232), C(4212), C(4216), C(4250), C(4248)],
-    voltageR:      [C(4236), C(4237), C(4240)],
-    voltageY:      [C(4238), C(4241), C(4242)],
-    voltageB:      [C(4240), C(4243), C(4244)],
-    currentR:      [C(4242), C(4245), C(4246)],
-    currentY:      [C(4244), C(4247), C(4248)],
-    currentB:      [C(4246), C(4249), C(4250)],
-    frequency:     [C(4248, 0.01), C(4251, 0.01), C(4252, 0.01)],
-    powerFactor:   [C(4250, 0.01), C(4253, 0.01), C(4254, 0.01)],
-    reactivePower: [C(4254), C(4255), C(4256)],
-    energyMeter:   [C(4256, 1), C(4257, 1), C(4258, 1)],
-    runningHours:  [C(4258, 1), C(4259, 1), C(4260, 1)],
-    windingTemp:   [C(4272, 1), C(4273, 1), C(4274, 1)]
+  dg2: { // DG2: Based on D140 block (4236) + Your Notes as Fallbacks
+    activePower:   [C(4252), C(5665)],        // D156=4252 (from note) is PRIMARY
+    voltageR:      [C(4236), C(4237)],
+    voltageY:      [C(4238), C(4239)],
+    voltageB:      [C(4240), C(4241)],
+    currentR:      [C(4242), C(4243)],
+    currentY:      [C(4244), C(4245)],
+    currentB:      [C(4246), C(4247)],
+    frequency:     [C(4248, 0.01), C(4249, 0.01)],
+    powerFactor:   [C(4250, 0.01), C(4251, 0.01)],
+    reactivePower: [C(4254), C(4255)],
+    energyMeter:   [C(4256, 1), C(4257, 1)],
+    runningHours:  [C(4258, 1), C(4259, 1)],
+    windingTemp:   [C(4272, 1), C(4514, 1)] // D418=4514 (from note) is FALLBACK
   },
-  dg3: { // DG3: We know Active Power is 4292 (D196)
-    activePower:   [C(4292)],
-    voltageR:      [C(4276)],
-    voltageY:      [C(4278)],
-    voltageB:      [C(4280)],
-    currentR:      [C(4282)],
-    currentY:      [C(4284)],
-    currentB:      [C(4286)],
-    frequency:     [C(4288, 0.01)],
-    powerFactor:   [C(4290, 0.01)],
-    reactivePower: [C(4294)],
-    energyMeter:   [C(4296, 1)],
-    runningHours:  [C(4298, 1)],
-    windingTemp:   [C(4312, 1)]
+  dg3: { // DG3: Your test showed D180 block (4276) is WRONG for V/I/Hz.
+         // We KNOW Active Power is 4292.
+         // We will GUESS the other params are in the *same D180 block* but shifted.
+    activePower:   [C(4292)],              // D196 - This is 100% CORRECT
+    reactivePower: [C(4294)],              // D197 - This is LIKELY (showed 399.10)
+    energyMeter:   [C(4296, 1)],           // D198 - This is LIKELY (showed 16.00)
+    runningHours:  [C(4298, 1)],           // D199 - This is LIKELY (showed 30.00)
+    powerFactor:   [C(4290, 0.0001)],      // D195 - SCALING FIXED (31.73 -> 0.3173)
+
+    // --- NEW GUESSES for the "0" values ---
+    // The old map was wrong. Let's try the addresses *right before* Active Power.
+    voltageR:      [C(4282), C(4276)], // Trying D186 first
+    voltageY:      [C(4284), C(4278)], // Trying D187 first
+    voltageB:      [C(4286), C(4280)], // Trying D188 first
+    currentR:      [C(4276), C(4282)], // Trying D180 first
+    currentY:      [C(4278), C(4284)], // Trying D181 first
+    currentB:      [C(4280), C(4286)], // Trying D182 first
+    frequency:     [C(4288, 0.01)],     // D194 - This is still the most likely
+    windingTemp:   [C(4312, 1)],
   },
-  dg4: { // DG4: We know Active Power is 4332 (D236)
-    activePower:   [C(4332)],
-    voltageR:      [C(4316)],
-    voltageY:      [C(4318)],
-    voltageB:      [C(4320)],
-    currentR:      [C(4322)],
-    currentY:      [C(4324)],
-    currentB:      [C(4326)],
-    frequency:     [C(4328, 0.01)],
-    powerFactor:   [C(4330, 0.01)],
-    reactivePower: [C(4334)],
-    energyMeter:   [C(4336, 1)],
-    runningHours:  [C(4338, 1)],
-    windingTemp:   [C(4352, 1)]
+  dg4: { // DG4: Based on D220 block (4316) + Your Notes as Fallbacks
+    activePower:   [C(4332)],              // D236 - PRIMARY
+    voltageR:      [C(4316), C(4317)],
+    voltageY:      [C(4318), C(4319)],
+    voltageB:      [C(4320), C(4321)],
+    currentR:      [C(4322), C(4323)],
+    currentY:      [C(4324), C(4325)],
+    currentB:      [C(4326), C(4327)],
+    frequency:     [C(4328, 0.01), C(4329, 0.01)],
+    powerFactor:   [C(4330, 0.01), C(4331, 0.01)],
+    reactivePower: [C(4334), C(4335)],
+    energyMeter:   [C(4336, 1), C(4337, 1)],
+    runningHours:  [C(4338, 1), C(4339, 1)],
+    windingTemp:   [C(4352, 1), C(4516, 1)] // D420=4516 (from note) is FALLBACK
   }
 };
-// --- END OF UPDATED MAP ---
+// --- END OF MAP ---
+
 
 // Utilities
 const toSignedInt16 = (v) => (v > 32767 ? v - 65536 : v);
@@ -132,7 +139,7 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
 function isValidDieselReading(value) {
   const s = toSignedInt16(value);
   if (value === 65535 || value === 65534 || s === -1) return false;
-  return s >= 0 && s <= 600; // Assuming max 600L tank
+  return s >= 0 && s <= 600;
 }
 
 function isValidElectricalReading(value) {
@@ -154,30 +161,25 @@ async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
 // Read single diesel register
 async function readSingleRegister(registerConfig, dataKey) {
   const address = registerConfig.primary;
-  
   try {
     const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
     const rawValue = data?.data?.[0];
-    
     if (rawValue === undefined || !isValidDieselReading(rawValue)) {
       return systemData[dataKey] || 0;
     }
-
     const value = Math.max(0, toSignedInt16(rawValue));
     systemData[dataKey] = value;
     return value;
-
   } catch (err) {
     console.log(`[ERROR] Failed to read ${registerConfig.name} (D${address-4096})`);
     return systemData[dataKey] || 0;
   }
 }
 
-// --- RESTORED: Smart readParam function with fallback logic ---
+// Smart readParam function with fallback logic
 async function readParam(dgKey, param) {
   const candidates = electricalCandidates[dgKey][param];
   if (!candidates || candidates.length === 0) return 0;
-
   const tried = new Set();
   const order = [];
   
@@ -204,7 +206,7 @@ async function readParam(dgKey, param) {
         continue; // Try next candidate
       }
 
-      const scaled = Math.round(raw * (scaling ?? 0.1) * 100) / 100;
+      const scaled = Math.round(raw * (scaling ?? 0.1) * 10000) / 10000; // Increased precision
 
       // SUCCESS! Save this address as the 'last good' one for next time
       lastGoodRegister[dgKey][param] = { addr, scaling };
@@ -220,10 +222,8 @@ async function readParam(dgKey, param) {
   return lastGoodValues[dgKey]?.[param] || 0;
 }
 
-// --- NEW 'ZERO-OUT' LOGIC ---
-// This function creates an object full of zeros for a DG.
+// 'Zero-Out' logic
 function getZeroElectricalValues() {
-  // We must return all 12 keys so the dashboard doesn't show 'undefined'
   return {
     voltageR: 0, voltageY: 0, voltageB: 0,
     currentR: 0, currentY: 0, currentB: 0,
@@ -236,54 +236,49 @@ function getZeroElectricalValues() {
 // Read all electrical parameters for a DG
 async function readAllElectrical(dgKey) {
   const newValues = {};
-
-  // 1. Read Active Power FIRST
   const activePower = await readParam(dgKey, 'activePower');
   newValues['activePower'] = activePower;
 
-  // 2. Check if DG is running
   if (activePower > DG_RUNNING_THRESHOLD) {
     // --- DG IS RUNNING ---
-    // Proceed to read all other 11 parameters
     const regs = electricalCandidates[dgKey];
     for (const param of Object.keys(regs)) {
-      if (param === 'activePower') continue; // Already read
-      
+      if (param === 'activePower') continue;
       const value = await readParam(dgKey, param);
       newValues[param] = value;
-      await wait(READ_DELAY); // Wait between reads
+      await wait(READ_DELAY);
     }
-    
-    // Store these values as the last known *good* set
-    lastGoodValues[dgKey] = { ...newValues };
+    lastGoodValues[dgKey] = { ...newValues }; // Save this as the last known *running* state
     return newValues;
-
   } else {
     // --- DG IS STOPPED ---
-    // Return an object full of zeros for all parameters
-    // We also preserve the last known Energy and Running Hours
     const zeroValues = getZeroElectricalValues();
-    zeroValues.energyMeter = lastGoodValues[dgKey]?.energyMeter || 0;
-    zeroValues.runningHours = lastGoodValues[dgKey]?.runningHours || 0;
     
-    // Clear the last good *values* so we don't show stale data
-    lastGoodValues[dgKey] = { ...zeroValues };
+    // We must preserve the last known Energy and Running Hours
+    zeroValues.energyMeter = await readParam(dgKey, 'energyMeter');
+    zeroValues.runningHours = await readParam(dgKey, 'runningHours');
+
+    if (zeroValues.energyMeter === 0) {
+      zeroValues.energyMeter = lastGoodValues[dgKey]?.energyMeter || 0;
+    }
+    if (zeroValues.runningHours === 0) {
+      zeroValues.runningHours = lastGoodValues[dgKey]?.runningHours || 0;
+    }
+
+    lastGoodValues[dgKey] = { ...zeroValues }; // Save the "off" state
     return zeroValues;
   }
 }
-// --- END OF NEW LOGIC ---
 
 // Check for startup and send alert
-function checkStartup(dgKey, newValues) {
+function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   const activePower = newValues.activePower || 0;
   const isRunning = activePower > DG_RUNNING_THRESHOLD;
-
-  const prevValues = systemData.electrical[dgKey] || {};
-  const wasRunningBefore = (prevValues.activePower || 0) > DG_RUNNING_THRESHOLD;
+  const wasRunningBefore = (oldElectricalData[dgKey]?.activePower || 0) > DG_RUNNING_THRESHOLD;
 
   if (isRunning && !wasRunningBefore) {
     const dgName = dgKey.toUpperCase().replace('DG', 'DG-');
-    sendStartupAlert(dgName, newValues);
+    sendStartupAlert(dgName, allNewValues); 
     console.log(`✅ Startup detected for ${dgName}`);
   }
 }
@@ -314,14 +309,24 @@ async function readAllSystemData() {
 
     systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
 
-    // Read electrical parameters
+    // 1. Read all new electrical data
+    const allNewValues = {};
     for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
-      const newValues = await readAllElectrical(dgKey);
-      checkStartup(dgKey, newValues); // Check for startup
-      systemData.electrical[dgKey] = newValues; // Save the new values
+      allNewValues[dgKey] = await readAllElectrical(dgKey);
+    }
+    
+    // 2. Store the *old* state
+    const oldElectricalData = { ...systemData.electrical }; 
+    
+    // 3. Save new values to systemData
+    systemData.electrical = allNewValues; 
+    systemData.lastUpdate = new Date().toISOString();
+
+    // 4. Check for startups, comparing new vs. old
+    for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
+      checkStartup(dgKey, allNewValues[dgKey], oldElectricalData, allNewValues); 
     }
 
-    systemData.lastUpdate = new Date().toISOString();
     checkDieselLevels(systemData);
     errorCount = 0;
   } catch (err) {
@@ -352,7 +357,7 @@ function connectToPLC() {
       
       setTimeout(() => {
         readAllSystemData();
-        setInterval(readAllSystemData, 5000); // Loop every 5 seconds
+        setInterval(readAllSystemData, 5000);
       }, 2000);
     })
     .catch((err) => {
