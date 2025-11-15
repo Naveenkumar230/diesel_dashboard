@@ -157,8 +157,6 @@ function getDailySummaryTemplate(summary, previousDay) {
   };
 }
 
-// --- UPDATED: Startup Email Template ---
-// Now shows all 4 DGs in separate tables
 
 /**
  * Helper function to build an HTML table for a single DG's data
@@ -187,7 +185,7 @@ function generateDGHtmlBlock(dgName, values) {
         </tr>
         <tr>
           <td style="padding: 6px; border: 1px solid #dfe1e6;">Power Factor</td>
-          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.powerFactor, 2)}</b></td>
+          <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.powerFactor, 4)}</b></td>
           <td style="padding: 6px; border: 1px solid #dfe1e6;">Reactive Power (kVAR)</td>
           <td style="padding: 6px; border: 1px solid #dfe1e6;"><b>${f(values.reactivePower, 1)}</b></td>
         </tr>
@@ -299,8 +297,6 @@ async function sendDailySummary(summary, previousDay = null) {
   }
 }
 
-// --- UPDATED: sendStartupAlert ---
-// Now expects allDGValues instead of just one
 async function sendStartupAlert(dgName, allDGValues) {
   const dgKey = dgName.toLowerCase().replace('-', '');
   const lastAlertTime = alertState.lastStartupAlerts[dgKey] || 0;
@@ -316,7 +312,6 @@ async function sendStartupAlert(dgName, allDGValues) {
     console.log(`🟢 Startup alert email sent for ${dgName}`);
   }
 }
-// --- END UPDATE ---
 
 module.exports = {
   initializeEmail,

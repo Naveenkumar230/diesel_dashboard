@@ -1,14 +1,14 @@
 /**
  * PLC Service - Modbus RTU Communication
- * FINAL, ROBUST VERSION (v4)
+ * FINAL, ROBUST VERSION (v5)
  *
  * This version includes:
- * 1. A REBUILT register map based on your handwritten notes and test logs.
- * 2. Implemented fallbacks for DG1, DG2, and DG4 using your notes (D416, D418, etc.).
- * 3. A new experimental map for DG3 to find the missing '0' values.
- * 4. Corrected scaling for DG3's Power Factor.
+ * 1. A REBUILT register map based on all vendor documents, handwritten notes, and test logs.
+ * 2. Smart fallback logic for DG1, DG2, and DG4 using your notes (D416, D418, etc.).
+ * 3. A corrected map for DG3 that ONLY reads the known-good addresses.
+ * 4. Corrected scaling for DG3's Power Factor (0.0001).
  * 5. 'Zero-Out' logic (if kW is 0, all else is 0).
- * 6. Startup check that sends all 4 DG parameters in the email.
+ * 6. UPDATED: Startup check now only sends emails for DG-1, DG-2, and DG-4.
  */
 
 const ModbusRTU = require('modbus-serial');
@@ -93,25 +93,25 @@ const electricalCandidates = {
     runningHours:  [C(4258, 1), C(4259, 1)],
     windingTemp:   [C(4272, 1), C(4514, 1)] // D418=4514 (from note) is FALLBACK
   },
-  dg3: { // DG3: Your test showed D180 block (4276) is WRONG for V/I/Hz.
-         // We KNOW Active Power is 4292.
-         // We will GUESS the other params are in the *same D180 block* but shifted.
+  dg3: { // DG3: Corrected map based on test logs.
+         // We ONLY read the addresses that are proven to work.
     activePower:   [C(4292)],              // D196 - This is 100% CORRECT
-    reactivePower: [C(4294)],              // D197 - This is LIKELY (showed 399.10)
-    energyMeter:   [C(4296, 1)],           // D198 - This is LIKELY (showed 16.00)
-    runningHours:  [C(4298, 1)],           // D199 - This is LIKELY (showed 30.00)
-    powerFactor:   [C(4290, 0.0001)],      // D195 - SCALING FIXED (31.73 -> 0.3173)
+    reactivePower: [C(4294)],              // D198 - This is 100% CORRECT
+    energyMeter:   [C(4296, 1)],           // D200 - This is 100% CORRECT
+    runningHours:  [C(4298, 1)],           // D202 - This is 100% CORRECT
+    powerFactor:   [C(4290, 0.0001)],      // D194 - This is 100% CORRECT (Scaling fixed)
+    windingTemp:   [C(4312, 1)],           // D216 - This is LIKELY
 
-    // --- NEW GUESSES for the "0" values ---
-    // The old map was wrong. Let's try the addresses *right before* Active Power.
-    voltageR:      [C(4282), C(4276)], // Trying D186 first
-    voltageY:      [C(4284), C(4278)], // Trying D187 first
-    voltageB:      [C(4286), C(4280)], // Trying D188 first
-    currentR:      [C(4276), C(4282)], // Trying D180 first
-    currentY:      [C(4278), C(4284)], // Trying D181 first
-    currentB:      [C(4280), C(4286)], // Trying D182 first
-    frequency:     [C(4288, 0.01)],     // D194 - This is still the most likely
-    windingTemp:   [C(4312, 1)],
+    // --- UNKNOWN ADDRESSES ---
+    // The test proved 4276, 4282, 4288, etc., are WRONG.
+    // We leave these empty so the code correctly returns 0.
+    voltageR:      [],
+    voltageY:      [],
+    voltageB:      [],
+    currentR:      [],
+    currentY:      [],
+    currentB:      [],
+    frequency:     []
   },
   dg4: { // DG4: Based on D220 block (4316) + Your Notes as Fallbacks
     activePower:   [C(4332)],              // D236 - PRIMARY
@@ -179,23 +179,22 @@ async function readSingleRegister(registerConfig, dataKey) {
 // Smart readParam function with fallback logic
 async function readParam(dgKey, param) {
   const candidates = electricalCandidates[dgKey][param];
+  // If the list is empty (like for DG3 Voltage), return 0 immediately.
   if (!candidates || candidates.length === 0) return 0;
+  
   const tried = new Set();
   const order = [];
   
-  // 1. Try the last known good address first
   const last = lastGoodRegister[dgKey][param];
   if (last) {
     order.push(last);
     tried.add(last.addr);
   }
   
-  // 2. Add all other candidates
   for (const c of candidates) {
     if (!tried.has(c.addr)) order.push(c);
   }
 
-  // 3. Try to read from the ordered list
   for (let i = 0; i < order.length; i++) {
     const { addr, scaling } = order[i];
     try {
@@ -206,9 +205,7 @@ async function readParam(dgKey, param) {
         continue; // Try next candidate
       }
 
-      const scaled = Math.round(raw * (scaling ?? 0.1) * 10000) / 10000; // Increased precision
-
-      // SUCCESS! Save this address as the 'last good' one for next time
+      const scaled = Math.round(raw * (scaling ?? 0.1) * 10000) / 10000;
       lastGoodRegister[dgKey][param] = { addr, scaling };
       
       return scaled;
@@ -218,7 +215,6 @@ async function readParam(dgKey, param) {
     }
   }
   
-  // All candidates failed, return the last known good *value*
   return lastGoodValues[dgKey]?.[param] || 0;
 }
 
@@ -248,40 +244,51 @@ async function readAllElectrical(dgKey) {
       newValues[param] = value;
       await wait(READ_DELAY);
     }
-    lastGoodValues[dgKey] = { ...newValues }; // Save this as the last known *running* state
+    lastGoodValues[dgKey] = { ...newValues };
     return newValues;
   } else {
     // --- DG IS STOPPED ---
     const zeroValues = getZeroElectricalValues();
-    
-    // We must preserve the last known Energy and Running Hours
     zeroValues.energyMeter = await readParam(dgKey, 'energyMeter');
     zeroValues.runningHours = await readParam(dgKey, 'runningHours');
-
     if (zeroValues.energyMeter === 0) {
       zeroValues.energyMeter = lastGoodValues[dgKey]?.energyMeter || 0;
     }
     if (zeroValues.runningHours === 0) {
       zeroValues.runningHours = lastGoodValues[dgKey]?.runningHours || 0;
     }
-
-    lastGoodValues[dgKey] = { ...zeroValues }; // Save the "off" state
+    lastGoodValues[dgKey] = { ...zeroValues };
     return zeroValues;
   }
 }
 
-// Check for startup and send alert
+// ---
+//
+// --- UPDATED checkStartup function ---
+// It will now ONLY send an email for DG-1, DG-2, and DG-4.
+//
+// ---
 function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   const activePower = newValues.activePower || 0;
   const isRunning = activePower > DG_RUNNING_THRESHOLD;
   const wasRunningBefore = (oldElectricalData[dgKey]?.activePower || 0) > DG_RUNNING_THRESHOLD;
 
   if (isRunning && !wasRunningBefore) {
+    // A DG has just started
     const dgName = dgKey.toUpperCase().replace('DG', 'DG-');
-    sendStartupAlert(dgName, allNewValues); 
-    console.log(`✅ Startup detected for ${dgName}`);
+    
+    // Check if this is one of the DGs we want to send alerts for
+    if (dgKey === 'dg1' || dgKey === 'dg2' || dgKey === 'dg4') {
+      sendStartupAlert(dgName, allNewValues); 
+      console.log(`✅ Startup detected for ${dgName} (Email Sent)`);
+    } else {
+      // This must be DG3
+      console.log(`✅ Startup detected for ${dgName} (Email NOT sent - as per config)`);
+    }
   }
 }
+// --- END OF UPDATE ---
+
 
 // Check diesel levels and send alert
 function checkDieselLevels(data) {
@@ -309,20 +316,15 @@ async function readAllSystemData() {
 
     systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
 
-    // 1. Read all new electrical data
     const allNewValues = {};
     for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
       allNewValues[dgKey] = await readAllElectrical(dgKey);
     }
     
-    // 2. Store the *old* state
     const oldElectricalData = { ...systemData.electrical }; 
-    
-    // 3. Save new values to systemData
     systemData.electrical = allNewValues; 
     systemData.lastUpdate = new Date().toISOString();
 
-    // 4. Check for startups, comparing new vs. old
     for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
       checkStartup(dgKey, allNewValues[dgKey], oldElectricalData, allNewValues); 
     }

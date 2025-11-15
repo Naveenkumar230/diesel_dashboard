@@ -1,6 +1,6 @@
 /**
  * DG Monitoring System - Main Server
- * Modular architecture with separated concerns
+ * MODIFIED for HTTPS (SSL)
  */
 
 require('dotenv').config();
@@ -9,14 +9,23 @@ const path = require('path');
 const cors = require('cors');
 const compression = require('compression');
 
+// --- NEW MODULES ---
+const https = require('https');
+const fs = require('fs');
+// --- END NEW ---
+
 // Import modules
 const { connectMongoDB, isMongoConnected } = require('./config/database');
 const { connectToPLC, readAllSystemData, getSystemData } = require('./services/plcService');
 const { startScheduledTasks } = require('./services/schedulerService');
 const apiRoutes = require('./routes/api');
+const { initializeEmail } = require('./services/emailService'); // Added for initialization
 
 // -------------------- Config --------------------
-const webServerPort = parseInt(process.env.PORT) || 3000;
+// --- UPDATED: We now define HTTP and HTTPS ports ---
+const httpPort = 3000;  // We'll use this for redirecting
+const httpsPort = 3001; // This will be the new SECURE port
+// --- END UPDATE ---
 
 // -------------------- Express Setup --------------------
 const app = express();
@@ -44,42 +53,35 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.get('/dashboard/:dg', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+// Added these routes to fix navigation
+app.get('/consumption.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'consumption.html'));
 });
 
+app.get('/electrical.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'electrical.html'));
+});
+// ---
+
 // -------------------- Graceful Shutdown --------------------
-process.on('SIGINT', async () => {
+function gracefulShutdown() {
   console.log('\nShutting down gracefully...');
   try {
     const { closePLC } = require('./services/plcService');
     const mongoose = require('mongoose');
     
     closePLC();
-    await mongoose.connection.close();
-    console.log('Connections closed');
-    process.exit(0);
+    mongoose.connection.close(() => {
+        console.log('MongoDB connection closed.');
+        process.exit(0);
+    });
   } catch (err) {
     console.error('Error during shutdown:', err);
     process.exit(1);
   }
-});
-
-process.on('SIGTERM', async () => {
-  console.log('\nReceived SIGTERM, shutting down...');
-  try {
-    const { closePLC } = require('./services/plcService');
-    const mongoose = require('mongoose');
-    
-    closePLC();
-    await mongoose.connection.close();
-    console.log('Connections closed');
-    process.exit(0);
-  } catch (err) {
-    console.error('Error during shutdown:', err);
-    process.exit(1);
-  }
-});
+}
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 // -------------------- Start Server --------------------
 async function startServer() {
@@ -87,22 +89,49 @@ async function startServer() {
     // Connect to MongoDB
     await connectMongoDB();
     
-    // Start Express server
-    app.listen(webServerPort, () => {
-      console.log(`\n===========================================`);
+    // --- NEW: Read SSL Certificate Files ---
+    const httpsOptions = {
+      key: fs.readFileSync(path.join(__dirname, 'ssl/server.key')),
+      cert: fs.readFileSync(path.join(__dirname, 'ssl/server.crt'))
+    };
+    // --- END NEW ---
+
+    // --- NEW: Create HTTPS Server ---
+    const httpsServer = https.createServer(httpsOptions, app);
+    
+    httpsServer.listen(httpsPort, '0.0.0.0', () => { // Listen on all interfaces
+      console.log('\n===========================================');
       console.log(`DG Monitoring System Server Started`);
-      console.log(`Web Server: http://localhost:${webServerPort}`);
+      console.log(`✅ SECURE SERVER: https://192.168.30.156:${httpsPort}`);
+      console.log(`===========================================`);
       console.log(`MongoDB: ${isMongoConnected() ? 'Connected' : 'Disconnected'}`);
-      console.log(`===========================================\n`);
       
-      // Connect to PLC and start reading
+      // Connect to PLC and start services
       connectToPLC();
-      
-      // Start scheduled tasks (consumption tracking, daily reports)
+      initializeEmail(); // Initialize email service
       startScheduledTasks();
     });
+    // --- END NEW ---
+
+    // --- NEW: Create a simple HTTP server to redirect to HTTPS ---
+    const httpApp = express();
+    httpApp.get('*', (req, res) => {
+        // Find the host (e.g., 192.168.30.156) from the request
+        const host = req.headers.host.split(':')[0]; 
+        res.redirect(`https://${host}:${httpsPort}${req.url}`);
+    });
+    httpApp.listen(httpPort, '0.0.0.0', () => { // Listen on all interfaces
+        console.log(`Redirecting HTTP (${httpPort}) to HTTPS (${httpsPort})...`);
+    });
+    // --- END NEW ---
+
   } catch (err) {
-    console.error('Failed to start server:', err);
+    if (err.code === 'ENOENT') { // Corrected error code
+      console.error(`[FATAL ERROR] Cannot read SSL certificates.`);
+      console.error(`Please run 'openssl' command to create 'ssl/server.key' and 'ssl/server.crt'.`);
+    } else {
+      console.error('Failed to start server:', err);
+    }
     process.exit(1);
   }
 }

@@ -200,8 +200,10 @@ function startScheduledTasks() {
   // Track consumption every 30 minutes (7 AM - 8 PM)
   // Runs at :00 and :30 of every hour
   cron.schedule('0,30 7-19 * * *', () => {
-    console.log('⏰ Running 30-minute consumption tracking...');
+    console.log('⏰ Running 30-minute consumption/electrical tracking...');
     trackConsumption();
+  }, {
+    timezone: "Asia/Kolkata"
   });
 
   // Generate and send daily summary at 8 PM
