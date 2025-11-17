@@ -157,7 +157,6 @@
         const start = new Date();
         
         if (range === 'today') {
-            // Start is today, End is today
         } else if (range === 'yesterday') {
             start.setDate(start.getDate() - 1);
             end.setDate(end.getDate() - 1);
@@ -256,7 +255,8 @@
       
       // --- FIX FOR INCONSISTENT CONSUMPTION DATA ---
       let levelDrop = startLevel - endLevel;
-      if (levelDrop > 0 && totalConsumption < levelDrop * 0.9) { // If calculated consumption is significantly less than level drop
+      // If the overall level dropped significantly more than the sum of logged consumption, use the drop.
+      if (levelDrop > 0 && totalConsumption < levelDrop * 0.9) { 
           totalConsumption = Math.max(totalConsumption, levelDrop);
       }
       // --- END FIX ---
@@ -303,15 +303,37 @@
             return index;
         };
 
+        // Recalculate Consumption and Map Levels
+        let previousLevel = null;
         data.forEach(r => {
             const idx = findSlotIndex(r.hour, r.minute);
+            
             if (idx >= 0 && idx < labels.length) {
+                let currentLevel, currentConsumption;
+
                 if (dgType === 'total') {
-                    mappedConsumptionData[idx] = r.total?.consumption || 0;
-                    mappedLevelData[idx] = r.total?.level || 0;
+                    currentLevel = r.total?.level || 0;
+                    // Recalculate consumption based on levels if previous level exists
+                    if (previousLevel !== null) {
+                        currentConsumption = Math.max(0, previousLevel - currentLevel);
+                    } else {
+                        // For the very first point, use the consumption value stored, or 0
+                        currentConsumption = r.total?.consumption || 0; 
+                    }
+                    mappedConsumptionData[idx] = currentConsumption;
+                    mappedLevelData[idx] = currentLevel;
+                    previousLevel = currentLevel;
+
                 } else {
-                    mappedConsumptionData[idx] = r.consumption || 0;
-                    mappedLevelData[idx] = r.level || 0;
+                    currentLevel = r.level || 0;
+                    if (previousLevel !== null) {
+                        currentConsumption = Math.max(0, previousLevel - currentLevel);
+                    } else {
+                        currentConsumption = r.consumption || 0;
+                    }
+                    mappedConsumptionData[idx] = currentConsumption;
+                    mappedLevelData[idx] = currentLevel;
+                    previousLevel = currentLevel;
                 }
             }
         });
@@ -335,6 +357,7 @@
                    d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
         });
 
+        // Use logged consumption data for multi-day, as it is aggregated in the API
         if (dgType === 'total') {
             consumptionData = data.map(r => r.total?.consumption || 0);
             levelDatasets = [
@@ -379,7 +402,7 @@
         data: { labels: labels, datasets: levelDatasets },
         options: {
           responsive: true, maintainAspectRatio: false,
-          scales: { y: { beginAtZero: false, ticks: { color: chartTextColor }, grid: { color: chartGridColor } }, x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
+          scales: { y: { beginAtZero: false }, x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { color: chartGridColor } } }
         }
       });
     }
