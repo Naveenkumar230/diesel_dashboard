@@ -42,7 +42,7 @@
   .timeline { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
   .timeline-item { display: flex; align-items: center; gap: 15px; padding: 15px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; border-left: 4px solid var(--success); }
   .timeline-item.stopped { border-left-color: var(--danger); }
-  .timeline-time { font-weight: 700; min-width: 120px; font-size: 0.95rem; color: var(--text-primary); }
+  .timeline-time { font-weight: 700; min-width: 150px; font-size: 0.95rem; color: var(--text-primary); }
   .timeline-status { padding: 5px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
   .timeline-status.running { background: var(--success); color: white; }
   .timeline-status.stopped { background: var(--danger); color: white; }
@@ -86,9 +86,9 @@
       <div class="filter-group">
         <label>Quick Select</label>
         <select id="quick-select">
-          <option value="month" selected>Last 30 Days</option> <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
+          <option value="today" selected>Today</option> <option value="yesterday">Yesterday</option>
           <option value="week">Last 7 Days</option>
+          <option value="month">Last 30 Days</option>
           <option value="custom">Custom Range</option>
         </select>
       </div>
@@ -108,7 +108,7 @@
     </div>
 
     <div class="chart-section">
-      <div class="chart-title">📈 Hourly Diesel Consumption (08:00 AM - 08:00 PM)</div>
+      <div class="chart-title" id="consumption-chart-title">📈 Hourly Diesel Consumption</div>
       <div class="chart-container">
         <canvas id="consumptionChart"></canvas>
       </div>
@@ -151,13 +151,13 @@
       document.getElementById('refill-card').style.display = 'block';
     }
 
-    // --- UPDATED: DEFAULT TO LAST 30 DAYS ---
+    // --- UPDATED: Set Date Range Function ---
     function setDateRange(range) {
         const end = new Date();
         const start = new Date();
         
         if (range === 'today') {
-            // Start is today
+            // Start is today, End is today
         } else if (range === 'yesterday') {
             start.setDate(start.getDate() - 1);
             end.setDate(end.getDate() - 1);
@@ -171,14 +171,13 @@
         document.getElementById('end-date').value = end.toISOString().split('T')[0];
     }
 
-    // Initialize with 'month'
-    setDateRange('month');
-    document.getElementById('quick-select').value = 'month';
+    // --- DEFAULT IS TODAY ---
+    setDateRange('today');
+    document.getElementById('quick-select').value = 'today';
 
     document.getElementById('quick-select').addEventListener('change', function() {
       if (this.value !== 'custom') setDateRange(this.value);
     });
-    // --- END UPDATE ---
 
     async function loadData() {
       const startDate = document.getElementById('start-date').value;
@@ -259,126 +258,143 @@
       document.getElementById('running-hours').textContent = runningHours.toFixed(1);
       document.getElementById('avg-consumption').textContent = (runningHours > 0 ? (totalConsumption / runningHours) : 0).toFixed(2);
 
-      updateCharts(data);
-      updateTimeline(data);
+      updateCharts(data, startDate, endDate);
+      updateTimeline(data, startDate, endDate);
     }
 
-    function updateCharts(data) {
-      // 1. Generate Fixed Time Slots (08:00 to 20:00)
-      const fixedLabels = [];
-      for (let h = 8; h <= 20; h++) {
-        let hourStr = h > 12 ? h - 12 : h;
-        let ampm = h >= 12 ? 'PM' : 'AM';
-        fixedLabels.push(`${hourStr}:00 ${ampm}`);
-        if (h !== 20) {
-          fixedLabels.push(`${hourStr}:30 ${ampm}`);
-        }
-      }
-
-      // 2. Map actual data to these slots
-      let mappedConsumptionData = new Array(fixedLabels.length).fill(0);
-      let mappedLevelData = new Array(fixedLabels.length).fill(null);
-      
-      const findSlotIndex = (h, m) => {
-        if (h < 8 || h > 20) return -1;
-        let index = (h - 8) * 2;
-        if (m >= 25 && m <= 35) index += 1; // Approx 30 min mark
-        return index;
-      };
-
-      data.forEach(r => {
-        const idx = findSlotIndex(r.hour, r.minute);
-        if (idx >= 0 && idx < fixedLabels.length) {
-          // If multiple days, we accumulate consumption in the time slot
-          if (dgType === 'total') {
-            mappedConsumptionData[idx] += r.total?.consumption || 0;
-            mappedLevelData[idx] = r.total?.level || 0; // Level takes latest
-          } else {
-            mappedConsumptionData[idx] += r.consumption || 0;
-            mappedLevelData[idx] = r.level || 0; // Level takes latest
-          }
-        }
-      });
-
+    // --- SMART CHART LOGIC: Fixed slots for Today, Date-Wise for History ---
+    function updateCharts(data, startDate, endDate) {
+      const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
       const chartTextColor = '#172b4d';
       const chartGridColor = 'rgba(23, 43, 77, 0.1)';
 
-      // Bar Chart
+      let labels = [];
+      let consumptionData = [];
+      let levelDatasets = [];
+
+      if (!isMultiDay) {
+        // --- MODE 1: SINGLE DAY (Fixed 8 AM - 8 PM Slots) ---
+        document.getElementById('consumption-chart-title').textContent = '📈 Hourly Diesel Consumption (08:00 AM - 08:00 PM)';
+        
+        // 1. Generate Fixed Time Slots
+        for (let h = 8; h <= 20; h++) {
+            let hourStr = h > 12 ? h - 12 : h;
+            let ampm = h >= 12 ? 'PM' : 'AM';
+            labels.push(`${hourStr}:00 ${ampm}`);
+            if (h !== 20) labels.push(`${hourStr}:30 ${ampm}`);
+        }
+
+        // 2. Map Data to Slots
+        consumptionData = new Array(labels.length).fill(0);
+        let mappedLevelData = new Array(labels.length).fill(null);
+
+        const findSlotIndex = (h, m) => {
+            if (h < 8 || h > 20) return -1;
+            let index = (h - 8) * 2;
+            if (m >= 25 && m <= 35) index += 1;
+            return index;
+        };
+
+        data.forEach(r => {
+            const idx = findSlotIndex(r.hour, r.minute);
+            if (idx >= 0 && idx < labels.length) {
+                if (dgType === 'total') {
+                    consumptionData[idx] = r.total?.consumption || 0;
+                    mappedLevelData[idx] = r.total?.level || 0;
+                } else {
+                    consumptionData[idx] = r.consumption || 0;
+                    mappedLevelData[idx] = r.level || 0;
+                }
+            }
+        });
+
+        // Set Level Dataset (Single line for ease in fixed mode)
+        levelDatasets = [{
+            label: (dgType === 'total' ? 'Total' : dgType.toUpperCase()) + ' Level (L)',
+            data: mappedLevelData,
+            borderColor: 'rgba(0, 135, 90, 1)',
+            backgroundColor: 'rgba(0, 135, 90, 0.1)',
+            borderWidth: 3, fill: true, tension: 0.4, spanGaps: true
+        }];
+
+      } else {
+        // --- MODE 2: MULTI-DAY HISTORY (Date + Time Axis) ---
+        document.getElementById('consumption-chart-title').textContent = '📈 Historical Consumption Trend';
+        
+        labels = data.map(r => {
+            const d = new Date(r.timestamp);
+            return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' }) + ' ' + 
+                   d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        });
+
+        if (dgType === 'total') {
+            consumptionData = data.map(r => r.total?.consumption || 0);
+            levelDatasets = [
+                { label: 'DG1 Level', data: data.map(r => r.dg1?.level), borderColor: '#0052cc', fill: false },
+                { label: 'DG2 Level', data: data.map(r => r.dg2?.level), borderColor: '#00875a', fill: false },
+                { label: 'DG3 Level', data: data.map(r => r.dg3?.level), borderColor: '#ffab00', fill: false }
+            ];
+        } else {
+            consumptionData = data.map(r => r.consumption || 0);
+            levelDatasets = [{
+                label: dgType.toUpperCase() + ' Level (L)',
+                data: data.map(r => r.level),
+                borderColor: 'rgba(0, 135, 90, 1)',
+                fill: true, tension: 0.4
+            }];
+        }
+      }
+
+      // Render Charts
       if (consumptionChart) consumptionChart.destroy();
       consumptionChart = new Chart(document.getElementById('consumptionChart'), {
         type: 'bar',
         data: {
-          labels: fixedLabels,
+          labels: labels,
           datasets: [{
             label: 'Consumption (L)',
-            data: mappedConsumptionData,
+            data: consumptionData,
             backgroundColor: 'rgba(222, 53, 11, 0.8)',
             borderColor: 'rgba(222, 53, 11, 1)',
             borderWidth: 1
           }]
         },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { beginAtZero: true, ticks: { color: chartTextColor }, grid: { color: chartGridColor } },
-            x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { display: false } }
-          }
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
         }
       });
-      
-      if (levelChart) levelChart.destroy();
-      
-      let levelDatasets = [];
-      if (dgType === 'total') {
-         levelDatasets = [{
-            label: 'Total Level (L)',
-            data: mappedLevelData,
-            borderColor: 'rgba(0, 82, 204, 1)',
-            backgroundColor: 'rgba(0, 82, 204, 0.1)',
-            borderWidth: 2, fill: true, tension: 0.1, spanGaps: true
-         }];
-      } else {
-         levelDatasets = [{
-            label: 'Diesel Level (L)',
-            data: mappedLevelData,
-            borderColor: 'rgba(0, 135, 90, 1)',
-            backgroundColor: 'rgba(0, 135, 90, 0.1)',
-            borderWidth: 3, fill: true, tension: 0.4, spanGaps: true
-         }];
-      }
 
+      if (levelChart) levelChart.destroy();
       levelChart = new Chart(document.getElementById('levelChart'), {
         type: 'line',
-        data: {
-          labels: fixedLabels,
-          datasets: levelDatasets
-        },
+        data: { labels: labels, datasets: levelDatasets },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { beginAtZero: false, ticks: { color: chartTextColor }, grid: { color: chartGridColor } },
-            x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { display: false } }
-          }
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
         }
       });
     }
 
-    function updateTimeline(data) {
+    function updateTimeline(data, startDate, endDate) {
+      const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
       const container = document.getElementById('timeline-container');
       container.innerHTML = '';
       if (data.length === 0) {
         container.innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No timeline data available</p>';
         return;
       }
-      // Show last 20 events
-      const sliced = data.slice(-20).reverse();
+      
+      const sliced = data.slice(-50).reverse(); // Show last 50 events for history
       sliced.forEach(record => {
-        // If multi-day, show date and time
+        let timeStr;
         const dateObj = new Date(record.timestamp);
-        const time = dateObj.toLocaleDateString('en-IN', {day:'numeric', month:'short'}) + ' ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-        
+        if (isMultiDay) {
+            timeStr = dateObj.toLocaleDateString('en-IN', {day:'2-digit', month:'short'}) + ' ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        } else {
+            timeStr = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        }
+
         let isRunning, consumption;
         if (dgType === 'total') {
           isRunning = record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning;
@@ -390,7 +406,7 @@
         const item = document.createElement('div');
         item.className = `timeline-item ${isRunning ? '' : 'stopped'}`;
         item.innerHTML = `
-          <div class="timeline-time">${time}</div>
+          <div class="timeline-time">${timeStr}</div>
           <div class="timeline-status ${isRunning ? 'running' : 'stopped'}">${isRunning ? '🟢 Running' : '🔴 Stopped'}</div>
           <div class="timeline-consumption">${consumption.toFixed(1)} L consumed</div>
         `;

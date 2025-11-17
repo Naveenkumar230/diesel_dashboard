@@ -11,12 +11,7 @@
     --bg-primary: #ffffff; --bg-secondary: #f4f5f7; --bg-tertiary: #ffffff;
     --text-primary: #172b4d; --text-secondary: #42526e; --text-muted: #6b778c;
     --border: #dfe1e6;
-    
-    /* Chart Colors */
-    --volt-r: #fa8231; --volt-y: #f7b731; --volt-b: #0065ff;
-    --curr-r: #eb3b5a; --curr-y: #a55eea; --curr-b: #2bcbba;
-    --power-kw: #20bf6b; --power-kvar: #4b6584;
-    --freq: #8854d0; --pf: #172b4d;
+    --volt: #fa8231; --curr: #eb3b5a; --power: #20bf6b; --freq: #8854d0;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg-primary); font-family: 'Segoe UI', Tahoma, sans-serif; color: var(--text-primary); min-height: 100vh; padding: 15px; }
@@ -32,21 +27,19 @@
   .btn-success:hover { background: #006644; transform: translateY(-2px); }
   .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
   .btn-secondary:hover { background: #dfe1e6; }
-  
   .filters { background: var(--bg-secondary); border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
   .filter-group { display: flex; flex-direction: column; gap: 8px; }
   label { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
   input, select { padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.95rem; }
-  
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
   .stat-card { background: var(--bg-tertiary); border: 1px solid var(--border); padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid var(--primary); }
   .stat-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
   .stat-value { font-size: 2.2rem; font-weight: 800; margin-bottom: 5px; color: var(--text-primary); }
   .stat-unit { font-size: 0.85rem; color: var(--text-muted); }
-  
   .chart-section { background: var(--bg-secondary); border: 1px solid var(--border); padding: 25px; border-radius: 12px; margin-bottom: 20px; }
   .chart-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 20px; color: var(--text-primary); border-left: 4px solid var(--primary); padding-left: 15px; }
   
+  /* Split and Combined Charts */
   .chart-grid-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   .chart-container-split { position: relative; height: 350px; }
   .chart-container-combined { position: relative; height: 450px; }
@@ -59,7 +52,6 @@
   .timeline-status.running { background: var(--success); color: white; }
   .timeline-status.stopped { background: var(--danger); color: white; }
   .timeline-details { font-size: 0.9rem; color: var(--text-secondary); }
-  
   .loading, .empty-state { text-align: center; padding: 60px; color: var(--text-muted); font-size: 1.2rem; }
   .empty-state { background: var(--bg-secondary); border-radius: 12px; }
   .empty-state-icon { font-size: 4rem; margin-bottom: 20px; opacity: 0.5; }
@@ -93,9 +85,9 @@
       <div class="filter-group">
         <label>Quick Select</label>
         <select id="quick-select">
-          <option value="month" selected>Last 30 Days</option> <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
+          <option value="today" selected>Today</option> <option value="yesterday">Yesterday</option>
           <option value="week">Last 7 Days</option>
+          <option value="month">Last 30 Days</option>
           <option value="custom">Custom Range</option>
         </select>
       </div>
@@ -127,7 +119,7 @@
     </div>
     
     <div class="timeline-section">
-      <div class="chart-title">⏱️ DG Run Timeline (Started / Stopped)</div>
+      <div class="chart-title">⏱️ DG Run Timeline</div>
       <div id="timeline-container"></div>
     </div>
 
@@ -150,13 +142,13 @@
 
     document.getElementById('page-title').textContent = `⚙️ ${dgType.toUpperCase().replace('DG', 'DG-')} Electrical Details`;
 
-    // --- UPDATED: DEFAULT TO LAST 30 DAYS ---
+    // --- DATE RANGE LOGIC ---
     function setDateRange(range) {
         const end = new Date();
         const start = new Date();
         
         if (range === 'today') {
-            // Start is today
+            // Start is today, End is today
         } else if (range === 'yesterday') {
             start.setDate(start.getDate() - 1);
             end.setDate(end.getDate() - 1);
@@ -170,19 +162,19 @@
         document.getElementById('end-date').value = end.toISOString().split('T')[0];
     }
 
-    // Initialize with 'month' (Last 30 Days)
-    setDateRange('month'); 
-    document.getElementById('quick-select').value = 'month';
+    // Initialize with 'today' (Default)
+    setDateRange('today'); 
+    document.getElementById('quick-select').value = 'today';
 
     document.getElementById('quick-select').addEventListener('change', function() {
       if (this.value !== 'custom') setDateRange(this.value);
     });
-    // --- END UPDATE ---
 
     async function loadData() {
       const startDate = document.getElementById('start-date').value;
       const endDate = document.getElementById('end-date').value;
       if (!startDate || !endDate) { alert('Please select a start and end date'); return; }
+      if (new Date(endDate) < new Date(startDate)) { alert('End date cannot be before start date'); return; }
 
       document.getElementById('loading').style.display = 'block';
       document.getElementById('empty-state').style.display = 'none';
@@ -240,12 +232,11 @@
       let loadSum = 0;
       let runningDataPoints = 0;
       const maxKw = DG_MAX_KW[dgType] || 500;
-      const intervalHours = 0.5;
+      const intervalHours = 0.5; 
 
       if (data.length > 0) {
           totalKwh = data[data.length - 1].energyMeter - data[0].energyMeter;
-          // If reset or rollover, simplistic check
-          if (totalKwh < 0) totalKwh = 0; 
+          if (totalKwh < 0) totalKwh = 0;
       }
 
       data.forEach(r => {
@@ -281,7 +272,7 @@
         responsive: true, maintainAspectRatio: false,
         scales: { x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } }, y: { beginAtZero: true } }
       };
-      const lineOpts = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false, spanGaps: false }; // spanGaps false ensures 0s are shown as drops
+      const lineOpts = { tension: 0.1, pointRadius: 2, borderWidth: 2, fill: false };
 
       if (voltageChart) voltageChart.destroy();
       voltageChart = new Chart(document.getElementById('voltageChart'), {
@@ -328,7 +319,7 @@
       });
 
       if (combinedChart) combinedChart.destroy();
-      const lineOpts = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false, spanGaps: false };
+      const lineOpts = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false };
 
       combinedChart = new Chart(document.getElementById('combinedChart'), {
         type: 'line',
@@ -371,16 +362,13 @@
            }
            wasRunning = isRunning;
        });
-
-       // Show latest first
-       events.reverse();
        
        if (events.length === 0 && data.length > 0 && data.some(r => r.activePower > DG_RUNNING_THRESHOLD)) {
-           // It was running the whole time
            container.innerHTML = '<p style="text-align:center; padding:20px;">DG was running continuously in this period.</p>';
            return;
        }
 
+       events.reverse();
        events.forEach(e => {
            const cls = e.type === 'start' ? 'running' : 'stopped';
            const txt = e.type === 'start' ? '🟢 Started' : '🔴 Stopped';
