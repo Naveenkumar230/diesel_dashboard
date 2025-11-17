@@ -274,52 +274,65 @@
       let levelDatasets = [];
 
       if (!isMultiDay) {
-        // === SINGLE DAY MODE: FLEXIBLE ACTUAL TIMESTAMPS ===
-        document.getElementById('consumption-chart-title').textContent = '📈 Diesel Consumption (Actual Logged Times)';
-        document.getElementById('level-chart-title').textContent = '📉 Diesel Level Over Time';
+        // === SINGLE DAY MODE: PRODUCTION HOURS ONLY (8 AM - 8 PM) ===
+        document.getElementById('consumption-chart-title').textContent = '📈 Diesel Consumption (Production Hours: 8 AM - 8 PM)';
+        document.getElementById('level-chart-title').textContent = '📉 Diesel Level Over Time (8 AM - 8 PM)';
         
-        // STEP 1: Sort data chronologically by time
-        const sortedData = [...data].sort((a, b) => {
-            const timeA = a.hour * 60 + a.minute;
-            const timeB = b.hour * 60 + b.minute;
-            return timeA - timeB;
-        });
+        // STEP 1: Filter data for production hours (8 AM to 8 PM) and sort chronologically
+        const sortedData = [...data]
+            .filter(record => {
+                const hour = record.hour;
+                // Include only data from 8:00 AM (hour 8) to 8:00 PM (hour 20)
+                return hour >= 8 && hour <= 20;
+            })
+            .sort((a, b) => {
+                const timeA = a.hour * 60 + a.minute;
+                const timeB = b.hour * 60 + b.minute;
+                return timeA - timeB;
+            });
 
-        // STEP 2: Build arrays from actual data
+        // STEP 2: Build arrays from filtered production hours data
         const levelData = [];
         let previousLevel = null;
         
-        sortedData.forEach((record, index) => {
-            const hour = record.hour;
-            const minute = record.minute;
-            
-            // Create readable time label from actual timestamp
-            let hourStr = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
-            let ampm = hour >= 12 ? 'PM' : 'AM';
-            let minuteStr = minute.toString().padStart(2, '0');
-            const timeLabel = `${hourStr}:${minuteStr} ${ampm}`;
-            
-            // Get current level
-            let currentLevel;
-            if (dgType === 'total') {
-                currentLevel = record.total?.level || 0;
-            } else {
-                currentLevel = record.level || 0;
-            }
-            
-            // Calculate consumption for this interval
-            let intervalConsumption = 0;
-            if (previousLevel !== null && previousLevel > currentLevel) {
-                intervalConsumption = previousLevel - currentLevel;
-            }
-            
-            // Add to arrays
-            labels.push(timeLabel);
-            consumptionData.push(intervalConsumption);
-            levelData.push(currentLevel);
-            
-            previousLevel = currentLevel;
-        });
+        // If no data in production hours, show empty state
+        if (sortedData.length === 0) {
+            labels.push('8:00 AM', '12:00 PM', '4:00 PM', '8:00 PM');
+            consumptionData = [0, 0, 0, 0];
+            levelData.push(0, 0, 0, 0);
+        } else {
+            sortedData.forEach((record, index) => {
+                const hour = record.hour;
+                const minute = record.minute;
+                
+                // Create readable time label from actual timestamp
+                let hourStr = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+                let ampm = hour >= 12 ? 'PM' : 'AM';
+                let minuteStr = minute.toString().padStart(2, '0');
+                const timeLabel = `${hourStr}:${minuteStr} ${ampm}`;
+                
+                // Get current level
+                let currentLevel;
+                if (dgType === 'total') {
+                    currentLevel = record.total?.level || 0;
+                } else {
+                    currentLevel = record.level || 0;
+                }
+                
+                // Calculate consumption for this interval
+                let intervalConsumption = 0;
+                if (previousLevel !== null && previousLevel > currentLevel) {
+                    intervalConsumption = previousLevel - currentLevel;
+                }
+                
+                // Add to arrays
+                labels.push(timeLabel);
+                consumptionData.push(intervalConsumption);
+                levelData.push(currentLevel);
+                
+                previousLevel = currentLevel;
+            });
+        }
 
         // STEP 3: Create Level Dataset
         levelDatasets = [{
