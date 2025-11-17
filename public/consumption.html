@@ -86,7 +86,8 @@
       <div class="filter-group">
         <label>Quick Select</label>
         <select id="quick-select">
-          <option value="today" selected>Today</option> <option value="yesterday">Yesterday</option>
+          <option value="today" selected>Today</option>
+          <option value="yesterday">Yesterday</option>
           <option value="week">Last 7 Days</option>
           <option value="month">Last 30 Days</option>
           <option value="custom">Custom Range</option>
@@ -151,7 +152,6 @@
       document.getElementById('refill-card').style.display = 'block';
     }
 
-    // --- UPDATED: Set Date Range Function ---
     function setDateRange(range) {
         const end = new Date();
         const start = new Date();
@@ -171,8 +171,8 @@
         document.getElementById('end-date').value = end.toISOString().split('T')[0];
     }
 
-    // --- DEFAULT IS TODAY ---
-    setDateRange('today');
+    // DEFAULT IS TODAY
+    setDateRange('today'); 
     document.getElementById('quick-select').value = 'today';
 
     document.getElementById('quick-select').addEventListener('change', function() {
@@ -225,6 +225,8 @@
     }
 
     function processData(data, startDate, endDate) {
+      const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
+
       const startStr = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
       const endStr = new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
       document.getElementById('date-range').textContent = (startStr === endStr) ? startStr : `From ${startStr} to ${endStr}`;
@@ -251,6 +253,13 @@
         totalConsumption = data.reduce((sum, r) => sum + (r.consumption || 0), 0);
         runningHours = data.filter(r => r.isRunning).length * 0.5;
       }
+      
+      // --- FIX FOR INCONSISTENT CONSUMPTION DATA ---
+      let levelDrop = startLevel - endLevel;
+      if (levelDrop > 0 && totalConsumption < levelDrop * 0.9) { // If calculated consumption is significantly less than level drop
+          totalConsumption = Math.max(totalConsumption, levelDrop);
+      }
+      // --- END FIX ---
 
       document.getElementById('start-level').textContent = startLevel.toFixed(0);
       document.getElementById('end-level').textContent = endLevel.toFixed(0);
@@ -262,7 +271,6 @@
       updateTimeline(data, startDate, endDate);
     }
 
-    // --- SMART CHART LOGIC: Fixed slots for Today, Date-Wise for History ---
     function updateCharts(data, startDate, endDate) {
       const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
       const chartTextColor = '#172b4d';
@@ -299,10 +307,10 @@
             const idx = findSlotIndex(r.hour, r.minute);
             if (idx >= 0 && idx < labels.length) {
                 if (dgType === 'total') {
-                    consumptionData[idx] = r.total?.consumption || 0;
+                    mappedConsumptionData[idx] = r.total?.consumption || 0;
                     mappedLevelData[idx] = r.total?.level || 0;
                 } else {
-                    consumptionData[idx] = r.consumption || 0;
+                    mappedConsumptionData[idx] = r.consumption || 0;
                     mappedLevelData[idx] = r.level || 0;
                 }
             }
@@ -319,7 +327,7 @@
 
       } else {
         // --- MODE 2: MULTI-DAY HISTORY (Date + Time Axis) ---
-        document.getElementById('consumption-chart-title').textContent = '📈 Historical Consumption Trend';
+        document.getElementById('consumption-chart-title').textContent = '📈 Historical Consumption Trend (Date/Time)';
         
         labels = data.map(r => {
             const d = new Date(r.timestamp);
@@ -330,9 +338,9 @@
         if (dgType === 'total') {
             consumptionData = data.map(r => r.total?.consumption || 0);
             levelDatasets = [
-                { label: 'DG1 Level', data: data.map(r => r.dg1?.level), borderColor: '#0052cc', fill: false },
-                { label: 'DG2 Level', data: data.map(r => r.dg2?.level), borderColor: '#00875a', fill: false },
-                { label: 'DG3 Level', data: data.map(r => r.dg3?.level), borderColor: '#ffab00', fill: false }
+                { label: 'DG1 Level', data: data.map(r => r.dg1?.level), borderColor: '#0052cc', fill: false, spanGaps: true },
+                { label: 'DG2 Level', data: data.map(r => r.dg2?.level), borderColor: '#00875a', fill: false, spanGaps: true },
+                { label: 'DG3 Level', data: data.map(r => r.dg3?.level), borderColor: '#ffab00', fill: false, spanGaps: true }
             ];
         } else {
             consumptionData = data.map(r => r.consumption || 0);
@@ -340,7 +348,7 @@
                 label: dgType.toUpperCase() + ' Level (L)',
                 data: data.map(r => r.level),
                 borderColor: 'rgba(0, 135, 90, 1)',
-                fill: true, tension: 0.4
+                fill: true, tension: 0.4, spanGaps: true
             }];
         }
       }
@@ -361,7 +369,7 @@
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
+          scales: { y: { beginAtZero: true }, x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
         }
       });
 
@@ -371,7 +379,7 @@
         data: { labels: labels, datasets: levelDatasets },
         options: {
           responsive: true, maintainAspectRatio: false,
-          scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
+          scales: { y: { beginAtZero: false, ticks: { color: chartTextColor }, grid: { color: chartGridColor } }, x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
         }
       });
     }
