@@ -152,8 +152,7 @@
         const end = new Date();
         const start = new Date();
         
-        if (range === 'today') {
-        } else if (range === 'yesterday') {
+        if (range === 'yesterday') {
             start.setDate(start.getDate() - 1);
             end.setDate(end.getDate() - 1);
         } else if (range === 'week') {
@@ -166,7 +165,6 @@
         document.getElementById('end-date').value = end.toISOString().split('T')[0];
     }
 
-    // Initialize with 'today' (Default)
     setDateRange('today'); 
     document.getElementById('quick-select').value = 'today';
 
@@ -314,14 +312,10 @@
                     currentLevel = r.level || 0;
                 }
 
-                // If this is not the first point AND the previous point was valid
                 if (previousLevel !== null && previousIndex !== -1) {
-                    // Consumption is the drop between the previous point and this one
                     let intervalConsumption = Math.max(0, previousLevel - currentLevel);
-                    // Add this consumption to the CURRENT interval's slot
                     consumptionData[idx] = intervalConsumption;
                 } else {
-                    // For the very first point, use the consumption value stored, or 0
                     let firstConsumption = (dgType === 'total' ? r.total?.consumption : r.consumption) || 0;
                     consumptionData[idx] = firstConsumption;
                 }
@@ -342,35 +336,50 @@
         }];
 
       } else {
-        // --- MODE 2: MULTI-DAY HISTORY (Date + Time Axis) ---
-        document.getElementById('consumption-chart-title').textContent = '📈 Historical Consumption Trend (Date/Time)';
+        // --- MODE 2: MULTI-DAY HISTORY (Date + Time Axis - Aggregated by Day) ---
+        document.getElementById('consumption-chart-title').textContent = '📈 Daily Consumption Trend (Aggregated)';
         
-        labels = data.map(r => {
-            const d = new Date(r.timestamp);
-            return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' }) + ' ' + 
-                   d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        // Use a Map to aggregate data by date (YYYY-MM-DD)
+        const dailyConsumptionMap = new Map();
+        const dailyLevelMap = new Map();
+        
+        data.forEach(r => {
+            const dateKey = r.date; // Use the stored date property (YYYY-MM-DD)
+            const consumption = (dgType === 'total' ? r.total?.consumption : r.consumption) || 0;
+            const level = (dgType === 'total' ? r.total?.level : r.level) || 0;
+
+            // Aggregate consumption
+            dailyConsumptionMap.set(dateKey, (dailyConsumptionMap.get(dateKey) || 0) + consumption);
+            
+            // Track end level for plotting level trend
+            dailyLevelMap.set(dateKey, level);
         });
 
-        // Recalculate consumption for multi-day view (Consumption bar starts at the point it occurred)
-        consumptionData = data.slice(1).map((r, i) => {
-            const prevLevel = data[i].level || data[i].total?.level || 0;
-            const currentLevel = r.level || r.total?.level || 0;
-            return Math.max(0, prevLevel - currentLevel);
+        // Convert Maps to Arrays for Chart.js
+        labels = Array.from(dailyConsumptionMap.keys()).map(d => {
+            const date = new Date(d);
+            return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
         });
-        consumptionData.unshift(0); // Add a 0 for the first interval's consumption bar
+        
+        consumptionData = Array.from(dailyConsumptionMap.values());
+        
+        // Prepare level data (only plotting the last recorded level of the day)
+        const levelDataValues = Array.from(dailyLevelMap.entries()).sort((a, b) => new Date(a[0]) - new Date(b[0])).map(entry => entry[1]);
 
         if (dgType === 'total') {
-            levelDatasets = [
-                { label: 'DG1 Level', data: data.map(r => r.dg1?.level), borderColor: '#0052cc', fill: false, spanGaps: true },
-                { label: 'DG2 Level', data: data.map(r => r.dg2?.level), borderColor: '#00875a', fill: false, spanGaps: true },
-                { label: 'DG3 Level', data: data.map(r => r.dg3?.level), borderColor: '#ffab00', fill: false, spanGaps: true }
-            ];
+            // WARNING: Cannot easily aggregate DG1/DG2/DG3 level differences here, stick to total level
+            levelDatasets = [{
+                label: 'Total Level (L)',
+                data: levelDataValues,
+                borderColor: 'rgba(0, 135, 90, 1)',
+                fill: false, tension: 0.4, spanGaps: false
+            }];
         } else {
             levelDatasets = [{
                 label: dgType.toUpperCase() + ' Level (L)',
-                data: data.map(r => r.level),
+                data: levelDataValues,
                 borderColor: 'rgba(0, 135, 90, 1)',
-                fill: true, tension: 0.4, spanGaps: true
+                fill: false, tension: 0.4, spanGaps: false
             }];
         }
       }
@@ -415,7 +424,7 @@
         return;
       }
       
-      const sliced = data.slice(-50).reverse(); // Show last 50 events for history
+      const sliced = data.slice(-50).reverse();
       sliced.forEach(record => {
         let timeStr;
         const dateObj = new Date(record.timestamp);
