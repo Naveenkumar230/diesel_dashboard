@@ -248,13 +248,11 @@
         runningHours = data.filter(r => r.isRunning).length * 0.5;
       }
       
-      // --- FIX FOR INCONSISTENT CONSUMPTION DATA (Ground Truth Logic) ---
+      // --- GROUND TRUTH LOGIC: Use actual level drop if more reliable ---
       let levelDrop = startLevel - endLevel;
-      // Use the reliable level drop if the sum of intervals is significantly lower (due to bad logging)
       if (levelDrop > 0 && totalConsumption < levelDrop * 0.95) { 
           totalConsumption = levelDrop;
       }
-      // --- END FIX ---
 
       document.getElementById('start-level').textContent = startLevel.toFixed(0);
       document.getElementById('end-level').textContent = endLevel.toFixed(0);
@@ -276,125 +274,147 @@
       let levelDatasets = [];
 
       if (!isMultiDay) {
-        // --- MODE 1: SINGLE DAY (Fixed 8 AM - 8 PM Slots) ---
-        document.getElementById('consumption-chart-title').textContent = '📈 Hourly Diesel Consumption (08:00 AM - 08:00 PM)';
+        // === SINGLE DAY MODE: FLEXIBLE ACTUAL TIMESTAMPS ===
+        document.getElementById('consumption-chart-title').textContent = '📈 Diesel Consumption (Actual Logged Times)';
+        document.getElementById('level-chart-title').textContent = '📉 Diesel Level Over Time';
         
-        // 1. Generate Fixed Time Slots
-        for (let h = 8; h <= 20; h++) {
-            let hourStr = h > 12 ? h - 12 : h;
-            let ampm = h >= 12 ? 'PM' : 'AM';
-            labels.push(`${hourStr}:00 ${ampm}`);
-            if (h !== 20) labels.push(`${hourStr}:30 ${ampm}`);
-        }
-
-        // 2. Map Data to Slots
-        consumptionData = new Array(labels.length).fill(0);
-        let mappedLevelData = new Array(labels.length).fill(null);
-
-        const findSlotIndex = (h, m) => {
-            if (h < 8 || h > 20) return -1;
-            let index = (h - 8) * 2;
-            if (m >= 25 && m <= 35) index += 1;
-            return index;
-        };
-
-        // Recalculate Consumption and Map Levels for plotting
-        let previousLevel = null;
-        let previousIndex = -1;
-        
-        data.forEach(r => {
-            const idx = findSlotIndex(r.hour, r.minute);
-            
-            if (idx >= 0 && idx < labels.length) {
-                let currentLevel;
-                if (dgType === 'total') {
-                    currentLevel = r.total?.level || 0;
-                } else {
-                    currentLevel = r.level || 0;
-                }
-
-                if (previousLevel !== null && previousIndex !== -1) {
-                    let intervalConsumption = Math.max(0, previousLevel - currentLevel);
-                    consumptionData[idx] = intervalConsumption;
-                } else {
-                    let firstConsumption = (dgType === 'total' ? r.total?.consumption : r.consumption) || 0;
-                    consumptionData[idx] = firstConsumption;
-                }
-                
-                mappedLevelData[idx] = currentLevel;
-                previousLevel = currentLevel;
-                previousIndex = idx;
-            }
+        // STEP 1: Sort data chronologically by time
+        const sortedData = [...data].sort((a, b) => {
+            const timeA = a.hour * 60 + a.minute;
+            const timeB = b.hour * 60 + b.minute;
+            return timeA - timeB;
         });
 
-        // Set Level Dataset (Single line for ease in fixed mode)
+        // STEP 2: Build arrays from actual data
+        const levelData = [];
+        let previousLevel = null;
+        
+        sortedData.forEach((record, index) => {
+            const hour = record.hour;
+            const minute = record.minute;
+            
+            // Create readable time label from actual timestamp
+            let hourStr = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+            let ampm = hour >= 12 ? 'PM' : 'AM';
+            let minuteStr = minute.toString().padStart(2, '0');
+            const timeLabel = `${hourStr}:${minuteStr} ${ampm}`;
+            
+            // Get current level
+            let currentLevel;
+            if (dgType === 'total') {
+                currentLevel = record.total?.level || 0;
+            } else {
+                currentLevel = record.level || 0;
+            }
+            
+            // Calculate consumption for this interval
+            let intervalConsumption = 0;
+            if (previousLevel !== null && previousLevel > currentLevel) {
+                intervalConsumption = previousLevel - currentLevel;
+            }
+            
+            // Add to arrays
+            labels.push(timeLabel);
+            consumptionData.push(intervalConsumption);
+            levelData.push(currentLevel);
+            
+            previousLevel = currentLevel;
+        });
+
+        // STEP 3: Create Level Dataset
         levelDatasets = [{
             label: (dgType === 'total' ? 'Total' : dgType.toUpperCase()) + ' Level (L)',
-            data: mappedLevelData,
+            data: levelData,
             borderColor: 'rgba(0, 135, 90, 1)',
             backgroundColor: 'rgba(0, 135, 90, 0.1)',
-            borderWidth: 3, fill: true, tension: 0.4, spanGaps: true
+            borderWidth: 3, 
+            fill: true, 
+            tension: 0.4, 
+            spanGaps: false,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: 'rgba(0, 135, 90, 1)',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2
         }];
 
       } else {
-        // --- MODE 2: MULTI-DAY HISTORY (Date Wise Aggregation FIX) ---
-        document.getElementById('consumption-chart-title').textContent = '📈 Daily Consumption Trend (Aggregated)';
+        // === MULTI-DAY MODE: DATE-WISE AGGREGATION ===
+        document.getElementById('consumption-chart-title').textContent = '📈 Daily Consumption Trend';
+        document.getElementById('level-chart-title').textContent = '📉 Daily End Level';
         
-        // Use a Map to aggregate data by date (YYYY-MM-DD)
-        const dailyConsumptionMap = new Map();
-        const dailyLevelMap = new Map(); // Store end level
-
-        // 1. Group records and find net drop per day
-        const dataGroupedByDate = data.reduce((acc, r) => {
-            const dateKey = r.date; 
-            if (!acc[dateKey]) {
-                acc[dateKey] = [];
+        // Group data by date
+        const dateGroups = {};
+        
+        data.forEach(record => {
+            const dateKey = record.date;
+            if (!dateGroups[dateKey]) {
+                dateGroups[dateKey] = [];
             }
-            acc[dateKey].push(r);
-            return acc;
-        }, {});
+            dateGroups[dateKey].push(record);
+        });
 
-        // 2. Iterate groups, calculate net drop, and load arrays
-        for (const dateKey of Object.keys(dataGroupedByDate).sort()) {
-            const dailyRecords = dataGroupedByDate[dateKey];
-            if (dailyRecords.length === 0) continue;
-
-            const isTotal = dgType === 'total';
-            const getLevel = (r) => isTotal ? r.total?.level : r.level;
-
-            const firstLevel = getLevel(dailyRecords[0]) || 0;
-            const lastLevel = getLevel(dailyRecords[dailyRecords.length - 1]) || 0;
-
-            const dailyConsumed = Math.max(0, firstLevel - lastLevel); // Correct Net Drop Per Day
+        // Process each date
+        const sortedDates = Object.keys(dateGroups).sort();
+        
+        sortedDates.forEach(dateKey => {
+            const dayRecords = dateGroups[dateKey];
             
-            // Add to arrays
-            labels.push(new Date(dateKey).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }));
-            consumptionData.push(dailyConsumed);
-            dailyLevelMap.set(dateKey, lastLevel);
-        }
+            // Sort by time within the day
+            dayRecords.sort((a, b) => {
+                const timeA = a.hour * 60 + a.minute;
+                const timeB = b.hour * 60 + b.minute;
+                return timeA - timeB;
+            });
 
-        // Prepare level data (only plotting the last recorded level of the day)
-        const levelDataValues = Array.from(dailyLevelMap.entries()).sort((a, b) => new Date(a[0]) - new Date(b[0])).map(entry => entry[1]);
+            if (dayRecords.length === 0) return;
 
-        // Set Level Datasets
-        if (dgType === 'total') {
-            levelDatasets = [{
-                label: 'Total End Level (L)',
-                data: levelDataValues,
-                borderColor: 'rgba(0, 135, 90, 1)',
-                fill: false, tension: 0.4, spanGaps: false
-            }];
-        } else {
-            levelDatasets = [{
-                label: dgType.toUpperCase() + ' End Level (L)',
-                data: levelDataValues,
-                borderColor: 'rgba(0, 135, 90, 1)',
-                fill: false, tension: 0.4, spanGaps: false
-            }];
-        }
+            // Get first and last level for the day
+            const getLevel = (r) => dgType === 'total' ? (r.total?.level || 0) : (r.level || 0);
+            
+            const firstLevel = getLevel(dayRecords[0]);
+            const lastLevel = getLevel(dayRecords[dayRecords.length - 1]);
+            
+            // Calculate actual consumption for the day (ground truth)
+            const dailyConsumption = Math.max(0, firstLevel - lastLevel);
+            
+            // Create label
+            const dateLabel = new Date(dateKey).toLocaleDateString('en-IN', { 
+                day: '2-digit', 
+                month: 'short' 
+            });
+            
+            labels.push(dateLabel);
+            consumptionData.push(dailyConsumption);
+        });
+
+        // Prepare level datasets for multi-day
+        const levelDataValues = sortedDates.map(dateKey => {
+            const dayRecords = dateGroups[dateKey];
+            if (dayRecords.length === 0) return null;
+            
+            const getLevel = (r) => dgType === 'total' ? (r.total?.level || 0) : (r.level || 0);
+            return getLevel(dayRecords[dayRecords.length - 1]); // End of day level
+        });
+
+        levelDatasets = [{
+            label: (dgType === 'total' ? 'Total' : dgType.toUpperCase()) + ' End Level (L)',
+            data: levelDataValues,
+            borderColor: 'rgba(0, 135, 90, 1)',
+            backgroundColor: 'rgba(0, 135, 90, 0.1)',
+            borderWidth: 3,
+            fill: false, 
+            tension: 0.4, 
+            spanGaps: false,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            pointBackgroundColor: 'rgba(0, 135, 90, 1)',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2
+        }];
       }
 
-      // Render Charts
+      // === RENDER CONSUMPTION CHART ===
       if (consumptionChart) consumptionChart.destroy();
       consumptionChart = new Chart(document.getElementById('consumptionChart'), {
         type: 'bar',
@@ -405,22 +425,91 @@
             data: consumptionData,
             backgroundColor: 'rgba(222, 53, 11, 0.8)',
             borderColor: 'rgba(222, 53, 11, 1)',
-            borderWidth: 1
+            borderWidth: 1,
+            borderRadius: 4
           }]
         },
         options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: { y: { beginAtZero: true }, x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { display: false } } }
+          responsive: true, 
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              labels: { color: chartTextColor, font: { size: 12, weight: 'bold' } }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#fff',
+              bodyColor: '#fff',
+              borderColor: '#ddd',
+              borderWidth: 1,
+              padding: 12,
+              displayColors: true,
+              callbacks: {
+                label: function(context) {
+                  return `Consumed: ${context.parsed.y.toFixed(2)} L`;
+                }
+              }
+            }
+          },
+          scales: { 
+            y: { 
+              beginAtZero: true,
+              ticks: { color: chartTextColor },
+              grid: { color: chartGridColor },
+              title: { display: true, text: 'Consumption (Liters)', color: chartTextColor, font: { weight: 'bold' } }
+            }, 
+            x: { 
+              ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, 
+              grid: { display: false }
+            } 
+          }
         }
       });
 
+      // === RENDER LEVEL CHART ===
       if (levelChart) levelChart.destroy();
       levelChart = new Chart(document.getElementById('levelChart'), {
         type: 'line',
-        data: { labels: labels, datasets: levelDatasets },
+        data: { 
+          labels: labels, 
+          datasets: levelDatasets 
+        },
         options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: { y: { beginAtZero: false }, x: { ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, grid: { color: chartGridColor } } }
+          responsive: true, 
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              labels: { color: chartTextColor, font: { size: 12, weight: 'bold' } }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#fff',
+              bodyColor: '#fff',
+              borderColor: '#ddd',
+              borderWidth: 1,
+              padding: 12,
+              displayColors: true,
+              callbacks: {
+                label: function(context) {
+                  return `Level: ${context.parsed.y.toFixed(1)} L`;
+                }
+              }
+            }
+          },
+          scales: { 
+            y: { 
+              beginAtZero: false,
+              ticks: { color: chartTextColor },
+              grid: { color: chartGridColor },
+              title: { display: true, text: 'Diesel Level (Liters)', color: chartTextColor, font: { weight: 'bold' } }
+            }, 
+            x: { 
+              ticks: { color: chartTextColor, maxRotation: 45, minRotation: 45 }, 
+              grid: { color: chartGridColor }
+            } 
+          }
         }
       });
     }
@@ -429,15 +518,25 @@
       const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
       const container = document.getElementById('timeline-container');
       container.innerHTML = '';
+      
       if (data.length === 0) {
         container.innerHTML = '<p style="text-align:center; color: var(--text-muted); padding: 20px;">No timeline data available</p>';
         return;
       }
       
-      const sliced = data.slice(-50).reverse();
+      // Sort data chronologically and take last 50 entries
+      const sortedData = [...data].sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+        return timeA - timeB;
+      });
+      
+      const sliced = sortedData.slice(-50).reverse(); // Most recent first
+      
       sliced.forEach(record => {
         let timeStr;
         const dateObj = new Date(record.timestamp);
+        
         if (isMultiDay) {
             timeStr = dateObj.toLocaleDateString('en-IN', {day:'2-digit', month:'short'}) + ' ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
         } else {
@@ -452,12 +551,13 @@
           isRunning = record.isRunning;
           consumption = record.consumption || 0;
         }
+        
         const item = document.createElement('div');
         item.className = `timeline-item ${isRunning ? '' : 'stopped'}`;
         item.innerHTML = `
           <div class="timeline-time">${timeStr}</div>
           <div class="timeline-status ${isRunning ? 'running' : 'stopped'}">${isRunning ? '🟢 Running' : '🔴 Stopped'}</div>
-          <div class="timeline-consumption">${consumption.toFixed(1)} L consumed}</div>
+          <div class="timeline-consumption">${consumption.toFixed(1)} L consumed</div>
         `;
         container.appendChild(item);
       });
@@ -470,6 +570,7 @@
       window.location.href = `/api/export/all?startDate=${startDate}&endDate=${endDate}`;
     }
 
+    // Load data on page load
     loadData();
   </script>
 </body>
