@@ -144,6 +144,7 @@
   </div>
 
   <script>
+// consumption.html - FINAL VERSION: NOISE FILTER + EXTENDED TIMELINE
 let consumptionChart, levelChart;
 let currentData = [];
 let autoRefreshInterval = null;
@@ -259,32 +260,24 @@ function clearStats() {
   document.getElementById('avg-consumption').textContent = '--';
 }
 
-// ✅ LOGIC 1: NOISE FILTERING & CONSUMPTION CALCULATION
-// This function smooths the data: 200 -> 199 -> 200 becomes flat 200.
-// 200 -> 199 -> 198 becomes consumption.
+// ✅ LOGIC 1: NOISE FILTERING
 function processWithNoiseFilter(data, dgType) {
   let totalConsumption = 0;
   let totalRefilled = 0;
   let refillEvents = [];
-  
-  // This holds the "Stable" level. We only update it if change > Noise Threshold
   let stableLevel = null; 
   
-  // We will rebuild the data array with "clean" levels for the chart
   let cleanData = data.map((record, index) => {
     let rawLevel = (dgType === 'total') ? (record.total?.level || 0) : (record.level || 0);
-    let isRunning = (dgType === 'total') 
-        ? (record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning)
-        : record.isRunning;
-
-    // Initialize stable level on first record
+    
+    // Init stable level
     if (stableLevel === null) stableLevel = rawLevel;
 
     let diff = rawLevel - stableLevel;
 
-    // Logic Tree
+    // Logic: Only accept change if it's a REFILL (>20L) or VALID DROP (<-2L)
     if (diff > REFILL_THRESHOLD) {
-        // ⛽ REFILL DETECTED (e.g., +20L)
+        // Refill
         totalRefilled += diff;
         refillEvents.push({
             timestamp: record.timestamp,
@@ -293,24 +286,18 @@ function processWithNoiseFilter(data, dgType) {
             afterLevel: rawLevel,
             time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
         });
-        stableLevel = rawLevel; // Reset stable level to new high
+        stableLevel = rawLevel; 
     } 
     else if (diff < -NOISE_THRESHOLD) {
-        // 📉 REAL CONSUMPTION (Drop > 2L)
-        // Example: 200 -> 197 (Diff -3). This is valid.
+        // Valid Consumption
         totalConsumption += Math.abs(diff);
-        stableLevel = rawLevel; // Update stable level to new low
+        stableLevel = rawLevel; 
     } 
-    else {
-        // 〰️ NOISE / JITTER (Change is between -2 and +20)
-        // Example: 200 -> 199 (Diff -1). Ignore. Keep stableLevel at 200.
-        // Example: 199 -> 200 (Diff +1). Ignore. Keep stableLevel at 200.
-        // For the CHART, we return the 'stableLevel' to show a smooth line, not the jittery rawLevel
-    }
+    // Else: Ignore noise (-2 to +20 range), keep stableLevel same
 
     return {
         ...record,
-        cleanLevel: stableLevel, // Use this for charts
+        cleanLevel: stableLevel, 
         cleanConsumption: (diff < -NOISE_THRESHOLD) ? Math.abs(diff) : 0
     };
   });
@@ -323,21 +310,18 @@ function processData(data, startDate, endDate) {
   const endStr = new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   document.getElementById('date-range').textContent = (startStr === endStr) ? startStr : `From ${startStr} to ${endStr}`;
 
-  // ✅ Step 1: Process data with Noise Filter
   const { totalConsumption, totalRefilled, refillEvents, cleanData } = processWithNoiseFilter(data, dgType);
 
   let startLevel = cleanData[0]?.cleanLevel || 0;
   let endLevel = cleanData[cleanData.length - 1]?.cleanLevel || 0;
   
-  // Running Hours Calculation
   let runningHours = 0;
   if (dgType === 'total') {
-     runningHours = data.filter(r => (r.dg1?.isRunning || r.dg2?.isRunning || r.dg3?.isRunning)).length * 0.5; // Assuming 30min interval
+     runningHours = data.filter(r => (r.dg1?.isRunning || r.dg2?.isRunning || r.dg3?.isRunning)).length * 0.5; 
   } else {
      runningHours = data.filter(r => r.isRunning).length * 0.5;
   }
 
-  // Refill Prediction
   if (dgType === 'total') {
     const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0;
     let daysRemaining = '--';
@@ -348,7 +332,6 @@ function processData(data, startDate, endDate) {
     document.getElementById('refill-prediction').textContent = daysRemaining;
   }
 
-  // Update DOM
   document.getElementById('start-level').textContent = startLevel.toFixed(0);
   document.getElementById('end-level').textContent = endLevel.toFixed(0);
   document.getElementById('total-consumption').textContent = totalConsumption.toFixed(1);
@@ -377,8 +360,7 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   }
 }
 
-// ✅ LOGIC 2: REAL-TIME GRAPH AXIS
-// This logic ensures the X-axis extends to the current time, even if data stopped earlier.
+// ✅ LOGIC 2: EXTEND GRAPH TO CURRENT TIME
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
   let labels = [];
@@ -388,31 +370,29 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
   let pointRadiuses = [];
 
   if (!isMultiDay) {
-    // Single Day Mode: Build a timeline from 00:00 to NOW (or 23:59 if past)
+    // Single Day Mode
     const now = new Date();
     const isToday = (startDate === now.toISOString().split('T')[0]);
     
-    // Determine the end hour for the graph
-    // If Today: Go up to current hour + 1. If Past: Go to 23.
-    let endHour = isToday ? now.getHours() : 23; 
-    
-    // Create a Map for quick data lookup
+    let endHour = isToday ? now.getHours() : 23;
+    let currentMinute = now.getMinutes();
+
     const dataMap = {};
     cleanData.forEach(d => {
-        // key format "14:30"
         let h = d.hour.toString().padStart(2, '0');
         let m = d.minute.toString().padStart(2, '0');
         dataMap[`${h}:${m}`] = d;
     });
 
-    let previousValue = cleanData[0]?.cleanLevel || 0;
+    // Track the last known level to extend the line
+    let lastKnownLevel = null; 
+    let hasStartedDrawing = false;
 
-    // Iterate hours 0 to EndHour
     for (let h = 0; h <= endHour; h++) {
-        // Check 00 and 30 minute marks
-        [0, 30].forEach(m => {
-            // Don't project into the future minutes of the current hour
-            if (isToday && h === now.getHours() && m > now.getMinutes()) return;
+        for (let m of [0, 30]) { // Check 00 and 30 minute marks
+            
+            // Stop if we are in the future minutes of today
+            if (isToday && h === now.getHours() && m > currentMinute) break;
 
             let timeKey = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
             let hour12 = (h > 12) ? h - 12 : (h === 0 ? 12 : h);
@@ -422,47 +402,53 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
             labels.push(label);
 
             if (dataMap[timeKey]) {
-                // We have actual data for this timestamp
+                // ✅ DATA EXISTS
                 let record = dataMap[timeKey];
-                levelData.push(record.cleanLevel);
-                consumptionData.push(record.cleanConsumption);
-                previousValue = record.cleanLevel; // Update memory
+                lastKnownLevel = record.cleanLevel; 
+                hasStartedDrawing = true;
 
-                // Check if this specific timestamp was a refill event
+                levelData.push(lastKnownLevel);
+                consumptionData.push(record.cleanConsumption);
+
+                // Check for Refill
                 let isRefill = refillEvents.some(e => {
                     let d = new Date(e.timestamp);
                     return d.getHours() === h && Math.abs(d.getMinutes() - m) < 5;
                 });
 
                 if (isRefill) {
-                    pointColors.push('#0052cc'); // Blue for Refill
+                    pointColors.push('#0052cc'); // Blue dot
                     pointRadiuses.push(6);
                 } else {
-                    pointColors.push('rgba(0, 135, 90, 1)'); // Green normal
+                    pointColors.push('rgba(0, 135, 90, 1)');
                     pointRadiuses.push(0);
                 }
 
             } else {
-                // No data for this time slot
-                // If it is in the past compared to current time, we can either:
-                // 1. Show gap (null) - Best for identifying "Offline"
-                // 2. Show flat line (previousValue) - Best for identifying "Steady"
-                
-                // Let's show null to indicate "No Data / Sensor Offline" 
-                // but Chart.js spanGaps:true will connect them visually
-                levelData.push(null); 
-                consumptionData.push(0);
-                pointColors.push('rgba(0, 135, 90, 1)');
-                pointRadiuses.push(0);
+                // ❌ NO DATA (Gap/Waiting)
+                if (hasStartedDrawing && lastKnownLevel !== null) {
+                    // EXTEND THE LINE: Use last known level
+                    levelData.push(lastKnownLevel);
+                    consumptionData.push(0); 
+                    
+                    pointColors.push('rgba(0, 135, 90, 1)');
+                    pointRadiuses.push(0);
+                } else {
+                    // Haven't started yet (Morning hours before data started)
+                    levelData.push(null);
+                    consumptionData.push(0);
+                    pointColors.push('rgba(0, 135, 90, 1)');
+                    pointRadiuses.push(0);
+                }
             }
-        });
+        }
     }
     
     document.getElementById('consumption-chart-title').textContent = '📈 Diesel Consumption (Filtered)';
     document.getElementById('level-chart-title').textContent = '📉 Diesel Level (Noise Reduced)';
 
   } else {
-    // Multi-day logic (kept simple)
+    // Multi-day logic
     cleanData.forEach(d => {
          labels.push(d.date);
          levelData.push(d.cleanLevel);
@@ -505,8 +491,8 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         backgroundColor: 'rgba(0, 135, 90, 0.1)',
         borderWidth: 3, 
         fill: true, 
-        tension: 0.4, 
-        spanGaps: true, // This connects points even if data is missing (offline)
+        tension: 0, // Straight lines (0 tension) make extended flat lines look better
+        spanGaps: true, 
         pointBackgroundColor: pointColors,
         pointRadius: pointRadiuses,
         pointHoverRadius: 8
