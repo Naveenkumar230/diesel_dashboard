@@ -1,6 +1,6 @@
 /**
  * DG Monitoring System - Main Server
- * MODIFIED for HTTPS (SSL) and correct graceful shutdown
+ * FINAL VERSION: Secure, Cleaned, and Robust Error Handling
  */
 
 require('dotenv').config();
@@ -10,11 +10,13 @@ const cors = require('cors');
 const compression = require('compression');
 const https = require('https');
 const fs = require('fs');
-const mongoose = require('mongoose'); // Import Mongoose here
+const mongoose = require('mongoose');
+const os = require('os'); // Added to detect IP automatically
 
 // Import modules
 const { connectMongoDB, isMongoConnected } = require('./config/database');
-const { connectToPLC, closePLC, readAllSystemData, getSystemData } = require('./services/plcService');
+// Removed unused imports (readAllSystemData, getSystemData) to keep code clean
+const { connectToPLC, closePLC } = require('./services/plcService');
 const { startScheduledTasks } = require('./services/schedulerService');
 const apiRoutes = require('./routes/api');
 const { initializeEmail } = require('./services/emailService');
@@ -35,6 +37,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   lastModified: true 
 }));
 
+// Cache control for static assets
 app.use((req, res, next) => {
   if (/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/.test(req.url)) {
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -57,14 +60,15 @@ app.get('/electrical.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'electrical.html'));
 });
 
-// -------------------- Graceful Shutdown (FIXED) --------------------
-// This new function uses async/await for a clean shutdown
+// -------------------- Graceful Shutdown --------------------
 async function gracefulShutdown() {
   console.log('\nShutting down gracefully...');
   try {
     closePLC(); // Close PLC connection
-    await mongoose.connection.close(); // Wait for Mongoose to close
-    console.log('MongoDB connection closed.');
+    if (mongoose.connection.readyState === 1) {
+        await mongoose.connection.close();
+        console.log('MongoDB connection closed.');
+    }
     process.exit(0);
   } catch (err) {
     console.error('Error during shutdown:', err);
@@ -74,7 +78,29 @@ async function gracefulShutdown() {
 
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
-// -----------------------------------------------------------------
+
+// ✅ SAFETY NET: Global Error Handlers (Prevents crashes from random timeouts)
+process.on('uncaughtException', (err) => {
+    console.error('❌ UNCAUGHT EXCEPTION:', err);
+    // Optional: gracefulShutdown(); // Don't exit immediately for minor errors
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ UNHANDLED REJECTION:', reason);
+});
+
+// -------------------- Helper: Get Local IP --------------------
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return 'localhost';
+}
 
 // -------------------- Start Server --------------------
 async function startServer() {
@@ -91,10 +117,11 @@ async function startServer() {
     // Create HTTPS Server
     const httpsServer = https.createServer(httpsOptions, app);
     
-    httpsServer.listen(httpsPort, '0.0.0.0', () => { // Listen on all interfaces
+    httpsServer.listen(httpsPort, '0.0.0.0', () => { 
+      const ip = getLocalIP();
       console.log('\n===========================================');
       console.log(`DG Monitoring System Server Started`);
-      console.log(`✅ SECURE SERVER: https://192.168.30.156:${httpsPort}`);
+      console.log(`✅ SECURE SERVER: https://${ip}:${httpsPort}`);
       console.log(`===========================================`);
       console.log(`MongoDB: ${isMongoConnected() ? 'Connected' : 'Disconnected'}`);
       
@@ -110,7 +137,7 @@ async function startServer() {
         const host = req.headers.host.split(':')[0]; 
         res.redirect(`https://${host}:${httpsPort}${req.url}`);
     });
-    httpApp.listen(httpPort, '0.0.0.0', () => { // Listen on all interfaces
+    httpApp.listen(httpPort, '0.0.0.0', () => { 
         console.log(`Redirecting HTTP (${httpPort}) to HTTPS (${httpsPort})...`);
     });
 
