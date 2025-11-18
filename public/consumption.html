@@ -144,7 +144,7 @@
   </div>
 
  <script>
-// consumption.html - VERSION: PRECISION UPDATED (3 DECIMALS)
+// consumption.html - FINAL VERSION: SMART DECIMALS + NOISE FILTER
 
 let consumptionChart, levelChart;
 let currentData = [];
@@ -153,7 +153,7 @@ let autoRefreshInterval = null;
 // ✅ CONFIGURATION
 const CRITICAL_LEVEL = 50;
 const REFILL_THRESHOLD = 20; // A jump > 20L is a Refill
-const NOISE_THRESHOLD = 0.5; // ✅ LOWERED to 0.5L to capture small consumption (7L/hr rate)
+const NOISE_THRESHOLD = 0.5; // Lowered to 0.5L to capture small consumption (7L/hr rate)
 
 const urlParams = new URLSearchParams(window.location.search);
 const dgType = urlParams.get('dg') || 'dg1';
@@ -167,6 +167,15 @@ const titles = {
 document.getElementById('page-title').textContent = titles[dgType] || titles['dg1'];
 
 if (dgType === 'total') document.getElementById('refill-card').style.display = 'block';
+
+// ✅ HELPER: SMART DECIMAL FORMATTING
+// 200.000 -> 200
+// 200.500 -> 200.5
+// 200.123 -> 200.123
+function formatNumber(num) {
+    if (num === null || num === undefined || isNaN(num)) return '--';
+    return parseFloat(Number(num).toFixed(3)); // Rounds to 3 decimals, removes trailing zeros
+}
 
 function setDateRange(range) {
     const end = new Date();
@@ -331,12 +340,12 @@ function processData(data, startDate, endDate) {
     document.getElementById('refill-prediction').textContent = daysRemaining;
   }
 
-  // ✅ UPDATED DISPLAY TO 3 DECIMAL PLACES
-  document.getElementById('start-level').textContent = startLevel.toFixed(3);
-  document.getElementById('end-level').textContent = endLevel.toFixed(3);
-  document.getElementById('total-consumption').textContent = totalConsumption.toFixed(3);
-  document.getElementById('running-hours').textContent = runningHours.toFixed(2); // Hours usually 2 decimals is enough (1.50)
-  document.getElementById('avg-consumption').textContent = (runningHours > 0 ? (totalConsumption / runningHours) : 0).toFixed(3);
+  // ✅ UPDATED DISPLAY USING formatNumber()
+  document.getElementById('start-level').textContent = formatNumber(startLevel);
+  document.getElementById('end-level').textContent = formatNumber(endLevel);
+  document.getElementById('total-consumption').textContent = formatNumber(totalConsumption);
+  document.getElementById('running-hours').textContent = formatNumber(runningHours);
+  document.getElementById('avg-consumption').textContent = formatNumber(runningHours > 0 ? (totalConsumption / runningHours) : 0);
 
   displayRefillInfo(totalRefilled, refillEvents);
   updateCharts(cleanData, startDate, endDate, refillEvents);
@@ -349,10 +358,11 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   
   if (totalRefilled > 0 && refillEvents.length > 0) {
     refillCard.style.display = 'block';
-    totalRefilledEl.textContent = totalRefilled.toFixed(3); // ✅ 3 Decimals
+    // ✅ Using formatNumber
+    totalRefilledEl.textContent = formatNumber(totalRefilled); 
     let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
     refillEvents.forEach(event => {
-      detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${event.amount.toFixed(3)}L (${event.beforeLevel.toFixed(3)} → ${event.afterLevel.toFixed(3)})<br>`;
+      detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${formatNumber(event.amount)}L (${formatNumber(event.beforeLevel)} → ${formatNumber(event.afterLevel)})<br>`;
     });
     refillDetailsEl.innerHTML = detailsHTML;
   } else {
@@ -360,7 +370,7 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   }
 }
 
-// ✅ LOGIC 2: EXTEND GRAPH TO CURRENT TIME + DECIMAL TOOLTIPS
+// ✅ LOGIC 2: EXTEND GRAPH TO CURRENT TIME
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
   let labels = [];
@@ -469,7 +479,8 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         tooltip: {
             callbacks: {
                 label: function(context) {
-                    return `Consumed: ${context.raw.toFixed(3)} L`; // ✅ 3 Decimals
+                    // ✅ Smart formatting
+                    return `Consumed: ${formatNumber(context.raw)} L`; 
                 }
             }
         }
@@ -506,8 +517,13 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 label: function(context) {
                     let val = context.raw;
                     let idx = context.dataIndex;
-                    if (pointColors[idx] === '#0052cc') return `⛽ Refill Detected: +${refillEvents.find(e=>e.afterLevel === val)?.amount.toFixed(3)}L`;
-                    return `Level: ${val.toFixed(3)} L`; // ✅ 3 Decimals
+                    // ✅ Smart formatting in Tooltip
+                    if (pointColors[idx] === '#0052cc') {
+                        let refillEvent = refillEvents.find(e=>e.afterLevel === val);
+                        let amt = refillEvent ? refillEvent.amount : 0;
+                        return `⛽ Refill Detected: +${formatNumber(amt)}L`;
+                    }
+                    return `Level: ${formatNumber(val)} L`; 
                 }
             }
         }
