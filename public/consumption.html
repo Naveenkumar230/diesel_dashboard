@@ -143,8 +143,9 @@
     </div>
   </div>
 
-  <script>
-// consumption.html - FINAL VERSION: NOISE FILTER + EXTENDED TIMELINE
+ <script>
+// consumption.html - VERSION: PRECISION UPDATED (3 DECIMALS)
+
 let consumptionChart, levelChart;
 let currentData = [];
 let autoRefreshInterval = null;
@@ -152,7 +153,7 @@ let autoRefreshInterval = null;
 // ✅ CONFIGURATION
 const CRITICAL_LEVEL = 50;
 const REFILL_THRESHOLD = 20; // A jump > 20L is a Refill
-const NOISE_THRESHOLD = 2;   // Changes < 2L are ignored (Sensor Jitter)
+const NOISE_THRESHOLD = 0.5; // ✅ LOWERED to 0.5L to capture small consumption (7L/hr rate)
 
 const urlParams = new URLSearchParams(window.location.search);
 const dgType = urlParams.get('dg') || 'dg1';
@@ -270,12 +271,10 @@ function processWithNoiseFilter(data, dgType) {
   let cleanData = data.map((record, index) => {
     let rawLevel = (dgType === 'total') ? (record.total?.level || 0) : (record.level || 0);
     
-    // Init stable level
     if (stableLevel === null) stableLevel = rawLevel;
 
     let diff = rawLevel - stableLevel;
 
-    // Logic: Only accept change if it's a REFILL (>20L) or VALID DROP (<-2L)
     if (diff > REFILL_THRESHOLD) {
         // Refill
         totalRefilled += diff;
@@ -289,11 +288,11 @@ function processWithNoiseFilter(data, dgType) {
         stableLevel = rawLevel; 
     } 
     else if (diff < -NOISE_THRESHOLD) {
-        // Valid Consumption
+        // Consumption (valid if drop is > 0.5L)
         totalConsumption += Math.abs(diff);
         stableLevel = rawLevel; 
     } 
-    // Else: Ignore noise (-2 to +20 range), keep stableLevel same
+    // Else: Ignore noise
 
     return {
         ...record,
@@ -332,11 +331,12 @@ function processData(data, startDate, endDate) {
     document.getElementById('refill-prediction').textContent = daysRemaining;
   }
 
-  document.getElementById('start-level').textContent = startLevel.toFixed(0);
-  document.getElementById('end-level').textContent = endLevel.toFixed(0);
-  document.getElementById('total-consumption').textContent = totalConsumption.toFixed(1);
-  document.getElementById('running-hours').textContent = runningHours.toFixed(1);
-  document.getElementById('avg-consumption').textContent = (runningHours > 0 ? (totalConsumption / runningHours) : 0).toFixed(2);
+  // ✅ UPDATED DISPLAY TO 3 DECIMAL PLACES
+  document.getElementById('start-level').textContent = startLevel.toFixed(3);
+  document.getElementById('end-level').textContent = endLevel.toFixed(3);
+  document.getElementById('total-consumption').textContent = totalConsumption.toFixed(3);
+  document.getElementById('running-hours').textContent = runningHours.toFixed(2); // Hours usually 2 decimals is enough (1.50)
+  document.getElementById('avg-consumption').textContent = (runningHours > 0 ? (totalConsumption / runningHours) : 0).toFixed(3);
 
   displayRefillInfo(totalRefilled, refillEvents);
   updateCharts(cleanData, startDate, endDate, refillEvents);
@@ -349,10 +349,10 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   
   if (totalRefilled > 0 && refillEvents.length > 0) {
     refillCard.style.display = 'block';
-    totalRefilledEl.textContent = totalRefilled.toFixed(0);
+    totalRefilledEl.textContent = totalRefilled.toFixed(3); // ✅ 3 Decimals
     let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
     refillEvents.forEach(event => {
-      detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${event.amount.toFixed(0)}L (${event.beforeLevel.toFixed(0)} → ${event.afterLevel.toFixed(0)})<br>`;
+      detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${event.amount.toFixed(3)}L (${event.beforeLevel.toFixed(3)} → ${event.afterLevel.toFixed(3)})<br>`;
     });
     refillDetailsEl.innerHTML = detailsHTML;
   } else {
@@ -360,7 +360,7 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   }
 }
 
-// ✅ LOGIC 2: EXTEND GRAPH TO CURRENT TIME
+// ✅ LOGIC 2: EXTEND GRAPH TO CURRENT TIME + DECIMAL TOOLTIPS
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
   let labels = [];
@@ -384,14 +384,11 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         dataMap[`${h}:${m}`] = d;
     });
 
-    // Track the last known level to extend the line
     let lastKnownLevel = null; 
     let hasStartedDrawing = false;
 
     for (let h = 0; h <= endHour; h++) {
-        for (let m of [0, 30]) { // Check 00 and 30 minute marks
-            
-            // Stop if we are in the future minutes of today
+        for (let m of [0, 30]) { 
             if (isToday && h === now.getHours() && m > currentMinute) break;
 
             let timeKey = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
@@ -402,7 +399,6 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
             labels.push(label);
 
             if (dataMap[timeKey]) {
-                // ✅ DATA EXISTS
                 let record = dataMap[timeKey];
                 lastKnownLevel = record.cleanLevel; 
                 hasStartedDrawing = true;
@@ -410,14 +406,13 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 levelData.push(lastKnownLevel);
                 consumptionData.push(record.cleanConsumption);
 
-                // Check for Refill
                 let isRefill = refillEvents.some(e => {
                     let d = new Date(e.timestamp);
                     return d.getHours() === h && Math.abs(d.getMinutes() - m) < 5;
                 });
 
                 if (isRefill) {
-                    pointColors.push('#0052cc'); // Blue dot
+                    pointColors.push('#0052cc'); 
                     pointRadiuses.push(6);
                 } else {
                     pointColors.push('rgba(0, 135, 90, 1)');
@@ -425,16 +420,12 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 }
 
             } else {
-                // ❌ NO DATA (Gap/Waiting)
                 if (hasStartedDrawing && lastKnownLevel !== null) {
-                    // EXTEND THE LINE: Use last known level
                     levelData.push(lastKnownLevel);
                     consumptionData.push(0); 
-                    
                     pointColors.push('rgba(0, 135, 90, 1)');
                     pointRadiuses.push(0);
                 } else {
-                    // Haven't started yet (Morning hours before data started)
                     levelData.push(null);
                     consumptionData.push(0);
                     pointColors.push('rgba(0, 135, 90, 1)');
@@ -474,6 +465,15 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      plugins: {
+        tooltip: {
+            callbacks: {
+                label: function(context) {
+                    return `Consumed: ${context.raw.toFixed(3)} L`; // ✅ 3 Decimals
+                }
+            }
+        }
+      },
       scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 } } }
     }
   });
@@ -491,7 +491,7 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         backgroundColor: 'rgba(0, 135, 90, 0.1)',
         borderWidth: 3, 
         fill: true, 
-        tension: 0, // Straight lines (0 tension) make extended flat lines look better
+        tension: 0, 
         spanGaps: true, 
         pointBackgroundColor: pointColors,
         pointRadius: pointRadiuses,
@@ -506,8 +506,8 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 label: function(context) {
                     let val = context.raw;
                     let idx = context.dataIndex;
-                    if (pointColors[idx] === '#0052cc') return `⛽ Refill Detected: ${val}L`;
-                    return `Level: ${val}L`;
+                    if (pointColors[idx] === '#0052cc') return `⛽ Refill Detected: +${refillEvents.find(e=>e.afterLevel === val)?.amount.toFixed(3)}L`;
+                    return `Level: ${val.toFixed(3)} L`; // ✅ 3 Decimals
                 }
             }
         }
