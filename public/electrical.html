@@ -118,12 +118,6 @@
         <canvas id="combinedChart"></canvas>
       </div>
     </div>
-    
-    <div class="timeline-section">
-      <div class="chart-title">⏱️ DG Run Timeline</div>
-      <div id="timeline-container"></div>
-    </div>
-
     <div id="loading" class="loading" style="display:none;">⏳ Loading data...</div>
     <div id="empty-state" class="empty-state" style="display:none;">
       <div class="empty-state-icon">📭</div>
@@ -133,15 +127,15 @@
   </div>
 
 <script>
- // electrical.html - CORRECTED JAVASCRIPT (Replace the <script> section)
+// electrical.html - FINAL VERSION WITH "STICKY/FREEZE" VALUES
 
 let voltageChart, currentChart, powerChart, freqPfChart, combinedChart;
 let dgType = 'dg1';
 const DG_RUNNING_THRESHOLD = 5; 
 const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
 
-// ✅ STICKY VALUES - Store last known values
-let stickyValues = {
+// ✅ 1. LOAD STICKY VALUES FROM STORAGE (Persist even after refresh)
+let stickyValues = JSON.parse(localStorage.getItem('dgStickyStats')) || {
   totalHours: '--',
   totalKwh: '--',
   avgLoad: '--',
@@ -152,6 +146,9 @@ const urlParams = new URLSearchParams(window.location.search);
 dgType = urlParams.get('dg') || 'dg1';
 
 document.getElementById('page-title').textContent = `⚙️ ${dgType.toUpperCase().replace('DG', 'DG-')} Electrical Details`;
+
+// ✅ 2. RENDER STICKY VALUES IMMEDIATELY ON LOAD
+renderStickyStats();
 
 function setDateRange(range) {
     const end = new Date();
@@ -183,12 +180,10 @@ async function loadData() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   if (!startDate || !endDate) { alert('Please select a start and end date'); return; }
-  if (new Date(endDate) < new Date(startDate)) { alert('End date cannot be before start date'); return; }
-
-  // ✅ DON'T clear stats immediately - keep sticky values visible
+  
   document.getElementById('loading').style.display = 'block';
   document.getElementById('empty-state').style.display = 'none';
-  clearCharts();
+  clearCharts(); // Clear charts, but NOT the stats cards
 
   try {
     const url = `/api/electrical/${dgType}?startDate=${startDate}&endDate=${endDate}`;
@@ -212,7 +207,8 @@ async function loadData() {
 function showEmptyState() {
   document.getElementById('empty-state').style.display = 'block';
   clearCharts();
-  // ✅ DON'T clear sticky values on error
+  // ⚠️ IMPORTANT: We do NOT clear sticky stats here. 
+  // They remain "frozen" on the last known value.
 }
 
 function clearCharts() {
@@ -223,17 +219,31 @@ function clearCharts() {
   if (combinedChart) combinedChart.destroy();
 }
 
-// ✅ STICKY: Update stats and save to sticky storage
-function updateStats(totalHours, totalKwh, avgLoad, peakKw) {
-  stickyValues.totalHours = totalHours.toFixed(1);
-  stickyValues.totalKwh = totalKwh.toFixed(0);
-  stickyValues.avgLoad = avgLoad.toFixed(1);
-  stickyValues.peakKw = peakKw.toFixed(1);
+// ✅ 3. UPDATE & SAVE STICKY VALUES
+function updateStickyStats(totalHours, totalKwh, avgLoad, peakKw) {
+  // Save to memory variable
+  stickyValues = {
+    totalHours: totalHours.toFixed(1),
+    totalKwh: totalKwh.toFixed(0),
+    avgLoad: avgLoad.toFixed(1),
+    peakKw: peakKw.toFixed(1)
+  };
 
-  document.getElementById('total-hours').textContent = stickyValues.totalHours;
-  document.getElementById('total-kwh').textContent = stickyValues.totalKwh;
-  document.getElementById('avg-load').textContent = stickyValues.avgLoad;
-  document.getElementById('peak-kw').textContent = stickyValues.peakKw;
+  // Save to Browser LocalStorage (so it remembers next time)
+  localStorage.setItem('dgStickyStats', JSON.stringify(stickyValues));
+
+  // Update HTML
+  renderStickyStats();
+}
+
+// ✅ 4. RENDER FUNCTION
+function renderStickyStats() {
+  if(stickyValues.totalHours !== '--') {
+      document.getElementById('total-hours').textContent = stickyValues.totalHours;
+      document.getElementById('total-kwh').textContent = stickyValues.totalKwh;
+      document.getElementById('avg-load').textContent = stickyValues.avgLoad;
+      document.getElementById('peak-kw').textContent = stickyValues.peakKw;
+  }
 }
 
 function processData(data, startDate, endDate) {
@@ -241,35 +251,47 @@ function processData(data, startDate, endDate) {
   const endStr = new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
   document.getElementById('date-range').textContent = (startStr === endStr) ? startStr : `From ${startStr} to ${endStr}`;
 
-  // ✅ Filter to only RUNNING data points
-  const runningData = data.filter(r => r.activePower > DG_RUNNING_THRESHOLD);
+  // ✅ NOISE FILTER: 
+  // A DG is only "Running" (Consuming Diesel) if it is generating Voltage.
+  // We ignore records where Voltage is < 200V (Engine OFF/Noise).
+  const runningData = data.filter(r => r.voltageR > 200);
 
-  let totalRunningHours = runningData.length * 0.5; // Each record = 30 min
-  let totalKwh = 0;
-  let peakKw = 0;
-  let loadSum = 0;
-  const maxKw = DG_MAX_KW[dgType] || 500;
+  // --- STATS CALCULATION ---
+  if (runningData.length > 0) {
+      // Each record represents 30 minutes (0.5 hours)
+      // Now this counts STRICTLY only times when Voltage was present
+      let totalRunningHours = runningData.length * 0.5; 
+      
+      let totalKwh = 0;
+      if (data.length > 0) {
+          // Calculate total energy difference for the whole period
+          totalKwh = data[data.length - 1].energyMeter - data[0].energyMeter;
+          if (totalKwh < 0) totalKwh = 0;
+      }
 
-  if (data.length > 0) {
-      totalKwh = data[data.length - 1].energyMeter - data[0].energyMeter;
-      if (totalKwh < 0) totalKwh = 0;
+      let peakKw = 0;
+      let loadSum = 0;
+      const maxKw = DG_MAX_KW[dgType] || 500;
+
+      runningData.forEach(r => {
+        if (r.activePower > peakKw) peakKw = r.activePower;
+        loadSum += (r.activePower / maxKw) * 100;
+      });
+
+      const avgLoad = (loadSum / runningData.length);
+
+      // Update Sticky Values with CLEAN data
+      updateStickyStats(totalRunningHours, totalKwh, avgLoad, peakKw);
+  } 
+  else {
+      console.log("DG is OFF (Voltage < 200V). Keeping sticky stats frozen.");
   }
 
-  runningData.forEach(r => {
-    if (r.activePower > peakKw) peakKw = r.activePower;
-    loadSum += (r.activePower / maxKw) * 100;
-  });
-
-  const avgLoad = runningData.length > 0 ? (loadSum / runningData.length) : 0;
-
-  // ✅ Update sticky values
-  updateStats(totalRunningHours, totalKwh, avgLoad, peakKw);
-
-  updateSplitCharts(runningData);
-  updateCombinedChart(runningData);
+  // Update Charts (We show ALL data in charts so you can see the noise if it exists)
+  updateSplitCharts(data); 
+  updateCombinedChart(data);
 }
 
-// ✅ FIXED: Only plot during running times
 function updateSplitCharts(data) {
   const labels = data.map(r => {
     const d = new Date(r.timestamp);
@@ -317,7 +339,6 @@ function updateSplitCharts(data) {
   });
 }
 
-// ✅ COMBINED CHART: All parameters on same timeline
 function updateCombinedChart(data) {
   const labels = data.map(r => {
     const d = new Date(r.timestamp);
