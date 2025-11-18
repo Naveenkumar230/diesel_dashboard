@@ -144,7 +144,7 @@
   </div>
 
  <script>
-// consumption.html - FINAL VERSION: SMART DECIMALS + NOISE FILTER
+// consumption.html - FINAL COMPLETE CODE: NOISE FILTER + 7L/HOUR RULE
 
 let consumptionChart, levelChart;
 let currentData = [];
@@ -153,7 +153,8 @@ let autoRefreshInterval = null;
 // ✅ CONFIGURATION
 const CRITICAL_LEVEL = 50;
 const REFILL_THRESHOLD = 20; // A jump > 20L is a Refill
-const NOISE_THRESHOLD = 0.5; // Lowered to 0.5L to capture small consumption (7L/hr rate)
+const NOISE_THRESHOLD = 0.5; // Low threshold to capture small consumption
+const CONSUMPTION_PER_HOUR = 7; // ✅ YOUR RULE: 7 Liters = 1 Running Hour
 
 const urlParams = new URLSearchParams(window.location.search);
 const dgType = urlParams.get('dg') || 'dg1';
@@ -170,11 +171,10 @@ if (dgType === 'total') document.getElementById('refill-card').style.display = '
 
 // ✅ HELPER: SMART DECIMAL FORMATTING
 // 200.000 -> 200
-// 200.500 -> 200.5
-// 200.123 -> 200.123
+// 13.123 -> 13.123
 function formatNumber(num) {
     if (num === null || num === undefined || isNaN(num)) return '--';
-    return parseFloat(Number(num).toFixed(3)); // Rounds to 3 decimals, removes trailing zeros
+    return parseFloat(Number(num).toFixed(3)); 
 }
 
 function setDateRange(range) {
@@ -297,7 +297,7 @@ function processWithNoiseFilter(data, dgType) {
         stableLevel = rawLevel; 
     } 
     else if (diff < -NOISE_THRESHOLD) {
-        // Consumption (valid if drop is > 0.5L)
+        // Valid Consumption
         totalConsumption += Math.abs(diff);
         stableLevel = rawLevel; 
     } 
@@ -323,14 +323,15 @@ function processData(data, startDate, endDate) {
   let startLevel = cleanData[0]?.cleanLevel || 0;
   let endLevel = cleanData[cleanData.length - 1]?.cleanLevel || 0;
   
+  // ✅ NEW LOGIC: RUNNING HOURS = CONSUMPTION / 7
   let runningHours = 0;
-  if (dgType === 'total') {
-     runningHours = data.filter(r => (r.dg1?.isRunning || r.dg2?.isRunning || r.dg3?.isRunning)).length * 0.5; 
-  } else {
-     runningHours = data.filter(r => r.isRunning).length * 0.5;
+  if (totalConsumption > 0) {
+      runningHours = totalConsumption / CONSUMPTION_PER_HOUR;
   }
 
+  // Update Stats for Refill Prediction
   if (dgType === 'total') {
+    // Avg rate is basically guaranteed to be ~7 with this math, but good for consistency
     const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0;
     let daysRemaining = '--';
     if (avgConsumptionRate > 0) {
@@ -340,7 +341,7 @@ function processData(data, startDate, endDate) {
     document.getElementById('refill-prediction').textContent = daysRemaining;
   }
 
-  // ✅ UPDATED DISPLAY USING formatNumber()
+  // ✅ UPDATE DOM
   document.getElementById('start-level').textContent = formatNumber(startLevel);
   document.getElementById('end-level').textContent = formatNumber(endLevel);
   document.getElementById('total-consumption').textContent = formatNumber(totalConsumption);
@@ -358,7 +359,6 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   
   if (totalRefilled > 0 && refillEvents.length > 0) {
     refillCard.style.display = 'block';
-    // ✅ Using formatNumber
     totalRefilledEl.textContent = formatNumber(totalRefilled); 
     let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
     refillEvents.forEach(event => {
@@ -379,13 +379,33 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
   let pointColors = [];
   let pointRadiuses = [];
 
-  if (!isMultiDay) {
-    // Single Day Mode
+ if (!isMultiDay) {
+    // ✅ Single Day Mode: "Standard Shift" View (7 AM - 8 PM)
     const now = new Date();
     const isToday = (startDate === now.toISOString().split('T')[0]);
     
-    let endHour = isToday ? now.getHours() : 23;
+    let currentHour = now.getHours();
     let currentMinute = now.getMinutes();
+
+    // 1. Determine Start Hour
+    // Default is 7 AM. But if data exists earlier (e.g. 5 AM), use that.
+    let startDisplayHour = 7; 
+    if (cleanData.length > 0) {
+        const firstDataHour = cleanData[0].hour;
+        if (firstDataHour < 7) startDisplayHour = firstDataHour;
+    }
+
+    // 2. Determine End Hour
+    // Default is 8 PM (20). But if current time is later (e.g. 9 PM), use that.
+    let endDisplayHour = 20;
+    if (isToday && currentHour > 20) {
+        endDisplayHour = currentHour;
+    } 
+    // If viewing past history and data goes beyond 8 PM, show it
+    if (!isToday && cleanData.length > 0) {
+         const lastDataHour = cleanData[cleanData.length - 1].hour;
+         if (lastDataHour > 20) endDisplayHour = lastDataHour;
+    }
 
     const dataMap = {};
     cleanData.forEach(d => {
@@ -397,18 +417,29 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     let lastKnownLevel = null; 
     let hasStartedDrawing = false;
 
-    for (let h = 0; h <= endHour; h++) {
+    // Loop from Start Hour to End Hour
+    for (let h = startDisplayHour; h <= endDisplayHour; h++) {
         for (let m of [0, 30]) { 
-            if (isToday && h === now.getHours() && m > currentMinute) break;
-
-            let timeKey = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+            
+            // Generate Label
             let hour12 = (h > 12) ? h - 12 : (h === 0 ? 12 : h);
             let ampm = (h >= 12) ? 'PM' : 'AM';
             let label = `${hour12}:${m.toString().padStart(2,'0')} ${ampm}`;
-            
             labels.push(label);
 
+            // Check if this time is in the "Future" relative to right now
+            // If it's future, we push the label (to make axis 8pm) but NOT data
+            let isFuture = (isToday && (h > currentHour || (h === currentHour && m > currentMinute)));
+
+            if (isFuture) {
+                // Do nothing for data. Chart.js will show empty space on the line.
+                continue;
+            }
+
+            let timeKey = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+
             if (dataMap[timeKey]) {
+                // ✅ DATA EXISTS
                 let record = dataMap[timeKey];
                 lastKnownLevel = record.cleanLevel; 
                 hasStartedDrawing = true;
@@ -430,12 +461,15 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 }
 
             } else {
+                // ❌ NO DATA (Gap or Waiting)
                 if (hasStartedDrawing && lastKnownLevel !== null) {
+                    // Extend flat line up to current time
                     levelData.push(lastKnownLevel);
                     consumptionData.push(0); 
                     pointColors.push('rgba(0, 135, 90, 1)');
                     pointRadiuses.push(0);
                 } else {
+                    // Haven't started yet (e.g., 7 AM empty)
                     levelData.push(null);
                     consumptionData.push(0);
                     pointColors.push('rgba(0, 135, 90, 1)');
@@ -479,7 +513,6 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         tooltip: {
             callbacks: {
                 label: function(context) {
-                    // ✅ Smart formatting
                     return `Consumed: ${formatNumber(context.raw)} L`; 
                 }
             }
@@ -517,7 +550,6 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 label: function(context) {
                     let val = context.raw;
                     let idx = context.dataIndex;
-                    // ✅ Smart formatting in Tooltip
                     if (pointColors[idx] === '#0052cc') {
                         let refillEvent = refillEvents.find(e=>e.afterLevel === val);
                         let amt = refillEvent ? refillEvent.amount : 0;
