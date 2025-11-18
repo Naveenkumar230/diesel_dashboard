@@ -462,183 +462,213 @@
   </div>
 
   <script>
-    const CRITICAL_LEVEL = 50;
-    const WARNING_LEVEL = 150;
-    const DG_RUNNING_THRESHOLD = 5;
+  // index.html - FINAL SCRIPT: FREEZE VALUES ON STOP
+  
+  const CRITICAL_LEVEL = 50;
+  const WARNING_LEVEL = 150;
+  const DG_RUNNING_THRESHOLD = 5; // Active Power > 5kW = Running
+  const VOLTAGE_THRESHOLD = 200;  // Voltage > 200V = Valid Data
 
-    // !! IMPORTANT !!
-    const DG_MAX_KW = {
-      dg1: 500, // (e.g., 500kW) - PLEASE UPDATE
-      dg2: 500, // (e.g., 500kW) - PLEASE UPDATE
-      dg3: 380, // (e.g., 380kW) - PLEASE UPDATE
-      dg4: 380  // (e.g., 380kW) - PLEASE UPDATE
-    };
+  // !! IMPORTANT !!
+  const DG_MAX_KW = {
+    dg1: 500, 
+    dg2: 500, 
+    dg3: 380, 
+    dg4: 380  
+  };
 
-    // Toggle section
-    document.querySelectorAll('.expand-icon').forEach(icon => {
-      icon.addEventListener('click', (e) => {
-        e.preventDefault(); // Prevent <a> tag link
-        e.stopPropagation(); // Stop click from bubbling to <a> tag
-        const contentId = icon.getAttribute('data-target');
-        const content = document.getElementById(contentId);
-        const section = content.closest('.dg-electrical-section');
-        section.classList.toggle('expanded');
-        content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
-      });
+  // ✅ 1. INITIALIZE STORAGE FOR STICKY VALUES
+  // We store the last known "good" electrical object for each DG
+  let stickyElectrical = JSON.parse(localStorage.getItem('dashboardStickyData')) || {
+    dg1: {}, dg2: {}, dg3: {}, dg4: {}
+  };
+
+  // Toggle section logic
+  document.querySelectorAll('.expand-icon').forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      e.preventDefault(); 
+      e.stopPropagation(); 
+      const contentId = icon.getAttribute('data-target');
+      const content = document.getElementById(contentId);
+      const section = content.closest('.dg-electrical-section');
+      section.classList.toggle('expanded');
+      content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
     });
+  });
 
-    // --- Auto-expand/collapse script ---
-    document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.dg-content').forEach(content => {
-            const section = content.closest('.dg-electrical-section');
-            if (section.classList.contains('expanded')) {
-                content.style.maxHeight = '2000px';
-            } else {
-                content.style.maxHeight = '0';
-            }
-        });
+  document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.dg-content').forEach(content => {
+          const section = content.closest('.dg-electrical-section');
+          if (section.classList.contains('expanded')) {
+              content.style.maxHeight = '2000px';
+          } else {
+              content.style.maxHeight = '0';
+          }
+      });
+  });
+
+  async function fetchData() {
+    try {
+      const response = await fetch('/api/data');
+      if (!response.ok) throw new Error('Network error');
+      return await response.json();
+    } catch (err) {
+      console.error('Fetch error:', err);
+      return null;
+    }
+  }
+
+  function formatNum(num, decimals = 1) {
+    if (num === undefined || num === null || isNaN(num)) return '--';
+    if (num === 0) return decimals > 0 ? '0.0' : '0';
+    return num.toFixed(decimals);
+  }
+
+  function updateDieselLevels(data) {
+    const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
+
+    ['dg1', 'dg2', 'dg3'].forEach(dg => {
+      const level = levels[dg];
+      const card = document.getElementById(`${dg}-diesel-card`);
+      const valueEl = document.getElementById(`${dg}-diesel`);
+      if (valueEl) valueEl.textContent = formatNum(level, 0);
+      if (card) {
+        card.className = 'diesel-card'; 
+        if (level <= CRITICAL_LEVEL) card.classList.add('critical');
+        else if (level <= WARNING_LEVEL) card.classList.add('warning');
+        else card.classList.add('normal');
+      }
     });
+    document.getElementById('total-diesel').textContent = formatNum(data.total, 0);
 
+    const criticalDGs = Object.entries(levels)
+      .filter(([_, value]) => value <= CRITICAL_LEVEL)
+      .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
 
-    async function fetchData() {
-      try {
-        const response = await fetch('/api/data');
-        if (!response.ok) throw new Error('Network error');
-        return await response.json();
-      } catch (err) {
-        console.error('Fetch error:', err);
-        return null;
+    const container = document.getElementById('alert-container');
+    container.innerHTML = '';
+    if (criticalDGs.length > 0) {
+      container.innerHTML = `
+        <div class="alert-banner show">
+          ⚠️ CRITICAL: Low diesel levels in ${criticalDGs.join(', ')}! Refuel immediately.
+        </div>
+      `;
+    }
+  }
+
+  // ✅ UPDATED: FREEZE LOGIC APPLIED HERE
+  function updateElectricalParams(data) {
+    if (!data.electrical) return;
+
+    ['dg1', 'dg2', 'dg3', 'dg4'].forEach(dg => {
+      let liveData = data.electrical[dg] || {};
+      
+      // 1. Check if Live Data is Valid (Voltage > 200V)
+      // We check R-Phase Voltage as the primary indicator
+      const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
+
+      let displayData = {};
+
+      if (hasVoltage) {
+          // 🟢 DG IS ON (Generating Power)
+          // Use live data AND save it to sticky storage
+          displayData = liveData;
+          stickyElectrical[dg] = liveData;
+          localStorage.setItem('dashboardStickyData', JSON.stringify(stickyElectrical));
+      } else {
+          // 🔴 DG IS OFF (Or Sensors are 0)
+          // Use the last saved data from storage (Freeze)
+          // If storage is empty (first run), fallback to liveData (which is likely 0)
+          displayData = stickyElectrical[dg].voltageR ? stickyElectrical[dg] : liveData;
       }
-    }
 
-    function formatNum(num, decimals = 1) {
-      if (num === undefined || num === null || isNaN(num)) return '--';
-      if (num === 0) return decimals > 0 ? '0.0' : '0';
-      return num.toFixed(decimals);
-    }
+      // 2. Update Status Badge (This should always reflect REALITY, not frozen state)
+      // We check liveData for status, because we want to know it's OFF
+      const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
+      const statusEl = document.getElementById(`${dg}-status`);
+      if (statusEl) {
+        statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
+        statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
+      }
 
-    function updateDieselLevels(data) {
-      const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
-
-      ['dg1', 'dg2', 'dg3'].forEach(dg => {
-        const level = levels[dg];
-        const card = document.getElementById(`${dg}-diesel-card`);
-        const valueEl = document.getElementById(`${dg}-diesel`);
-        if (valueEl) valueEl.textContent = formatNum(level, 0);
-        if (card) {
-          card.className = 'diesel-card'; // Reset classes
-          if (level <= CRITICAL_LEVEL) card.classList.add('critical');
-          else if (level <= WARNING_LEVEL) card.classList.add('warning');
-          else card.classList.add('normal');
-        }
+      // 3. Update Values using displayData (which might be frozen)
+      
+      // Voltage
+      ['r', 'y', 'b'].forEach(phase => {
+        const el = document.getElementById(`${dg}-voltage-${phase}`);
+        if (el) el.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
       });
-      document.getElementById('total-diesel').textContent = formatNum(data.total, 0);
 
-      const criticalDGs = Object.entries(levels)
-        .filter(([_, value]) => value <= CRITICAL_LEVEL)
-        .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
+      // Current
+      ['r', 'y', 'b'].forEach(phase => {
+        const el = document.getElementById(`${dg}-current-${phase}`);
+        if (el) el.textContent = formatNum(displayData[`current${phase.toUpperCase()}`]);
+      });
 
-      const container = document.getElementById('alert-container');
-      container.innerHTML = '';
-      if (criticalDGs.length > 0) {
-        container.innerHTML = `
-          <div class="alert-banner show">
-            ⚠️ CRITICAL: Low diesel levels in ${criticalDGs.join(', ')}! Refuel immediately.
-          </div>
-        `;
+      // Other Params
+      const freqEl = document.getElementById(`${dg}-frequency`);
+      if (freqEl) freqEl.textContent = formatNum(displayData.frequency);
+
+      const pfEl = document.getElementById(`${dg}-power-factor`);
+      if (pfEl) pfEl.textContent = formatNum(displayData.powerFactor, 2);
+
+      const apEl = document.getElementById(`${dg}-active-power`);
+      if (apEl) apEl.textContent = formatNum(displayData.activePower);
+
+      const rpEl = document.getElementById(`${dg}-reactive-power`);
+      if (rpEl) rpEl.textContent = formatNum(displayData.reactivePower);
+      
+      // Energy
+      const enEl = document.getElementById(`${dg}-energy-meter`);
+      if (enEl) enEl.textContent = formatNum(displayData.energyMeter, 0);
+
+      // Load Calculation
+      const loadEl = document.getElementById(`${dg}-load-percent`);
+      if (loadEl) {
+        const maxKw = DG_MAX_KW[dg];
+        const power = displayData.activePower || 0;
+        const loadPercent = (power > 0 && maxKw > 0) ? (power / maxKw) * 100 : 0;
+        loadEl.textContent = formatNum(loadPercent, 1);
       }
-    }
+    });
+  }
 
-    // UPDATED: Full JS function to update all 12 parameters
-    function updateElectricalParams(data) {
-      if (!data.electrical) return;
-
-      ['dg1', 'dg2', 'dg3', 'dg4'].forEach(dg => {
-        const e = data.electrical[dg] || {};
-        const isRunning = (e.activePower || 0) > DG_RUNNING_THRESHOLD;
-
-        const statusEl = document.getElementById(`${dg}-status`);
-        if (statusEl) {
-          statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
-          statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
-        }
-
-        // Update voltage
-        ['r', 'y', 'b'].forEach(phase => {
-          const el = document.getElementById(`${dg}-voltage-${phase}`);
-          if (el) el.textContent = formatNum(e[`voltage${phase.toUpperCase()}`]);
-        });
-
-        // Update current
-        ['r', 'y', 'b'].forEach(phase => {
-          const el = document.getElementById(`${dg}-current-${phase}`);
-          if (el) el.textContent = formatNum(e[`current${phase.toUpperCase()}`]);
-        });
-
-        // Update other params
-        const freqEl = document.getElementById(`${dg}-frequency`);
-        if (freqEl) freqEl.textContent = formatNum(e.frequency);
-
-        const pfEl = document.getElementById(`${dg}-power-factor`);
-        if (pfEl) pfEl.textContent = formatNum(e.powerFactor, 2);
-
-        const apEl = document.getElementById(`${dg}-active-power`);
-        if (apEl) apEl.textContent = formatNum(e.activePower);
-
-        const rpEl = document.getElementById(`${dg}-reactive-power`);
-        if (rpEl) rpEl.textContent = formatNum(e.reactivePower);
-        
-        // Update new fields
-        const enEl = document.getElementById(`${dg}-energy-meter`);
-        if (enEl) enEl.textContent = formatNum(e.energyMeter, 0);
-
-        const loadEl = document.getElementById(`${dg}-load-percent`);
-        if (loadEl) {
-          const maxKw = DG_MAX_KW[dg];
-          const loadPercent = (e.activePower > 0 && maxKw > 0) 
-            ? (e.activePower / maxKw) * 100 
-            : 0;
-          loadEl.textContent = formatNum(loadPercent, 1);
-        }
+  function updateTimestamp() {
+    const now = new Date();
+    const timestampEl = document.getElementById('last-update');
+    if (timestampEl) {
+      timestampEl.textContent = now.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        dateStyle: 'short',
+        timeStyle: 'medium'
       });
     }
+  }
 
-    function updateTimestamp() {
-      const now = new Date();
-      const timestampEl = document.getElementById('last-update');
-      if (timestampEl) {
-        timestampEl.textContent = now.toLocaleString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          dateStyle: 'short',
-          timeStyle: 'medium'
-        });
-      }
-    }
+  async function refresh() {
+    const data = await fetchData();
+    const indicator = document.getElementById('server-status');
 
-    async function refresh() {
-      const data = await fetchData();
-      const indicator = document.getElementById('server-status');
-
-      if (!data) {
-        if (indicator) {
-          indicator.classList.remove('status-online');
-          indicator.classList.add('status-offline');
-        }
-        return;
-      }
-
+    if (!data) {
       if (indicator) {
-        indicator.classList.remove('status-offline');
-        indicator.classList.add('status-online');
+        indicator.classList.remove('status-online');
+        indicator.classList.add('status-offline');
       }
-
-      updateDieselLevels(data);
-      updateElectricalParams(data);
-      updateTimestamp();
+      return;
     }
 
-    setInterval(refresh, 3000);
-    refresh();
-  </script>
+    if (indicator) {
+      indicator.classList.remove('status-offline');
+      indicator.classList.add('status-online');
+    }
+
+    updateDieselLevels(data);
+    updateElectricalParams(data);
+    updateTimestamp();
+  }
+
+  setInterval(refresh, 3000);
+  refresh();
+</script>
 </body>
 </html>
