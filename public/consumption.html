@@ -143,8 +143,8 @@
     </div>
   </div>
 
- <script>
-// consumption.html - FINAL COMPLETE CODE: NOISE FILTER + 7L/HOUR RULE
+<script>
+// consumption.html - FINAL VERSION: 7AM START + 7L RULE + REFILL TRACKING
 
 let consumptionChart, levelChart;
 let currentData = [];
@@ -152,26 +152,16 @@ let autoRefreshInterval = null;
 
 // ✅ CONFIGURATION
 const CRITICAL_LEVEL = 50;
-const REFILL_THRESHOLD = 20; // A jump > 20L is a Refill
-const NOISE_THRESHOLD = 0.5; // Low threshold to capture small consumption
-const CONSUMPTION_PER_HOUR = 7; // ✅ YOUR RULE: 7 Liters = 1 Running Hour
+const REFILL_THRESHOLD = 20; 
+const NOISE_THRESHOLD = 0.5; 
+const CONSUMPTION_PER_HOUR = 7; // 7 Liters = 1 Hour
 
 const urlParams = new URLSearchParams(window.location.search);
 const dgType = urlParams.get('dg') || 'dg1';
-
-const titles = { 
-  'dg1': 'DG-1 Consumption', 
-  'dg2': 'DG-2 Consumption', 
-  'dg3': 'DG-3 Consumption', 
-  'total': 'Total Consumption' 
-};
+const titles = { 'dg1': 'DG-1 Consumption', 'dg2': 'DG-2 Consumption', 'dg3': 'DG-3 Consumption', 'total': 'Total Consumption' };
 document.getElementById('page-title').textContent = titles[dgType] || titles['dg1'];
-
 if (dgType === 'total') document.getElementById('refill-card').style.display = 'block';
 
-// ✅ HELPER: SMART DECIMAL FORMATTING
-// 200.000 -> 200
-// 13.123 -> 13.123
 function formatNumber(num) {
     if (num === null || num === undefined || isNaN(num)) return '--';
     return parseFloat(Number(num).toFixed(3)); 
@@ -180,7 +170,6 @@ function formatNumber(num) {
 function setDateRange(range) {
     const end = new Date();
     const start = new Date();
-    
     if (range === 'yesterday') {
         start.setDate(start.getDate() - 1);
         end.setDate(end.getDate() - 1);
@@ -189,14 +178,12 @@ function setDateRange(range) {
     } else if (range === 'month') {
         start.setDate(start.getDate() - 29);
     }
-    
     document.getElementById('start-date').value = start.toISOString().split('T')[0];
     document.getElementById('end-date').value = end.toISOString().split('T')[0];
 }
 
 setDateRange('today'); 
 document.getElementById('quick-select').value = 'today';
-
 document.getElementById('quick-select').addEventListener('change', function() {
   if (this.value !== 'custom') setDateRange(this.value);
 });
@@ -205,53 +192,34 @@ function setupAutoRefresh() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   const today = new Date().toISOString().split('T')[0];
-  
-  if (autoRefreshInterval) {
-    clearInterval(autoRefreshInterval);
-    autoRefreshInterval = null;
-  }
-  
+  if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
   if (startDate === today && endDate === today) {
-    console.log('🔄 Auto-refresh enabled for live data');
-    autoRefreshInterval = setInterval(() => {
-      loadData(true); 
-    }, 30000);
+    autoRefreshInterval = setInterval(() => { loadData(true); }, 30000);
   }
 }
 
 async function loadData(silent = false) {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
-  
-  if (!silent) {
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('empty-state').style.display = 'none';
-  }
+  if (!silent) { document.getElementById('loading').style.display = 'block'; document.getElementById('empty-state').style.display = 'none'; }
 
   try {
     const query = `startDate=${startDate}&endDate=${endDate}`;
-    const url = (dgType === 'total') 
-      ? `/api/consumption?${query}` 
-      : `/api/consumption?dg=${dgType}&${query}`;
-    
+    const url = (dgType === 'total') ? `/api/consumption?${query}` : `/api/consumption?dg=${dgType}&${query}`;
     const response = await fetch(url);
     const result = await response.json();
 
-    if (result.success && result.data.length > 0) {
-      currentData = result.data;
-      processData(result.data, startDate, endDate);
-      document.getElementById('empty-state').style.display = 'none';
-      setupAutoRefresh();
-    } else {
-      showEmptyState();
-    }
+    // Even if data is empty, we process it to draw the empty graph
+    currentData = result.data || [];
+    processData(currentData, startDate, endDate);
+    document.getElementById('empty-state').style.display = 'none';
+    setupAutoRefresh();
+
   } catch (err) {
-    console.error('Error loading data:', err);
+    console.error('Error:', err);
     showEmptyState();
   } finally {
-    if (!silent) {
-      document.getElementById('loading').style.display = 'none';
-    }
+    if (!silent) document.getElementById('loading').style.display = 'none';
   }
 }
 
@@ -270,68 +238,47 @@ function clearStats() {
   document.getElementById('avg-consumption').textContent = '--';
 }
 
-// ✅ LOGIC 1: NOISE FILTERING
 function processWithNoiseFilter(data, dgType) {
   let totalConsumption = 0;
   let totalRefilled = 0;
   let refillEvents = [];
   let stableLevel = null; 
-  
-  let cleanData = data.map((record, index) => {
+  let cleanData = data.map((record) => {
     let rawLevel = (dgType === 'total') ? (record.total?.level || 0) : (record.level || 0);
-    
     if (stableLevel === null) stableLevel = rawLevel;
-
     let diff = rawLevel - stableLevel;
-
     if (diff > REFILL_THRESHOLD) {
-        // Refill
         totalRefilled += diff;
-        refillEvents.push({
-            timestamp: record.timestamp,
-            amount: diff,
-            beforeLevel: stableLevel,
-            afterLevel: rawLevel,
-            time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        });
+        refillEvents.push({ timestamp: record.timestamp, amount: diff, beforeLevel: stableLevel, afterLevel: rawLevel, time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
         stableLevel = rawLevel; 
-    } 
-    else if (diff < -NOISE_THRESHOLD) {
-        // Valid Consumption
+    } else if (diff < -NOISE_THRESHOLD) {
         totalConsumption += Math.abs(diff);
         stableLevel = rawLevel; 
     } 
-    // Else: Ignore noise
-
-    return {
-        ...record,
-        cleanLevel: stableLevel, 
-        cleanConsumption: (diff < -NOISE_THRESHOLD) ? Math.abs(diff) : 0
-    };
+    return { ...record, cleanLevel: stableLevel, cleanConsumption: (diff < -NOISE_THRESHOLD) ? Math.abs(diff) : 0 };
   });
-
   return { totalConsumption, totalRefilled, refillEvents, cleanData };
 }
 
 function processData(data, startDate, endDate) {
   const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  const endStr = new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  document.getElementById('date-range').textContent = (startStr === endStr) ? startStr : `From ${startStr} to ${endStr}`;
+  document.getElementById('date-range').textContent = startStr;
 
+  // Process data (even if empty array)
   const { totalConsumption, totalRefilled, refillEvents, cleanData } = processWithNoiseFilter(data, dgType);
 
   let startLevel = cleanData[0]?.cleanLevel || 0;
   let endLevel = cleanData[cleanData.length - 1]?.cleanLevel || 0;
   
-  // ✅ NEW LOGIC: RUNNING HOURS = CONSUMPTION / 7
-  let runningHours = 0;
-  if (totalConsumption > 0) {
-      runningHours = totalConsumption / CONSUMPTION_PER_HOUR;
+  // If data is empty, try to keep old levels from UI or 0
+  if (data.length === 0) {
+      startLevel = 0; endLevel = 0;
   }
 
-  // Update Stats for Refill Prediction
+  // Rule: Run Hours = Consumption / 7
+  let runningHours = (totalConsumption > 0) ? (totalConsumption / CONSUMPTION_PER_HOUR) : 0;
+
   if (dgType === 'total') {
-    // Avg rate is basically guaranteed to be ~7 with this math, but good for consistency
     const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0;
     let daysRemaining = '--';
     if (avgConsumptionRate > 0) {
@@ -341,7 +288,6 @@ function processData(data, startDate, endDate) {
     document.getElementById('refill-prediction').textContent = daysRemaining;
   }
 
-  // ✅ UPDATE DOM
   document.getElementById('start-level').textContent = formatNumber(startLevel);
   document.getElementById('end-level').textContent = formatNumber(endLevel);
   document.getElementById('total-consumption').textContent = formatNumber(totalConsumption);
@@ -349,6 +295,8 @@ function processData(data, startDate, endDate) {
   document.getElementById('avg-consumption').textContent = formatNumber(runningHours > 0 ? (totalConsumption / runningHours) : 0);
 
   displayRefillInfo(totalRefilled, refillEvents);
+  
+  // ✅ UPDATE CHARTS (Handles empty data by drawing flat line from 7 AM)
   updateCharts(cleanData, startDate, endDate, refillEvents);
 }
 
@@ -356,56 +304,33 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   const refillCard = document.getElementById('refill-info-card');
   const totalRefilledEl = document.getElementById('total-refilled');
   const refillDetailsEl = document.getElementById('refill-details');
-  
   if (totalRefilled > 0 && refillEvents.length > 0) {
     refillCard.style.display = 'block';
     totalRefilledEl.textContent = formatNumber(totalRefilled); 
     let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
-    refillEvents.forEach(event => {
-      detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${formatNumber(event.amount)}L (${formatNumber(event.beforeLevel)} → ${formatNumber(event.afterLevel)})<br>`;
-    });
+    refillEvents.forEach(event => { detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${formatNumber(event.amount)}L<br>`; });
     refillDetailsEl.innerHTML = detailsHTML;
   } else {
     refillCard.style.display = 'none';
   }
 }
 
-// ✅ LOGIC 2: EXTEND GRAPH TO CURRENT TIME
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
-  let labels = [];
-  let consumptionData = [];
-  let levelData = [];
-  let pointColors = [];
-  let pointRadiuses = [];
+  let labels = []; let consumptionData = []; let levelData = []; let pointColors = []; let pointRadiuses = [];
 
- if (!isMultiDay) {
-    // ✅ Single Day Mode: "Standard Shift" View (7 AM - 8 PM)
+  if (!isMultiDay) {
+    // ✅ SINGLE DAY: FORCE 7 AM to CURRENT TIME
     const now = new Date();
     const isToday = (startDate === now.toISOString().split('T')[0]);
     
-    let currentHour = now.getHours();
+    let startHour = 7;
+    let endHour = isToday ? now.getHours() : 20;
     let currentMinute = now.getMinutes();
 
-    // 1. Determine Start Hour
-    // Default is 7 AM. But if data exists earlier (e.g. 5 AM), use that.
-    let startDisplayHour = 7; 
-    if (cleanData.length > 0) {
-        const firstDataHour = cleanData[0].hour;
-        if (firstDataHour < 7) startDisplayHour = firstDataHour;
-    }
-
-    // 2. Determine End Hour
-    // Default is 8 PM (20). But if current time is later (e.g. 9 PM), use that.
-    let endDisplayHour = 20;
-    if (isToday && currentHour > 20) {
-        endDisplayHour = currentHour;
-    } 
-    // If viewing past history and data goes beyond 8 PM, show it
-    if (!isToday && cleanData.length > 0) {
-         const lastDataHour = cleanData[cleanData.length - 1].hour;
-         if (lastDataHour > 20) endDisplayHour = lastDataHour;
-    }
+    // Fallback level if no data exists today (use what's on stats card or 0)
+    let lastKnownLevel = parseFloat(document.getElementById('start-level').textContent);
+    if (isNaN(lastKnownLevel)) lastKnownLevel = 0;
 
     const dataMap = {};
     cleanData.forEach(d => {
@@ -414,67 +339,31 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         dataMap[`${h}:${m}`] = d;
     });
 
-    let lastKnownLevel = null; 
-    let hasStartedDrawing = false;
-
-    // Loop from Start Hour to End Hour
-    for (let h = startDisplayHour; h <= endDisplayHour; h++) {
+    for (let h = startHour; h <= endHour; h++) {
         for (let m of [0, 30]) { 
-            
-            // Generate Label
-            let hour12 = (h > 12) ? h - 12 : (h === 0 ? 12 : h);
-            let ampm = (h >= 12) ? 'PM' : 'AM';
-            let label = `${hour12}:${m.toString().padStart(2,'0')} ${ampm}`;
-            labels.push(label);
-
-            // Check if this time is in the "Future" relative to right now
-            // If it's future, we push the label (to make axis 8pm) but NOT data
-            let isFuture = (isToday && (h > currentHour || (h === currentHour && m > currentMinute)));
-
-            if (isFuture) {
-                // Do nothing for data. Chart.js will show empty space on the line.
-                continue;
-            }
+            if (isToday && h === now.getHours() && m > currentMinute) break;
 
             let timeKey = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+            let hour12 = (h > 12) ? h - 12 : (h === 0 ? 12 : h);
+            let ampm = (h >= 12) ? 'PM' : 'AM';
+            labels.push(`${hour12}:${m.toString().padStart(2,'0')} ${ampm}`);
 
             if (dataMap[timeKey]) {
-                // ✅ DATA EXISTS
+                // Data Exists
                 let record = dataMap[timeKey];
                 lastKnownLevel = record.cleanLevel; 
-                hasStartedDrawing = true;
-
                 levelData.push(lastKnownLevel);
                 consumptionData.push(record.cleanConsumption);
-
-                let isRefill = refillEvents.some(e => {
-                    let d = new Date(e.timestamp);
-                    return d.getHours() === h && Math.abs(d.getMinutes() - m) < 5;
-                });
-
-                if (isRefill) {
-                    pointColors.push('#0052cc'); 
-                    pointRadiuses.push(6);
-                } else {
-                    pointColors.push('rgba(0, 135, 90, 1)');
-                    pointRadiuses.push(0);
-                }
-
+                
+                let isRefill = refillEvents.some(e => new Date(e.timestamp).getHours() === h && Math.abs(new Date(e.timestamp).getMinutes() - m) < 5);
+                pointColors.push(isRefill ? '#0052cc' : 'rgba(0, 135, 90, 1)');
+                pointRadiuses.push(isRefill ? 6 : 0);
             } else {
-                // ❌ NO DATA (Gap or Waiting)
-                if (hasStartedDrawing && lastKnownLevel !== null) {
-                    // Extend flat line up to current time
-                    levelData.push(lastKnownLevel);
-                    consumptionData.push(0); 
-                    pointColors.push('rgba(0, 135, 90, 1)');
-                    pointRadiuses.push(0);
-                } else {
-                    // Haven't started yet (e.g., 7 AM empty)
-                    levelData.push(null);
-                    consumptionData.push(0);
-                    pointColors.push('rgba(0, 135, 90, 1)');
-                    pointRadiuses.push(0);
-                }
+                // NO DATA -> FLAT LINE
+                levelData.push(lastKnownLevel); 
+                consumptionData.push(0);
+                pointColors.push('rgba(0, 135, 90, 1)');
+                pointRadiuses.push(0);
             }
         }
     }
@@ -483,7 +372,7 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     document.getElementById('level-chart-title').textContent = '📉 Diesel Level (Noise Reduced)';
 
   } else {
-    // Multi-day logic
+    // Multi Day
     cleanData.forEach(d => {
          labels.push(d.date);
          levelData.push(d.cleanLevel);
@@ -493,94 +382,29 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     });
   }
 
-  // Render Consumption Chart
   if (consumptionChart) consumptionChart.destroy();
   consumptionChart = new Chart(document.getElementById('consumptionChart'), {
     type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Consumption (L)',
-        data: consumptionData,
-        backgroundColor: 'rgba(222, 53, 11, 0.8)',
-        borderColor: 'rgba(222, 53, 11, 1)',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        tooltip: {
-            callbacks: {
-                label: function(context) {
-                    return `Consumed: ${formatNumber(context.raw)} L`; 
-                }
-            }
-        }
-      },
-      scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 } } }
-    }
+    data: { labels: labels, datasets: [{ label: 'Consumption (L)', data: consumptionData, backgroundColor: 'rgba(222, 53, 11, 0.8)', borderColor: 'rgba(222, 53, 11, 1)', borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } }
   });
 
-  // Render Level Chart
   if (levelChart) levelChart.destroy();
   levelChart = new Chart(document.getElementById('levelChart'), {
     type: 'line',
-    data: { 
-      labels: labels, 
-      datasets: [{
-        label: 'Diesel Level (L)',
-        data: levelData,
-        borderColor: 'rgba(0, 135, 90, 1)',
-        backgroundColor: 'rgba(0, 135, 90, 0.1)',
-        borderWidth: 3, 
-        fill: true, 
-        tension: 0, 
-        spanGaps: true, 
-        pointBackgroundColor: pointColors,
-        pointRadius: pointRadiuses,
-        pointHoverRadius: 8
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { 
-        tooltip: {
-            callbacks: {
-                label: function(context) {
-                    let val = context.raw;
-                    let idx = context.dataIndex;
-                    if (pointColors[idx] === '#0052cc') {
-                        let refillEvent = refillEvents.find(e=>e.afterLevel === val);
-                        let amt = refillEvent ? refillEvent.amount : 0;
-                        return `⛽ Refill Detected: +${formatNumber(amt)}L`;
-                    }
-                    return `Level: ${formatNumber(val)} L`; 
-                }
-            }
-        }
-      },
-      scales: { 
-        y: { beginAtZero: false }, 
-        x: { ticks: { maxRotation: 45, minRotation: 45 } } 
-      }
-    }
+    data: { labels: labels, datasets: [{ label: 'Diesel Level (L)', data: levelData, borderColor: 'rgba(0, 135, 90, 1)', backgroundColor: 'rgba(0, 135, 90, 0.1)', borderWidth: 3, fill: true, tension: 0, spanGaps: true, pointBackgroundColor: pointColors, pointRadius: pointRadiuses }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { callbacks: { label: function(context) { let idx = context.dataIndex; if (pointColors[idx] === '#0052cc') return `⛽ Refill: ${context.raw}L`; return `Level: ${context.raw}L`; } } } }, scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } }
   });
 }
 
 function exportAllData() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
-  if (!startDate || !endDate) { alert('Please select a date range'); return; }
   window.location.href = `/api/export/all?startDate=${startDate}&endDate=${endDate}`;
 }
 
-// Initial load
 loadData();
-
-window.addEventListener('beforeunload', () => {
-  if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-});
+window.addEventListener('beforeunload', () => { if (autoRefreshInterval) clearInterval(autoRefreshInterval); });
 </script>
 </body>
 </html>

@@ -127,32 +127,26 @@
   </div>
 
 <script>
-// electrical.html - FINAL: STICKY STATS + CLEAN GRAPH (Voltage > 200V Filter)
+// electrical.html - FINAL VERSION: 7AM START + STICKY STATS + NOISE FILTER
 
 let voltageChart, currentChart, powerChart, freqPfChart, combinedChart;
 let dgType = 'dg1';
 const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
 
-// ✅ 1. LOAD STICKY VALUES (Restore last known values on refresh)
+// ✅ 1. LOAD STICKY VALUES (Restore last known values)
 let stickyValues = JSON.parse(localStorage.getItem('dgStickyStats_' + dgType)) || {
-  totalHours: '--',
-  totalKwh: '--',
-  avgLoad: '--',
-  peakKw: '--'
+  totalHours: '--', totalKwh: '--', avgLoad: '--', peakKw: '--'
 };
 
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('dg')) dgType = urlParams.get('dg');
 
 document.getElementById('page-title').textContent = `⚙️ ${dgType.toUpperCase().replace('DG', 'DG-')} Electrical Details`;
-
-// Render sticky values immediately
 renderStickyStats();
 
 function setDateRange(range) {
     const end = new Date();
     const start = new Date();
-    
     if (range === 'yesterday') {
         start.setDate(start.getDate() - 1);
         end.setDate(end.getDate() - 1);
@@ -161,27 +155,51 @@ function setDateRange(range) {
     } else if (range === 'month') {
         start.setDate(start.getDate() - 29);
     }
-    
     document.getElementById('start-date').value = start.toISOString().split('T')[0];
     document.getElementById('end-date').value = end.toISOString().split('T')[0];
 }
 
 setDateRange('today'); 
 document.getElementById('quick-select').value = 'today';
-
 document.getElementById('quick-select').addEventListener('change', function() {
   if (this.value !== 'custom') setDateRange(this.value);
 });
 
+// ✅ HELPER: GENERATE 0 DATA FROM 7 AM TO NOW
+function generateZeroDataForTimeline() {
+    const now = new Date();
+    const data = [];
+    let currentHour = 7; // Start at 7 AM
+    let currentMinute = 0;
+    
+    // End at Current Time
+    let endHour = now.getHours();
+    let endMinute = now.getMinutes();
+
+    while (currentHour < endHour || (currentHour === endHour && currentMinute <= endMinute)) {
+        const d = new Date();
+        d.setHours(currentHour, currentMinute, 0, 0);
+        
+        data.push({
+            timestamp: d.toISOString(),
+            voltageR: 0, voltageY: 0, voltageB: 0,
+            currentR: 0, currentY: 0, currentB: 0,
+            activePower: 0, reactivePower: 0, frequency: 0, powerFactor: 0, energyMeter: 0
+        });
+
+        currentMinute += 30;
+        if (currentMinute >= 60) { currentMinute = 0; currentHour++; }
+    }
+    return data;
+}
+
 async function loadData() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
-  if (!startDate || !endDate) { alert('Please select a start and end date'); return; }
+  if (!startDate || !endDate) { alert('Please select dates'); return; }
   
   document.getElementById('loading').style.display = 'block';
   document.getElementById('empty-state').style.display = 'none';
-  
-  // We clean the charts before loading new data
   clearCharts();
 
   try {
@@ -189,15 +207,24 @@ async function loadData() {
     const response = await fetch(url);
     const result = await response.json();
 
-    if (result.success && result.data.length > 0) {
-      processData(result.data, startDate, endDate);
-      document.getElementById('empty-state').style.display = 'none';
-    } else {
-      // If NO data at all (e.g. new installation), show empty
-      showEmptyState();
+    // ✅ CHECK: If Today and No Data, Generate Zero Data
+    let displayData = result.data || [];
+    const isToday = (startDate === new Date().toISOString().split('T')[0]);
+
+    if (displayData.length === 0 && isToday) {
+        console.log("No data yet today. Generating 7 AM zero-line.");
+        displayData = generateZeroDataForTimeline();
+        document.getElementById('empty-state').style.display = 'none'; // Hide empty state because we are showing a 0-graph
+    } else if (displayData.length === 0) {
+        showEmptyState();
+        return; // Stop if it's history and empty
     }
+
+    processData(displayData, startDate, endDate);
+    document.getElementById('empty-state').style.display = 'none';
+
   } catch (err) {
-    console.error('Error loading data:', err);
+    console.error('Error:', err);
     showEmptyState();
   } finally {
     document.getElementById('loading').style.display = 'none';
@@ -207,7 +234,6 @@ async function loadData() {
 function showEmptyState() {
   document.getElementById('empty-state').style.display = 'block';
   clearCharts();
-  // Note: We do NOT clear sticky stats here. We keep the "Last Known" values.
 }
 
 function clearCharts() {
@@ -218,7 +244,6 @@ function clearCharts() {
   if (combinedChart) combinedChart.destroy();
 }
 
-// ✅ 2. SAVE STICKY VALUES
 function updateStickyStats(totalHours, totalKwh, avgLoad, peakKw) {
   stickyValues = {
     totalHours: totalHours.toFixed(1),
@@ -226,7 +251,6 @@ function updateStickyStats(totalHours, totalKwh, avgLoad, peakKw) {
     avgLoad: avgLoad.toFixed(1),
     peakKw: peakKw.toFixed(1)
   };
-  // Save to browser memory unique to this DG
   localStorage.setItem('dgStickyStats_' + dgType, JSON.stringify(stickyValues));
   renderStickyStats();
 }
@@ -241,24 +265,19 @@ function renderStickyStats() {
 }
 
 function processData(data, startDate, endDate) {
-  const startStr = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
-  const endStr = new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
-  document.getElementById('date-range').textContent = (startStr === endStr) ? startStr : `From ${startStr} to ${endStr}`;
+  const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
+  document.getElementById('date-range').textContent = startStr;
 
-  // ✅ 3. FILTER: STRICTLY IGNORE "OFF" DATA (Voltage < 200V)
-  // This ensures both Stats and Graphs only look at "Real" running time.
+  // ✅ STATS: STRICTLY IGNORE "OFF" DATA (Voltage < 200V)
   const runningData = data.filter(r => r.voltageR > 200);
 
-  // --- STATS LOGIC ---
   if (runningData.length > 0) {
-      // Calculate Stats based on VALID data
       let totalRunningHours = runningData.length * 0.5; 
-      
       let totalKwh = 0;
-      if (data.length > 0) {
-          // Kwh is cumulative, so we take max - min of the whole range
-          totalKwh = data[data.length - 1].energyMeter - data[0].energyMeter;
-          if (totalKwh < 0) totalKwh = 0;
+      // Kwh is cumulative, try to find max - min
+      const validMeters = runningData.map(r => r.energyMeter).filter(e => e > 0).sort((a,b)=>a-b);
+      if (validMeters.length > 1) {
+          totalKwh = validMeters[validMeters.length - 1] - validMeters[0];
       }
 
       let peakKw = 0;
@@ -271,38 +290,19 @@ function processData(data, startDate, endDate) {
       });
 
       const avgLoad = (loadSum / runningData.length);
-
-      // ✅ UPDATE: Since we have valid data, we update the sticky values
       updateStickyStats(totalRunningHours, totalKwh, avgLoad, peakKw);
   } 
-  else {
-      // ❄️ FREEZE: DG is OFF. We do NOT update stats. 
-      // The dashboard will keep showing the values from localStorage.
-      console.log("DG is OFF (No Voltage > 200V). Stats are frozen.");
-  }
-
-  // --- GRAPH LOGIC ---
-  // We pass 'runningData' (Filtered) to charts. 
-  // This prevents the graph from drawing lines down to 0. 
-  // It will show data when ON, and gaps when OFF.
-  updateSplitCharts(runningData); 
-  updateCombinedChart(runningData);
+  
+  // ✅ GRAPH: Use ALL data (including 0s) to draw the lines
+  updateSplitCharts(data); 
+  updateCombinedChart(data);
 }
 
 function updateSplitCharts(data) {
-  // If no data (DG OFF all day), don't draw empty charts
-  if (data.length === 0) { clearCharts(); return; }
-
-  const labels = data.map(r => {
-    const d = new Date(r.timestamp);
-    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  });
-
-  const commonOptions = {
-    responsive: true, maintainAspectRatio: false,
-    scales: { x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } }, y: { beginAtZero: true } }
-  };
-  const lineOpts = { tension: 0.1, pointRadius: 2, borderWidth: 2, fill: false, spanGaps: false }; // spanGaps: false creates the "gap" when off
+  if (data.length === 0) return;
+  const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+  const commonOptions = { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } }, y: { beginAtZero: true } } };
+  const lineOpts = { tension: 0.1, pointRadius: 2, borderWidth: 2, fill: false };
 
   if (voltageChart) voltageChart.destroy();
   voltageChart = new Chart(document.getElementById('voltageChart'), {
@@ -341,14 +341,9 @@ function updateSplitCharts(data) {
 
 function updateCombinedChart(data) {
   if (data.length === 0) return;
-
-  const labels = data.map(r => {
-    const d = new Date(r.timestamp);
-    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  });
-
+  const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
   if (combinedChart) combinedChart.destroy();
-  const lineOpts = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false, spanGaps: false };
+  const lineOpts = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false };
 
   combinedChart = new Chart(document.getElementById('combinedChart'), {
     type: 'line',
@@ -363,8 +358,7 @@ function updateCombinedChart(data) {
         ]
     },
     options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
+        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
         scales: {
             x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } },
             yV: { position: 'left', title: {display: true, text: 'Volts'} },
