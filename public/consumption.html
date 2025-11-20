@@ -144,7 +144,7 @@
   </div>
 
 <script>
-// consumption.html - FINAL VERSION: 7AM START + 7L RULE + REFILL TRACKING
+// consumption.html - FINAL VERSION: EXACT TIME TOOLTIPS + 7AM START + SMART LEVEL
 
 let consumptionChart, levelChart;
 let currentData = [];
@@ -198,6 +198,32 @@ function setupAutoRefresh() {
   }
 }
 
+// ✅ HELPER: Generate 7 AM - Current Time graph data
+function generateZeroDataForTimeline(level = 0) {
+    const now = new Date();
+    const data = [];
+    let currentHour = 7; 
+    let currentMinute = 0;
+    let endHour = now.getHours();
+    let endMinute = now.getMinutes();
+
+    while (currentHour < endHour || (currentHour === endHour && currentMinute <= endMinute)) {
+        const d = new Date();
+        d.setHours(currentHour, currentMinute, 0, 0);
+        
+        data.push({
+            timestamp: d.toISOString(),
+            level: level,      
+            cleanLevel: level, 
+            cleanConsumption: 0 
+        });
+
+        currentMinute += 30;
+        if (currentMinute >= 60) { currentMinute = 0; currentHour++; }
+    }
+    return data;
+}
+
 async function loadData(silent = false) {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
@@ -209,9 +235,28 @@ async function loadData(silent = false) {
     const response = await fetch(url);
     const result = await response.json();
 
-    // Even if data is empty, we process it to draw the empty graph
-    currentData = result.data || [];
-    processData(currentData, startDate, endDate);
+    let displayData = result.data || [];
+    const isToday = (startDate === new Date().toISOString().split('T')[0]);
+
+    // ✅ IF NO HISTORY TODAY -> FETCH LIVE LEVEL FOR GRAPH
+    if (displayData.length === 0 && isToday) {
+        console.log("No history today. Fetching live level...");
+        try {
+            const liveRes = await fetch('/api/data');
+            const liveJson = await liveRes.json();
+            let currentLevel = (dgType === 'total') ? (liveJson.total || 0) : (liveJson[dgType] || 0);
+            displayData = generateZeroDataForTimeline(currentLevel);
+        } catch (e) {
+            console.error("Live fetch failed, defaulting to 0", e);
+            displayData = generateZeroDataForTimeline(0);
+        }
+    } 
+    else if (displayData.length === 0) {
+        showEmptyState();
+        return;
+    }
+
+    processData(displayData, startDate, endDate);
     document.getElementById('empty-state').style.display = 'none';
     setupAutoRefresh();
 
@@ -244,6 +289,8 @@ function processWithNoiseFilter(data, dgType) {
   let refillEvents = [];
   let stableLevel = null; 
   let cleanData = data.map((record) => {
+    if(record.cleanLevel !== undefined) return record; // Skip if already processed
+
     let rawLevel = (dgType === 'total') ? (record.total?.level || 0) : (record.level || 0);
     if (stableLevel === null) stableLevel = rawLevel;
     let diff = rawLevel - stableLevel;
@@ -264,18 +311,11 @@ function processData(data, startDate, endDate) {
   const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   document.getElementById('date-range').textContent = startStr;
 
-  // Process data (even if empty array)
   const { totalConsumption, totalRefilled, refillEvents, cleanData } = processWithNoiseFilter(data, dgType);
 
   let startLevel = cleanData[0]?.cleanLevel || 0;
   let endLevel = cleanData[cleanData.length - 1]?.cleanLevel || 0;
   
-  // If data is empty, try to keep old levels from UI or 0
-  if (data.length === 0) {
-      startLevel = 0; endLevel = 0;
-  }
-
-  // Rule: Run Hours = Consumption / 7
   let runningHours = (totalConsumption > 0) ? (totalConsumption / CONSUMPTION_PER_HOUR) : 0;
 
   if (dgType === 'total') {
@@ -295,8 +335,6 @@ function processData(data, startDate, endDate) {
   document.getElementById('avg-consumption').textContent = formatNumber(runningHours > 0 ? (totalConsumption / runningHours) : 0);
 
   displayRefillInfo(totalRefilled, refillEvents);
-  
-  // ✅ UPDATE CHARTS (Handles empty data by drawing flat line from 7 AM)
   updateCharts(cleanData, startDate, endDate, refillEvents);
 }
 
@@ -315,12 +353,20 @@ function displayRefillInfo(totalRefilled, refillEvents) {
   }
 }
 
+// ✅ UPDATED: EXACT TIME TOOLTIP LOGIC
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
-  let labels = []; let consumptionData = []; let levelData = []; let pointColors = []; let pointRadiuses = [];
+  let labels = []; 
+  let consumptionData = []; 
+  let levelData = []; 
+  let pointColors = []; 
+  let pointRadiuses = [];
+  
+  // Stores the exact time string for every data point
+  let tooltipTimes = [];
 
   if (!isMultiDay) {
-    // ✅ SINGLE DAY: FORCE 7 AM to CURRENT TIME
+    // --- SINGLE DAY MODE (7 AM -> NOW) ---
     const now = new Date();
     const isToday = (startDate === now.toISOString().split('T')[0]);
     
@@ -328,14 +374,14 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     let endHour = isToday ? now.getHours() : 20;
     let currentMinute = now.getMinutes();
 
-    // Fallback level if no data exists today (use what's on stats card or 0)
+    // Fallback level if cleanData is empty
     let lastKnownLevel = parseFloat(document.getElementById('start-level').textContent);
     if (isNaN(lastKnownLevel)) lastKnownLevel = 0;
 
     const dataMap = {};
     cleanData.forEach(d => {
-        let h = d.hour.toString().padStart(2, '0');
-        let m = d.minute.toString().padStart(2, '0');
+        let h = new Date(d.timestamp).getHours();
+        let m = new Date(d.timestamp).getMinutes();
         dataMap[`${h}:${m}`] = d;
     });
 
@@ -343,14 +389,28 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         for (let m of [0, 30]) { 
             if (isToday && h === now.getHours() && m > currentMinute) break;
 
-            let timeKey = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
             let hour12 = (h > 12) ? h - 12 : (h === 0 ? 12 : h);
             let ampm = (h >= 12) ? 'PM' : 'AM';
-            labels.push(`${hour12}:${m.toString().padStart(2,'0')} ${ampm}`);
+            let timeStr = `${hour12}:${m.toString().padStart(2,'0')} ${ampm}`;
+            
+            labels.push(timeStr);
+            tooltipTimes.push(timeStr); // Single day tooltip is just the time
 
-            if (dataMap[timeKey]) {
-                // Data Exists
-                let record = dataMap[timeKey];
+            let timeKey = `${h}:${m}`;
+            
+            // Try to match data
+            let record = dataMap[timeKey];
+            
+            // If not found by direct match, try to find closest record in cleanData
+            if(!record) {
+                 record = cleanData.find(d => {
+                    let dh = new Date(d.timestamp).getHours();
+                    let dm = new Date(d.timestamp).getMinutes();
+                    return dh === h && Math.abs(dm - m) < 5;
+                 });
+            }
+
+            if (record) {
                 lastKnownLevel = record.cleanLevel; 
                 levelData.push(lastKnownLevel);
                 consumptionData.push(record.cleanConsumption);
@@ -359,7 +419,6 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 pointColors.push(isRefill ? '#0052cc' : 'rgba(0, 135, 90, 1)');
                 pointRadiuses.push(isRefill ? 6 : 0);
             } else {
-                // NO DATA -> FLAT LINE
                 levelData.push(lastKnownLevel); 
                 consumptionData.push(0);
                 pointColors.push('rgba(0, 135, 90, 1)');
@@ -372,9 +431,14 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     document.getElementById('level-chart-title').textContent = '📉 Diesel Level (Noise Reduced)';
 
   } else {
-    // Multi Day
+    // --- MULTI DAY MODE ---
     cleanData.forEach(d => {
-         labels.push(d.date);
+         labels.push(d.date); // Axis shows Date
+         
+         // ✅ Tooltip shows "Date + Time"
+         const t = new Date(d.timestamp);
+         tooltipTimes.push(t.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+
          levelData.push(d.cleanLevel);
          consumptionData.push(d.cleanConsumption);
          pointColors.push('rgba(0, 135, 90, 1)');
@@ -382,18 +446,47 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
     });
   }
 
+  // Render Consumption Chart
   if (consumptionChart) consumptionChart.destroy();
   consumptionChart = new Chart(document.getElementById('consumptionChart'), {
     type: 'bar',
     data: { labels: labels, datasets: [{ label: 'Consumption (L)', data: consumptionData, backgroundColor: 'rgba(222, 53, 11, 0.8)', borderColor: 'rgba(222, 53, 11, 1)', borderWidth: 1 }] },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } }
+    options: { 
+        responsive: true, maintainAspectRatio: false, 
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    // ✅ SHOW EXACT TIME FROM HIDDEN LIST
+                    title: function(context) { return `Time: ${tooltipTimes[context[0].dataIndex]}`; },
+                    label: function(context) { return `Consumption: ${context.raw} L`; }
+                }
+            }
+        },
+        scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } 
+    }
   });
 
+  // Render Level Chart
   if (levelChart) levelChart.destroy();
   levelChart = new Chart(document.getElementById('levelChart'), {
     type: 'line',
     data: { labels: labels, datasets: [{ label: 'Diesel Level (L)', data: levelData, borderColor: 'rgba(0, 135, 90, 1)', backgroundColor: 'rgba(0, 135, 90, 0.1)', borderWidth: 3, fill: true, tension: 0, spanGaps: true, pointBackgroundColor: pointColors, pointRadius: pointRadiuses }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { callbacks: { label: function(context) { let idx = context.dataIndex; if (pointColors[idx] === '#0052cc') return `⛽ Refill: ${context.raw}L`; return `Level: ${context.raw}L`; } } } }, scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } }
+    options: { 
+        responsive: true, maintainAspectRatio: false, 
+        plugins: { 
+            tooltip: {
+                callbacks: {
+                    title: function(context) { return `Time: ${tooltipTimes[context[0].dataIndex]}`; },
+                    label: function(context) { 
+                        let idx = context.dataIndex; 
+                        if (pointColors[idx] === '#0052cc') return `⛽ Refill: ${context.raw}L`; 
+                        return `Level: ${context.raw}L`; 
+                    } 
+                } 
+            } 
+        }, 
+        scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } 
+    }
   });
 }
 
