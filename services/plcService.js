@@ -93,17 +93,27 @@ const electricalCandidates = {
     runningHours:  [C(4258, 1), C(4259, 1), C(4218, 1), C(4298, 1), C(4338, 1)],
     windingTemp:   [C(4272, 1), C(4514, 1), C(4232, 1), C(4312, 1), C(4352, 1)]
   },
-  dg3: { 
-    // Optimized for DG3 based on tests
+ dg3: { 
+    // Optimized for DG3 (Calculated Contiguous Block)
+    
+    // --- NEWLY ADDED REGISTERS (Backwards from 4290) ---
+    voltageR:  [C(4276)], // Calculated
+    voltageY:  [C(4278)], // Calculated
+    voltageB:  [C(4280)], // Calculated
+    
+    currentR:  [C(4282)], // Calculated
+    currentY:  [C(4284)], // Calculated
+    currentB:  [C(4286)], // Calculated
+    
+    frequency: [C(4288)], // Calculated
+    
+    // --- EXISTING REGISTERS ---
+    powerFactor:   [C(4290, 0.0001)],
     activePower:   [C(4292)],
     reactivePower: [C(4294)],
     energyMeter:   [C(4296, 1)],
     runningHours:  [C(4298, 1)],
-    powerFactor:   [C(4290, 0.0001)],
-    windingTemp:   [C(4312, 1)],
-    // Empty arrays for missing params to force 0
-    voltageR: [], voltageY: [], voltageB: [],
-    currentR: [], currentY: [], currentB: [], frequency: []
+    windingTemp:   [C(4312, 1)]
   },
   dg4: { 
     activePower:   [C(4332), C(4516), C(5625), C(5665), C(4212), C(4252), C(4292)],
