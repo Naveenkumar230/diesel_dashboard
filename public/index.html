@@ -4,21 +4,20 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>DG Monitoring System Dashboard</title>
-<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="icon" type="image/png" href="/logo.png">
 <style>
   :root {
-    /* Blue-and-White Theme */
-    --primary: #0052cc;  /* Strong blue */
-    --success: #00875a;  /* Green */
-    --warning: #ffab00;  /* Yellow */
-    --danger: #de350b;   /* Red */
-    --bg-primary: #ffffff;      /* White background */
-    --bg-secondary: #f4f5f7;  /* Light grey background for cards */
-    --bg-tertiary: #ffffff;   /* Card content background (was --bg-tertiary) */
-    --text-primary: #172b4d;  /* Dark blue/black text */
-    --text-secondary: #42526e; /* Secondary text */
-    --text-muted: #6b778c;   /* Muted text */
-    --border: #dfe1e6;       /* Border color */
+    --primary: #0052cc; 
+    --success: #00875a; 
+    --warning: #ffab00; 
+    --danger: #de350b; 
+    --bg-primary: #ffffff; 
+    --bg-secondary: #f4f5f7; 
+    --bg-tertiary: #ffffff; 
+    --text-primary: #172b4d; 
+    --text-secondary: #42526e; 
+    --text-muted: #6b778c; 
+    --border: #dfe1e6; 
   }
   
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,33 +32,78 @@
   
   .container { max-width: 1400px; margin: 0 auto; }
   
+  /* ✅ UPDATED HEADER STYLES FOR LOGO */
+/* ✅ UPDATED HEADER: Logo Left, Status Right */
   .header {
-    text-align: center;
-    margin-bottom: 25px;
-    padding: 20px;
+    display: flex; /* Use Flexbox to arrange items horizontally */
+    justify-content: space-between; /* Pushes Logo/Title to Left, Status to Right */
+    align-items: center; /* Vertically centers items */
+    padding: 15px 30px; /* Adds nice spacing on sides */
     background: var(--bg-secondary);
     border-radius: 12px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     border: 1px solid var(--border);
+    text-align: left; /* Reset default center alignment */
+    margin-bottom: 25px;
   }
   
+  .header-content {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Forces Logo & Title to the Left */
+    gap: 20px; /* Space between Logo and Title */
+    margin-bottom: 0; /* Remove bottom margin */
+  }
+
+  .header-logo {
+    height: 65px; /* Increased size to fit the corner slot perfectly */
+    width: auto;
+    object-fit: contain;
+  }
+
   h1 {
-    margin: 0 0 10px 0;
+    margin: 0;
     font-size: 1.8rem;
     background: linear-gradient(90deg, #0052cc, #0065ff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    line-height: 1.2;
   }
   
   .status-line {
-    font-size: 0.9rem;
+    text-align: right; /* Aligns status text to the right */
+    font-size: 0.85rem;
     color: var(--text-muted);
+    display: flex;
+    flex-direction: column; /* Stacks the dot and the date neatly */
+    align-items: flex-end;
+    gap: 5px;
+  }
+
+  /* Mobile Responsiveness: Stacks them back to center on small screens */
+  @media (max-width: 768px) {
+    .header {
+      flex-direction: column;
+      text-align: center;
+      gap: 15px;
+      padding: 20px;
+    }
+    .header-content {
+      flex-direction: column;
+      justify-content: center;
+    }
+    .status-line {
+      align-items: center;
+      text-align: center;
+    }
+    .header-logo {
+        height: 50px;
+    }
   }
   
   .status-indicator {
     display: inline-block;
-    width: 10px;
-    height: 10px;
+    width: 10px; height: 10px;
     border-radius: 50%;
     margin-right: 8px;
     animation: pulse 2s infinite;
@@ -68,249 +112,62 @@
   .status-online { background: var(--success); }
   .status-offline { background: var(--danger); }
   
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
   /* Diesel Section */
-  .diesel-section {
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    border: 1px solid var(--border);
-  }
-  
-  .section-header {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-secondary);
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .diesel-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
-  }
-  
-  .diesel-card {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s;
-    cursor: pointer;
-    text-decoration: none; /* For <a> tag */
-    color: inherit;       /* For <a> tag */
-    display: block;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  }
-  
-  .diesel-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    border-color: var(--primary);
-  }
-  
-  .diesel-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-  }
-  
+  .diesel-section { background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border: 1px solid var(--border); }
+  .section-header { font-size: 1.1rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .diesel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+  .diesel-card { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; text-align: center; position: relative; overflow: hidden; transition: all 0.3s; cursor: pointer; text-decoration: none; color: inherit; display: block; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); }
+  .diesel-card:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1); border-color: var(--primary); }
+  .diesel-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; }
   .diesel-card.normal::before { background: linear-gradient(90deg, #10b981, #34d399); }
   .diesel-card.warning::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
   .diesel-card.critical::before { background: linear-gradient(90deg, #ef4444, #f87171); }
-  
-  .diesel-label {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  
-  .diesel-value {
-    font-size: 2.5rem;
-    font-weight: 800;
-    line-height: 1;
-    margin-bottom: 5px;
-    color: var(--text-primary);
-  }
-  
-  .diesel-unit {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-  }
+  .diesel-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .diesel-value { font-size: 2.5rem; font-weight: 800; line-height: 1; margin-bottom: 5px; color: var(--text-primary); }
+  .diesel-unit { font-size: 0.9rem; color: var(--text-muted); }
 
   /* Electrical Sections */
-  .dg-electrical-section {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    margin-bottom: 15px;
-    overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  }
-  
-  .dg-header-link {
-    text-decoration: none;
-    color: inherit;
-    display: block;
-  }
-
-  .dg-header {
-    padding: 18px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    transition: background 0.3s;
-    border-bottom: 1px solid var(--border);
-  }
-  
-  .dg-header-link:hover .dg-header {
-    background: rgba(0, 82, 204, 0.05); /* Light blue hover */
-  }
-  
-  .dg-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1;
-  }
-  
-  .dg-name {
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-  
-  .status-badge {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  
-  .status-running {
-    background: var(--success);
-    color: white;
-  }
-  
-  .status-off {
-    background: var(--danger);
-    color: white;
-  }
-  
-  .expand-icon {
-    font-size: 1.5rem;
-    transition: transform 0.3s;
-    color: var(--text-muted);
-  }
-  
-  .dg-electrical-section.expanded .expand-icon {
-    transform: rotate(180deg);
-  }
-  
-  .dg-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.4s ease;
-  }
-  
-  .dg-electrical-section.expanded .dg-content {
-    max-height: 2000px; 
-  }
-  
-  /* UPDATED: Grid layout for 12 parameters */
-  .param-grid {
-    display: grid;
-    /* This will fit 6 columns on large screens, 4 on medium, 2 on small */
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 12px;
-    padding: 20px;
-  }
-  
-  .param-card {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 15px;
-    text-align: center;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  
-  .param-label {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-  
-  .param-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin-bottom: 3px;
-    color: var(--text-primary);
-  }
-  
-  .param-unit {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-  
-  .alert-banner {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    color: white;
-    padding: 15px 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    display: none;
-    align-items: center;
-    gap: 10px;
-    font-weight: 600;
-    animation: slideDown 0.3s ease;
-  }
-
+  .dg-electrical-section { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
+  .dg-header-link { text-decoration: none; color: inherit; display: block; }
+  .dg-header { padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.3s; border-bottom: 1px solid var(--border); }
+  .dg-header-link:hover .dg-header { background: rgba(0, 82, 204, 0.05); }
+  .dg-title { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .dg-name { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); }
+  .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .status-running { background: var(--success); color: white; }
+  .status-off { background: var(--danger); color: white; }
+  .expand-icon { font-size: 1.5rem; transition: transform 0.3s; color: var(--text-muted); }
+  .dg-electrical-section.expanded .expand-icon { transform: rotate(180deg); }
+  .dg-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+  .dg-electrical-section.expanded .dg-content { max-height: 2000px; }
+  .param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; padding: 20px; }
+  .param-card { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .param-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .param-value { font-size: 1.5rem; font-weight: 700; margin-bottom: 3px; color: var(--text-primary); }
+  .param-unit { font-size: 0.8rem; color: var(--text-muted); }
+  .alert-banner { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; display: none; align-items: center; gap: 10px; font-weight: 600; animation: slideDown 0.3s ease; }
   .alert-banner.show { display: flex; }
-
-  @keyframes slideDown {
-    from { transform: translateY(-100%); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
+  @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
   @media (max-width: 768px) {
     h1 { font-size: 1.5rem; }
     .diesel-value { font-size: 2rem; }
     .param-value { font-size: 1.3rem; }
     .diesel-grid { grid-template-columns: repeat(2, 1fr); }
-    /* 2 columns on small screens */
     .param-grid { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>⚡ DG Monitoring System Dashboard</h1>
+    
+   <div class="header">
+      <img src="/logo.png" alt="Aquarelle Logo" class="header-logo">
+      
+      <h1>DG Monitoring System Dashboard</h1>
+      
       <div class="status-line">
         <span class="status-indicator status-online" id="server-status"></span>
         Last Updated: <span id="last-update">--</span>
@@ -350,10 +207,7 @@
     <div class="dg-electrical-section expanded" id="dg1-section">
       <a href="/electrical.html?dg=dg1" class="dg-header-link">
         <div class="dg-header">
-          <div class="dg-title">
-            <div class="dg-name">⚙️ DG-1 Electrical Parameters</div>
-            <div class="status-badge status-off" id="dg1-status">OFF</div>
-          </div>
+          <div class="dg-title"><div class="dg-name">⚙️ DG-1 Electrical Parameters</div><div class="status-badge status-off" id="dg1-status">OFF</div></div>
           <div class="expand-icon" data-target="dg1-content">▼</div>
         </div>
       </a>
@@ -378,10 +232,7 @@
     <div class="dg-electrical-section expanded" id="dg2-section">
       <a href="/electrical.html?dg=dg2" class="dg-header-link">
         <div class="dg-header">
-          <div class="dg-title">
-            <div class="dg-name">⚙️ DG-2 Electrical Parameters</div>
-            <div class="status-badge status-off" id="dg2-status">OFF</div>
-          </div>
+          <div class="dg-title"><div class="dg-name">⚙️ DG-2 Electrical Parameters</div><div class="status-badge status-off" id="dg2-status">OFF</div></div>
           <div class="expand-icon" data-target="dg2-content">▼</div>
         </div>
       </a>
@@ -406,10 +257,7 @@
     <div class="dg-electrical-section expanded" id="dg3-section">
       <a href="/electrical.html?dg=dg3" class="dg-header-link">
         <div class="dg-header">
-          <div class="dg-title">
-            <div class="dg-name">⚙️ DG-3 Electrical Parameters</div>
-            <div class="status-badge status-off" id="dg3-status">OFF</div>
-          </div>
+          <div class="dg-title"><div class="dg-name">⚙️ DG-3 Electrical Parameters</div><div class="status-badge status-off" id="dg3-status">OFF</div></div>
           <div class="expand-icon" data-target="dg3-content">▼</div>
         </div>
       </a>
@@ -430,14 +278,11 @@
         </div>
       </div>
     </div>
-    
+
     <div class="dg-electrical-section expanded" id="dg4-section">
       <a href="/electrical.html?dg=dg4" class="dg-header-link">
         <div class="dg-header">
-          <div class="dg-title">
-            <div class="dg-name">⚙️ DG-4 Electrical Parameters</div>
-            <div class="status-badge status-off" id="dg4-status">OFF</div>
-          </div>
+          <div class="dg-title"><div class="dg-name">⚙️ DG-4 Electrical Parameters</div><div class="status-badge status-off" id="dg4-status">OFF</div></div>
           <div class="expand-icon" data-target="dg4-content">▼</div>
         </div>
       </a>
@@ -461,214 +306,196 @@
 
   </div>
 
-<script>
-  // index.html - FINAL: UNIVERSAL SYNC (DATABASE BACKED)
-  
-  const CRITICAL_LEVEL = 50;
-  const WARNING_LEVEL = 150;
-  const DG_RUNNING_THRESHOLD = 5; 
-  const VOLTAGE_THRESHOLD = 200;  
+  <script>
+    // index.html - FINAL SCRIPT: UNIVERSAL SYNC (DB BACKED) + FREEZE
 
-  const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
+    const CRITICAL_LEVEL = 50;
+    const WARNING_LEVEL = 150;
+    const DG_RUNNING_THRESHOLD = 5; 
+    const VOLTAGE_THRESHOLD = 200;  
 
-  // We store the last DB data here to avoid spamming the server
-  let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
+    const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
 
-  // Toggle section logic
-  document.querySelectorAll('.expand-icon').forEach(icon => {
-    icon.addEventListener('click', (e) => {
-      e.preventDefault(); 
-      e.stopPropagation(); 
-      const contentId = icon.getAttribute('data-target');
-      const content = document.getElementById(contentId);
-      const section = content.closest('.dg-electrical-section');
-      section.classList.toggle('expanded');
-      content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
+    // Cache DB history to reduce API calls
+    let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
+
+    document.querySelectorAll('.expand-icon').forEach(icon => {
+      icon.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation(); 
+        const contentId = icon.getAttribute('data-target');
+        const content = document.getElementById(contentId);
+        const section = content.closest('.dg-electrical-section');
+        section.classList.toggle('expanded');
+        content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
+      });
     });
-  });
 
-  document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('.dg-content').forEach(content => {
-          const section = content.closest('.dg-electrical-section');
-          if (section.classList.contains('expanded')) {
-              content.style.maxHeight = '2000px';
-          } else {
-              content.style.maxHeight = '0';
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.dg-content').forEach(content => {
+            const section = content.closest('.dg-electrical-section');
+            if (section.classList.contains('expanded')) { content.style.maxHeight = '2000px'; } 
+            else { content.style.maxHeight = '0'; }
+        });
+    });
+
+    async function fetchData() {
+      try {
+        const response = await fetch('/api/data');
+        if (!response.ok) throw new Error('Network error');
+        return await response.json();
+      } catch (err) {
+        console.error('Fetch error:', err);
+        return null;
+      }
+    }
+
+    // ✅ FETCH LAST HISTORY FROM DB IF DG IS OFF
+    async function fetchLastHistory(dg) {
+      if (dbCache[dg]) return dbCache[dg];
+
+      try {
+          const today = new Date().toISOString().split('T')[0];
+          let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
+          let result = await response.json();
+
+          if (!result.data || result.data.length === 0) {
+               const yest = new Date();
+               yest.setDate(yest.getDate() - 1);
+               const yestStr = yest.toISOString().split('T')[0];
+               response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
+               result = await response.json();
           }
-      });
-  });
 
-  async function fetchData() {
-    try {
-      const response = await fetch('/api/data');
-      if (!response.ok) throw new Error('Network error');
-      return await response.json();
-    } catch (err) {
-      console.error('Fetch error:', err);
-      return null;
+          if (result.data && result.data.length > 0) {
+              const lastRecord = result.data[result.data.length - 1];
+              dbCache[dg] = lastRecord; 
+              return lastRecord;
+          }
+      } catch (e) { console.error("Error fetching history for", dg, e); }
+      return {}; 
     }
-  }
 
-  // ✅ NEW: Fetch history from MongoDB if DG is OFF
-  async function fetchLastHistory(dg) {
-    // If we already have a cached value from DB, don't ask again (saves bandwidth)
-    if (dbCache[dg]) return dbCache[dg];
+    function formatNum(num, decimals = 1) {
+      if (num === undefined || num === null || isNaN(num)) return '--';
+      if (num === 0) return decimals > 0 ? '0.0' : '0';
+      return num.toFixed(decimals);
+    }
 
-    try {
-        // Ask for Today's data
-        const today = new Date().toISOString().split('T')[0];
-        let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
-        let result = await response.json();
+    function updateDieselLevels(data) {
+      const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
+      ['dg1', 'dg2', 'dg3'].forEach(dg => {
+        const level = levels[dg];
+        const card = document.getElementById(`${dg}-diesel-card`);
+        const valueEl = document.getElementById(`${dg}-diesel`);
+        if (valueEl) valueEl.textContent = formatNum(level, 0);
+        if (card) {
+          card.className = 'diesel-card'; 
+          if (level <= CRITICAL_LEVEL) card.classList.add('critical');
+          else if (level <= WARNING_LEVEL) card.classList.add('warning');
+          else card.classList.add('normal');
+        }
+      });
+      document.getElementById('total-diesel').textContent = formatNum(data.total, 0);
 
-        // If no data today (DG didn't run today), ask for Yesterday
-        if (!result.data || result.data.length === 0) {
-             const yest = new Date();
-             yest.setDate(yest.getDate() - 1);
-             const yestStr = yest.toISOString().split('T')[0];
-             response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
-             result = await response.json();
+      const criticalDGs = Object.entries(levels).filter(([_, value]) => value <= CRITICAL_LEVEL).map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
+      const container = document.getElementById('alert-container');
+      container.innerHTML = '';
+      if (criticalDGs.length > 0) {
+        container.innerHTML = `<div class="alert-banner show">⚠️ CRITICAL: Low diesel levels in ${criticalDGs.join(', ')}! Refuel immediately.</div>`;
+      }
+    }
+
+    // ✅ INTELLIGENT FREEZE LOGIC
+    async function updateElectricalParams(data) {
+      if (!data.electrical) return;
+
+      for (const dg of ['dg1', 'dg2', 'dg3', 'dg4']) {
+        let liveData = data.electrical[dg] || {};
+        
+        // Check validity (Voltage > 200V)
+        const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
+
+        let displayData = {};
+
+        if (hasVoltage) {
+            // DG ON: Show live data
+            displayData = liveData;
+            dbCache[dg] = null; // Clear cache to get fresh data next stop
+        } else {
+            // DG OFF: Fetch last known from DB
+            displayData = await fetchLastHistory(dg);
+            if (!displayData || !displayData.voltageR) displayData = liveData; // Fallback
         }
 
-        // If we found data, pick the LAST record
-        if (result.data && result.data.length > 0) {
-            const lastRecord = result.data[result.data.length - 1];
-            dbCache[dg] = lastRecord; // Save to temp cache
-            return lastRecord;
+        // Status Badge (Always Live)
+        const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
+        const statusEl = document.getElementById(`${dg}-status`);
+        if (statusEl) {
+          statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
+          statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
         }
-    } catch (e) {
-        console.error("Error fetching history for", dg, e);
-    }
-    return {}; // Return empty if nothing found
-  }
 
-  function formatNum(num, decimals = 1) {
-    if (num === undefined || num === null || isNaN(num)) return '--';
-    if (num === 0) return decimals > 0 ? '0.0' : '0';
-    return num.toFixed(decimals);
-  }
+        // Render Values
+        ['r', 'y', 'b'].forEach(phase => {
+          const el = document.getElementById(`${dg}-voltage-${phase}`);
+          if (el) el.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
+        });
+        ['r', 'y', 'b'].forEach(phase => {
+          const el = document.getElementById(`${dg}-current-${phase}`);
+          if (el) el.textContent = formatNum(displayData[`current${phase.toUpperCase()}`]);
+        });
 
-  function updateDieselLevels(data) {
-    const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
-    ['dg1', 'dg2', 'dg3'].forEach(dg => {
-      const level = levels[dg];
-      const card = document.getElementById(`${dg}-diesel-card`);
-      const valueEl = document.getElementById(`${dg}-diesel`);
-      if (valueEl) valueEl.textContent = formatNum(level, 0);
-      if (card) {
-        card.className = 'diesel-card'; 
-        if (level <= CRITICAL_LEVEL) card.classList.add('critical');
-        else if (level <= WARNING_LEVEL) card.classList.add('warning');
-        else card.classList.add('normal');
-      }
-    });
-    document.getElementById('total-diesel').textContent = formatNum(data.total, 0);
-  }
+        const freqEl = document.getElementById(`${dg}-frequency`);
+        if (freqEl) freqEl.textContent = formatNum(displayData.frequency);
 
-  // ✅ UPDATED: Intelligent Display Logic
-  async function updateElectricalParams(data) {
-    if (!data.electrical) return;
+        const pfEl = document.getElementById(`${dg}-power-factor`);
+        if (pfEl) pfEl.textContent = formatNum(displayData.powerFactor, 2);
 
-    // We use a loop but make it async to wait for DB fetches
-    for (const dg of ['dg1', 'dg2', 'dg3', 'dg4']) {
-      let liveData = data.electrical[dg] || {};
-      
-      // 1. Check if DG is truly ON (Voltage > 200V)
-      const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
+        const apEl = document.getElementById(`${dg}-active-power`);
+        if (apEl) apEl.textContent = formatNum(displayData.activePower);
 
-      let displayData = {};
+        const rpEl = document.getElementById(`${dg}-reactive-power`);
+        if (rpEl) rpEl.textContent = formatNum(displayData.reactivePower);
+        
+        const enEl = document.getElementById(`${dg}-energy-meter`);
+        if (enEl) enEl.textContent = formatNum(displayData.energyMeter, 0);
 
-      if (hasVoltage) {
-          // 🟢 DG IS ON: Show Live Data
-          displayData = liveData;
-          // Clear cache so next time it stops, we re-fetch the freshest DB record
-          dbCache[dg] = null; 
-      } else {
-          // 🔴 DG IS OFF: Fetch "Last Known" from MongoDB
-          // This ensures cross-device sync
-          displayData = await fetchLastHistory(dg);
-          
-          // If DB is also empty (never ran), fallback to 0
-          if (!displayData || !displayData.voltageR) displayData = liveData;
-      }
-
-      // 2. Status Badge (Always Live Status)
-      const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
-      const statusEl = document.getElementById(`${dg}-status`);
-      if (statusEl) {
-        statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
-        statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
-      }
-
-      // 3. Render Values
-      ['r', 'y', 'b'].forEach(phase => {
-        const el = document.getElementById(`${dg}-voltage-${phase}`);
-        if (el) el.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
-      });
-      ['r', 'y', 'b'].forEach(phase => {
-        const el = document.getElementById(`${dg}-current-${phase}`);
-        if (el) el.textContent = formatNum(displayData[`current${phase.toUpperCase()}`]);
-      });
-
-      const freqEl = document.getElementById(`${dg}-frequency`);
-      if (freqEl) freqEl.textContent = formatNum(displayData.frequency);
-
-      const pfEl = document.getElementById(`${dg}-power-factor`);
-      if (pfEl) pfEl.textContent = formatNum(displayData.powerFactor, 2);
-
-      const apEl = document.getElementById(`${dg}-active-power`);
-      if (apEl) apEl.textContent = formatNum(displayData.activePower);
-
-      const rpEl = document.getElementById(`${dg}-reactive-power`);
-      if (rpEl) rpEl.textContent = formatNum(displayData.reactivePower);
-      
-      const enEl = document.getElementById(`${dg}-energy-meter`);
-      if (enEl) enEl.textContent = formatNum(displayData.energyMeter, 0);
-
-      const loadEl = document.getElementById(`${dg}-load-percent`);
-      if (loadEl) {
-        const maxKw = DG_MAX_KW[dg];
-        const power = displayData.activePower || 0;
-        const loadPercent = (power > 0 && maxKw > 0) ? (power / maxKw) * 100 : 0;
-        loadEl.textContent = formatNum(loadPercent, 1);
+        const loadEl = document.getElementById(`${dg}-load-percent`);
+        if (loadEl) {
+          const maxKw = DG_MAX_KW[dg];
+          const power = displayData.activePower || 0;
+          const loadPercent = (power > 0 && maxKw > 0) ? (power / maxKw) * 100 : 0;
+          loadEl.textContent = formatNum(loadPercent, 1);
+        }
       }
     }
-  }
 
-  function updateTimestamp() {
-    const now = new Date();
-    const timestampEl = document.getElementById('last-update');
-    if (timestampEl) {
-      timestampEl.textContent = now.toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium'
-      });
-    }
-  }
-
-  async function refresh() {
-    const data = await fetchData();
-    const indicator = document.getElementById('server-status');
-
-    if (!data) {
-      if (indicator) {
-        indicator.classList.remove('status-online');
-        indicator.classList.add('status-offline');
+    function updateTimestamp() {
+      const now = new Date();
+      const timestampEl = document.getElementById('last-update');
+      if (timestampEl) {
+        timestampEl.textContent = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' });
       }
-      return;
     }
 
-    if (indicator) {
-      indicator.classList.remove('status-offline');
-      indicator.classList.add('status-online');
+    async function refresh() {
+      const data = await fetchData();
+      const indicator = document.getElementById('server-status');
+
+      if (!data) {
+        if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
+        return;
+      }
+
+      if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
+
+      updateDieselLevels(data);
+      await updateElectricalParams(data); 
+      updateTimestamp();
     }
 
-    updateDieselLevels(data);
-    await updateElectricalParams(data); // Wait for DB checks
-    updateTimestamp();
-  }
-
-  // Refresh every 3 seconds
-  setInterval(refresh, 3000);
-  refresh();
-</script>
+    setInterval(refresh, 3000);
+    refresh();
+  </script>
 </body>
 </html>
