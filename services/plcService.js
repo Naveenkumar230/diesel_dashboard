@@ -64,79 +64,74 @@ const C = (addr, scaling = 0.1) => ({ addr, scaling });
 // --- MASSIVE FALLBACK MAP ---
 const electricalCandidates = {
 dg1: { 
-    voltageR:  [C(4196)], // 4212 - 16 = 4196
-    voltageY:  [C(4198)],
-    voltageB:  [C(4200)],
+    currentR:      [C(4322)], // D226 (Phase 1 Amps)
+    currentY:      [C(4324)], // D228 (Phase 2 Amps)
+    currentB:      [C(4326)], // D230 (Phase 3 Amps)
     
-    currentR:  [C(4202)],
-    currentY:  [C(4204)],
-    currentB:  [C(4206)],
+    frequency:     [C(4328, 0.01)], // D232
+    powerFactor:   [C(4330, 0.01)], // D234
     
-    frequency: [C(4208, 0.01)],
-    powerFactor: [C(4210, 0.01)],
+    activePower:   [C(4332)],       // D236 (Power)
+    reactivePower: [C(4334)],       // D238
+    energyMeter:   [C(4336, 1)],    // D240
+    runningHours:  [C(4338, 1)],    // D242
     
-    // -- Existing Knowns --
-    activePower:   [C(4212)],
-    reactivePower: [C(4214)],
-    energyMeter:   [C(4216, 1)],
-    runningHours:  [C(4218, 1)],
-    windingTemp:   [C(4232, 1)] // Might be further down
+    // Calculated voltages (Usually just before current)
+    voltageR:      [C(4316)], 
+    voltageY:      [C(4318)],
+    voltageB:      [C(4320)],
+    windingTemp:   [C(4352, 1)]
   },
 
+  // DG-2 (Shifted back by 40 registers)
   dg2: { 
-    voltageR:  [C(4236)], // 4252 - 16 = 4236
-    voltageY:  [C(4238)],
-    voltageB:  [C(4240)],
-    
-    currentR:  [C(4242)],
-    currentY:  [C(4244)],
-    currentB:  [C(4246)],
-    
-    frequency: [C(4248, 0.01)],
-    powerFactor: [C(4250, 0.01)],
-    
-    activePower:   [C(4252)],
-    reactivePower: [C(4254)],
-    energyMeter:   [C(4256, 1)],
-    runningHours:  [C(4258, 1)],
-    windingTemp:   [C(4272, 1)]
-  },
- dg3: { 
-    // Optimized for DG3 (Calculated Contiguous Block)
-    
-    // --- NEWLY ADDED REGISTERS (Backwards from 4290) ---
-    voltageR:  [C(4276)], // Calculated
-    voltageY:  [C(4278)], // Calculated
-    voltageB:  [C(4280)], // Calculated
-    
-    currentR:  [C(4282)], // Calculated
-    currentY:  [C(4284)], // Calculated
-    currentB:  [C(4286)], // Calculated
-    
-    frequency: [C(4288)], // Calculated
-    
-    // --- EXISTING REGISTERS ---
-    powerFactor:   [C(4290, 0.0001)],
     activePower:   [C(4292)],
+    currentR:      [C(4282)],
+    currentY:      [C(4284)],
+    currentB:      [C(4286)],
+    frequency:     [C(4288, 0.01)],
+    powerFactor:   [C(4290, 0.01)],
     reactivePower: [C(4294)],
     energyMeter:   [C(4296, 1)],
     runningHours:  [C(4298, 1)],
+    voltageR:      [C(4276)],
+    voltageY:      [C(4278)],
+    voltageB:      [C(4280)],
     windingTemp:   [C(4312, 1)]
   },
+
+  // DG-3 (Shifted back by another 40)
+  dg3: { 
+    activePower:   [C(4252)],
+    currentR:      [C(4242)],
+    currentY:      [C(4244)],
+    currentB:      [C(4246)],
+    frequency:     [C(4248, 0.01)],
+    powerFactor:   [C(4250, 0.01)],
+    reactivePower: [C(4254)],
+    energyMeter:   [C(4256, 1)],
+    runningHours:  [C(4258, 1)],
+    voltageR:      [C(4236)],
+    voltageY:      [C(4238)],
+    voltageB:      [C(4240)],
+    windingTemp:   [C(4272, 1)]
+  },
+
+  // DG-4 (Shifted back by another 40)
   dg4: { 
-    activePower:   [C(4332), C(4516), C(5625), C(5665), C(4212), C(4252), C(4292)],
-    voltageR:      [C(4316), C(4317), C(4196), C(4236), C(4276), C(4318), C(4320), C(4322), C(4324), C(4326)],
-    voltageY:      [C(4318), C(4319), C(4198), C(4238), C(4278), C(4316), C(4320), C(4322), C(4324), C(4326)],
-    voltageB:      [C(4320), C(4321), C(4200), C(4240), C(4280), C(4316), C(4318), C(4322), C(4324), C(4326)],
-    currentR:      [C(4322), C(4323), C(4202), C(4242), C(4282), C(4316), C(4318), C(4320), C(4324), C(4326)],
-    currentY:      [C(4324), C(4325), C(4204), C(4244), C(4284), C(4316), C(4318), C(4320), C(4322), C(4326)],
-    currentB:      [C(4326), C(4327), C(4206), C(4246), C(4286), C(4316), C(4318), C(4320), C(4322), C(4324)],
-    frequency:     [C(4328, 0.01), C(4329, 0.01), C(4208, 0.01), C(4248, 0.01), C(4288, 0.01)],
-    powerFactor:   [C(4330, 0.01), C(4331, 0.01), C(4210, 0.01), C(4250, 0.01), C(4290, 0.01)],
-    reactivePower: [C(4334), C(4335), C(4214), C(4254), C(4294)],
-    energyMeter:   [C(4336, 1), C(4337, 1), C(4216, 1), C(4256, 1), C(4296, 1)],
-    runningHours:  [C(4338, 1), C(4339, 1), C(4218, 1), C(4258, 1), C(4298, 1)],
-    windingTemp:   [C(4352, 1), C(4516, 1), C(4232, 1), C(4272, 1), C(4312, 1)]
+    activePower:   [C(4212)],
+    currentR:      [C(4202)],
+    currentY:      [C(4204)],
+    currentB:      [C(4206)],
+    frequency:     [C(4208, 0.01)],
+    powerFactor:   [C(4210, 0.01)],
+    reactivePower: [C(4214)],
+    energyMeter:   [C(4216, 1)],
+    runningHours:  [C(4218, 1)],
+    voltageR:      [C(4196)],
+    voltageY:      [C(4198)],
+    voltageB:      [C(4200)],
+    windingTemp:   [C(4232, 1)]
   }
 };
 
