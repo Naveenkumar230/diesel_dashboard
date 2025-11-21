@@ -63,43 +63,44 @@ const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
 // --- MASSIVE FALLBACK MAP ---
 const electricalCandidates = {
- dg1 : {
-  voltageR:       genFallbacks(4196).map(r => C(r)),          // primary 4196[file:1]
-  voltageY:       genFallbacks(4198).map(r => C(r)),          // primary 4198[file:1]
-  voltageB:       genFallbacks(4200).map(r => C(r)),          // primary 4200[file:1]
+dg1: { 
+    voltageR:  [C(4196)], // 4212 - 16 = 4196
+    voltageY:  [C(4198)],
+    voltageB:  [C(4200)],
+    
+    currentR:  [C(4202)],
+    currentY:  [C(4204)],
+    currentB:  [C(4206)],
+    
+    frequency: [C(4208, 0.01)],
+    powerFactor: [C(4210, 0.01)],
+    
+    // -- Existing Knowns --
+    activePower:   [C(4212)],
+    reactivePower: [C(4214)],
+    energyMeter:   [C(4216, 1)],
+    runningHours:  [C(4218, 1)],
+    windingTemp:   [C(4232, 1)] // Might be further down
+  },
 
-  currentR:       genFallbacks(4202).map(r => C(r)),          // primary 4202[file:1]
-  currentY:       genFallbacks(4204).map(r => C(r)),          // primary 4204[file:1]
-  currentB:       genFallbacks(4206).map(r => C(r)),          // primary 4206[file:1]
-
-  frequency:      genFallbacks(4208).map(r => C(r, 0.01)),    // primary 4208[file:1]
-  powerFactor:    genFallbacks(4210).map(r => C(r, 0.01)),    // primary 4210[file:1]
-
-  activePower:    genFallbacks(4212).map(r => C(r)),          // primary 4212[file:1]
-  reactivePower:  genFallbacks(4214).map(r => C(r)),          // primary 4214[file:1]
-  energyMeter:    genFallbacks(4216).map(r => C(r, 1)),       // primary 4216[file:1]
-  runningHours:   genFallbacks(4218).map(r => C(r, 1)),       // primary 4218[file:1]
-  windingTemp:    genFallbacks(4232).map(r => C(r, 1))        // primary 4232[file:1]
-},
-
-  dg2:{
-  voltageR:       genFallbacks(4236).map(r => C(r)),          // primary 4236[file:1]
-  voltageY:       genFallbacks(4238).map(r => C(r)),          // primary 4238[file:1]
-  voltageB:       genFallbacks(4240).map(r => C(r)),          // primary 4240[file:1]
-
-  currentR:       genFallbacks(4242).map(r => C(r)),          // primary 4242[file:1]
-  currentY:       genFallbacks(4244).map(r => C(r)),          // primary 4244[file:1]
-  currentB:       genFallbacks(4246).map(r => C(r)),          // primary 4246[file:1]
-
-  frequency:      genFallbacks(4248).map(r => C(r, 0.01)),    // primary 4248[file:1]
-  powerFactor:    genFallbacks(4250).map(r => C(r, 0.01)),    // primary 4250[file:1]
-
-  activePower:    genFallbacks(4252).map(r => C(r)),          // primary 4252[file:1]
-  reactivePower:  genFallbacks(4254).map(r => C(r)),          // primary 4254[file:1]
-  energyMeter:    genFallbacks(4256).map(r => C(r, 1)),       // primary 4256[file:1]
-  runningHours:   genFallbacks(4258).map(r => C(r, 1)),       // primary 4258[file:1]
-  windingTemp:    genFallbacks(4272).map(r => C(r, 1))        // primary 4272[file:1]
-},
+  dg2: { 
+    voltageR:  [C(4236)], // 4252 - 16 = 4236
+    voltageY:  [C(4238)],
+    voltageB:  [C(4240)],
+    
+    currentR:  [C(4242)],
+    currentY:  [C(4244)],
+    currentB:  [C(4246)],
+    
+    frequency: [C(4248, 0.01)],
+    powerFactor: [C(4250, 0.01)],
+    
+    activePower:   [C(4252)],
+    reactivePower: [C(4254)],
+    energyMeter:   [C(4256, 1)],
+    runningHours:  [C(4258, 1)],
+    windingTemp:   [C(4272, 1)]
+  },
  dg3: { 
     // Optimized for DG3 (Calculated Contiguous Block)
     
