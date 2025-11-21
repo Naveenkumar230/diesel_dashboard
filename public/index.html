@@ -306,8 +306,8 @@
 
   </div>
 
-  <script>
-    // index.html - FINAL STABLE VERSION: NO "0" FLASHING ON ERROR
+<script>
+    // index.html - FINAL: ANTI-SPAM VERSION (Fixes 502 Errors)
 
     const CRITICAL_LEVEL = 50;
     const WARNING_LEVEL = 150;
@@ -318,6 +318,9 @@
 
     // Cache DB history to reduce API calls
     let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
+    
+    // ✅ NEW: Cooldown tracker to prevent 502 Spam
+    let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
 
     document.querySelectorAll('.expand-icon').forEach(icon => {
       icon.addEventListener('click', (e) => {
@@ -338,33 +341,38 @@
         });
     });
 
-    // ✅ FIX 1: Better Main Data Fetching
     async function fetchData() {
       try {
         const response = await fetch('/api/data');
-        // If server errors (502/500), stop here. Don't crash.
-        if (!response.ok) {
-            console.warn("Server glitch (fetchData), keeping old data...");
-            return null;
-        }
+        if (!response.ok) return null;
         return await response.json();
       } catch (err) {
-        console.warn('Network glitch, skipping update:', err);
+        console.warn('Network glitch (fetchData), skipping update.');
         return null;
       }
     }
 
-    // ✅ FIX 2: Better History Fetching (Prevents JSON SyntaxError)
+    // ✅ FIXED: SMART HISTORY FETCHING (With 60s Cooldown on Error)
     async function fetchLastHistory(dg) {
-      // If we have cached data, return it immediately (don't spam server)
+      // 1. If we have cached data, use it (Instant)
       if (dbCache[dg]) return dbCache[dg];
+
+      // 2. If we failed recently (within 60 seconds), DO NOT try again (Prevents 502 Loop)
+      if (Date.now() - historyCooldown[dg] < 60000) {
+          // console.log(`Skipping ${dg} history fetch due to cooldown.`);
+          return null; 
+      }
 
       try {
           const today = new Date().toISOString().split('T')[0];
           let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
           
-          // Safety check before parsing JSON
-          if (!response.ok) return null; 
+          // If server is busy (502), start cooldown and exit
+          if (!response.ok) {
+              console.warn(`${dg} History Fetch Failed (${response.status}). Cooling down for 60s.`);
+              historyCooldown[dg] = Date.now(); // Set cooldown
+              return null;
+          }
           
           let result = await response.json();
 
@@ -374,18 +382,25 @@
                yest.setDate(yest.getDate() - 1);
                const yestStr = yest.toISOString().split('T')[0];
                response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
-               if (!response.ok) return null;
+               
+               if (!response.ok) {
+                   historyCooldown[dg] = Date.now(); // Set cooldown
+                   return null;
+               }
                result = await response.json();
           }
 
           if (result.data && result.data.length > 0) {
               const lastRecord = result.data[result.data.length - 1];
-              dbCache[dg] = lastRecord; 
+              dbCache[dg] = lastRecord; // Success! Save to cache
               return lastRecord;
+          } else {
+              // No data found at all, don't keep asking
+              historyCooldown[dg] = Date.now();
           }
       } catch (e) { 
-          // On error, return NULL so we know to keep existing data
-          console.warn(`Skipping history fetch for ${dg} due to error.`);
+          console.error(`Network Error fetching ${dg}. Cooling down.`);
+          historyCooldown[dg] = Date.now(); // Set cooldown
           return null; 
       }
       return {}; 
@@ -398,7 +413,7 @@
     }
 
     function updateDieselLevels(data) {
-      if(!data) return; // Logic safety
+      if(!data) return;
 
       const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
       ['dg1', 'dg2', 'dg3'].forEach(dg => {
@@ -437,24 +452,25 @@
         if (hasVoltage) {
             // DG ON: Show live data
             displayData = liveData;
-            dbCache[dg] = null; // Clear cache to get fresh data next stop
+            dbCache[dg] = null; // Clear cache so we fetch fresh history next time it stops
+            historyCooldown[dg] = 0; // Reset cooldown
         } else {
-            // DG OFF: Fetch last known from DB
+            // DG OFF: Fetch last known from DB (Safe Mode)
             const historyData = await fetchLastHistory(dg);
             
-            // ✅ FIX 3: If history fetch failed (502), KEEP OLD DATA on screen
-            // Do NOT overwrite with empty/zero unless we really have nothing
+            // If history failed (502 or waiting for cooldown), SKIP update
+            // This preserves the old numbers on screen instead of flashing 0
             if (historyData === null) {
-                continue; // Skip updating this DG this time (Prevents "0" flash)
+                continue; 
             }
             
             displayData = historyData;
             
-            // If absolutely no history exists, fallback to live (which is 0)
+            // Fallback to live (0) if DB is truly empty
             if (!displayData || !displayData.voltageR) displayData = liveData; 
         }
 
-        // Status Badge (Always Live)
+        // Status Badge
         const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
         const statusEl = document.getElementById(`${dg}-status`);
         if (statusEl) {
@@ -509,10 +525,9 @@
       const data = await fetchData();
       const indicator = document.getElementById('server-status');
 
-      // If data is null (server error), do NOT clear the screen. Just mark offline.
       if (!data) {
         if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
-        return; // Exit function, keeping old data on screen
+        return; 
       }
 
       if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
@@ -522,7 +537,8 @@
       updateTimestamp();
     }
 
-    setInterval(refresh, 3000);
+    // ✅ INCREASED INTERVAL: 5000ms (5 Seconds) to reduce server load
+    setInterval(refresh, 5000);
     refresh();
   </script>
 </body>
