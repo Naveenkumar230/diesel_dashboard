@@ -307,7 +307,7 @@
   </div>
 
   <script>
-    // index.html - FINAL SCRIPT: UNIVERSAL SYNC (DB BACKED) + FREEZE
+    // index.html - FINAL STABLE VERSION: NO "0" FLASHING ON ERROR
 
     const CRITICAL_LEVEL = 50;
     const WARNING_LEVEL = 150;
@@ -338,31 +338,43 @@
         });
     });
 
+    // ✅ FIX 1: Better Main Data Fetching
     async function fetchData() {
       try {
         const response = await fetch('/api/data');
-        if (!response.ok) throw new Error('Network error');
+        // If server errors (502/500), stop here. Don't crash.
+        if (!response.ok) {
+            console.warn("Server glitch (fetchData), keeping old data...");
+            return null;
+        }
         return await response.json();
       } catch (err) {
-        console.error('Fetch error:', err);
+        console.warn('Network glitch, skipping update:', err);
         return null;
       }
     }
 
-    // ✅ FETCH LAST HISTORY FROM DB IF DG IS OFF
+    // ✅ FIX 2: Better History Fetching (Prevents JSON SyntaxError)
     async function fetchLastHistory(dg) {
+      // If we have cached data, return it immediately (don't spam server)
       if (dbCache[dg]) return dbCache[dg];
 
       try {
           const today = new Date().toISOString().split('T')[0];
           let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
+          
+          // Safety check before parsing JSON
+          if (!response.ok) return null; 
+          
           let result = await response.json();
 
+          // If no data today, try yesterday
           if (!result.data || result.data.length === 0) {
                const yest = new Date();
                yest.setDate(yest.getDate() - 1);
                const yestStr = yest.toISOString().split('T')[0];
                response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
+               if (!response.ok) return null;
                result = await response.json();
           }
 
@@ -371,7 +383,11 @@
               dbCache[dg] = lastRecord; 
               return lastRecord;
           }
-      } catch (e) { console.error("Error fetching history for", dg, e); }
+      } catch (e) { 
+          // On error, return NULL so we know to keep existing data
+          console.warn(`Skipping history fetch for ${dg} due to error.`);
+          return null; 
+      }
       return {}; 
     }
 
@@ -382,6 +398,8 @@
     }
 
     function updateDieselLevels(data) {
+      if(!data) return; // Logic safety
+
       const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
       ['dg1', 'dg2', 'dg3'].forEach(dg => {
         const level = levels[dg];
@@ -405,9 +423,8 @@
       }
     }
 
-    // ✅ INTELLIGENT FREEZE LOGIC
     async function updateElectricalParams(data) {
-      if (!data.electrical) return;
+      if (!data || !data.electrical) return;
 
       for (const dg of ['dg1', 'dg2', 'dg3', 'dg4']) {
         let liveData = data.electrical[dg] || {};
@@ -423,8 +440,18 @@
             dbCache[dg] = null; // Clear cache to get fresh data next stop
         } else {
             // DG OFF: Fetch last known from DB
-            displayData = await fetchLastHistory(dg);
-            if (!displayData || !displayData.voltageR) displayData = liveData; // Fallback
+            const historyData = await fetchLastHistory(dg);
+            
+            // ✅ FIX 3: If history fetch failed (502), KEEP OLD DATA on screen
+            // Do NOT overwrite with empty/zero unless we really have nothing
+            if (historyData === null) {
+                continue; // Skip updating this DG this time (Prevents "0" flash)
+            }
+            
+            displayData = historyData;
+            
+            // If absolutely no history exists, fallback to live (which is 0)
+            if (!displayData || !displayData.voltageR) displayData = liveData; 
         }
 
         // Status Badge (Always Live)
@@ -482,9 +509,10 @@
       const data = await fetchData();
       const indicator = document.getElementById('server-status');
 
+      // If data is null (server error), do NOT clear the screen. Just mark offline.
       if (!data) {
         if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
-        return;
+        return; // Exit function, keeping old data on screen
       }
 
       if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
