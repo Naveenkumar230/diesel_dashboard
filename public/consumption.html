@@ -105,9 +105,23 @@
         <div id="refill-details"></div>
       </div>
       
-      <div class="stat-card" style="border-top-color: var(--success);"><div class="stat-label">Total Running Hours</div><div class="stat-value" id="running-hours" style="color: var(--success);">--</div><div class="stat-unit">Hours</div></div>
-      <div class="stat-card" style="border-top-color: var(--warning);"><div class="stat-label">Avg Consumption</div><div class="stat-value" id="avg-consumption" style="color: var(--warning);">--</div><div class="stat-unit">L/Hour</div></div>
-      <div class="stat-card" id="refill-card"><div class="stat-label">Refill Prediction</div><div class="stat-value" id="refill-prediction" style="color: var(--primary);">--</div><div class="stat-unit">Days until 50L</div></div>
+      <div class="stat-card" style="border-top-color: var(--success);">
+        <div class="stat-label">Total Running Hours</div>
+        <div class="stat-value" id="running-hours" style="color: var(--success);">--</div>
+        <div class="stat-unit">Hours</div>
+      </div>
+      
+      <div class="stat-card" style="border-top-color: var(--warning);">
+        <div class="stat-label">Avg Consumption</div>
+        <div class="stat-value" id="avg-consumption" style="color: var(--warning);">--</div>
+        <div class="stat-unit">L/Hour</div>
+      </div>
+      
+      <div class="stat-card" id="refill-card">
+        <div class="stat-label">Refill Prediction</div>
+        <div class="stat-value" id="refill-prediction" style="color: var(--primary);">--</div>
+        <div class="stat-unit">Hours until 50L</div>
+      </div>
     </div>
 
     <div class="chart-section">
@@ -430,14 +444,32 @@ function processData(data, startDate, endDate) {
   let runningHours = (totalConsumption > 0) ? (totalConsumption / CONSUMPTION_PER_HOUR) : 0;
   const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0;
 
-  let daysRemaining = '--';
+  // ✅ REFILL PREDICTION (IN HOURS NOW)
+  let timeRemaining = '--';
+  const predCard = document.getElementById('refill-prediction');
+  const predCardContainer = document.getElementById('refill-card');
+
   if (endLevel > CRITICAL_LEVEL) {
       const rate = avgConsumptionRate > 0 ? avgConsumptionRate : CONSUMPTION_PER_HOUR;
       const usableDiesel = endLevel - CRITICAL_LEVEL;
-      daysRemaining = ((usableDiesel / rate) / 24).toFixed(1);
-      if(avgConsumptionRate === 0) daysRemaining += " (Est)";
+      
+      // ✅ CHANGED: Removed "/ 24". Now calculating pure Hours.
+      timeRemaining = (usableDiesel / rate).toFixed(1);
+      
+      // Visual Logic: If less than 12 hours left, show Warning color
+      if (parseFloat(timeRemaining) > 12) {
+          predCard.style.color = 'var(--success)'; // Green
+          predCardContainer.style.borderTopColor = 'var(--success)';
+      } else {
+          predCard.style.color = 'var(--warning)'; // Yellow
+          predCardContainer.style.borderTopColor = 'var(--warning)';
+      }
+
+      if(avgConsumptionRate === 0) timeRemaining += " (Est)";
   } else {
-      daysRemaining = "0.0 (Critical)";
+      timeRemaining = "0.0 (Critical)";
+      predCard.style.color = 'var(--danger)';
+      predCardContainer.style.borderTopColor = 'var(--danger)';
   }
 
   document.getElementById('start-level').textContent = formatNumber(startLevel);
@@ -445,9 +477,11 @@ function processData(data, startDate, endDate) {
   document.getElementById('total-consumption').textContent = formatNumber(totalConsumption);
   document.getElementById('running-hours').textContent = formatNumber(runningHours);
   document.getElementById('avg-consumption').textContent = formatNumber(avgConsumptionRate || CONSUMPTION_PER_HOUR);
-  document.getElementById('refill-prediction').textContent = daysRemaining;
+  
+  // Update the prediction value
+  document.getElementById('refill-prediction').textContent = timeRemaining;
 
-  // ✅ REFILL DETAILS DISPLAY
+  // Refill Info Display
   const totalRefilledEl = document.getElementById('total-refilled');
   const refillDetailsEl = document.getElementById('refill-details');
   const refillCard = document.getElementById('refill-info-card');
@@ -456,14 +490,9 @@ function processData(data, startDate, endDate) {
   totalRefilledEl.textContent = formatNumber(totalRefilled);
 
   if (totalRefilled > 0 && refillEvents.length > 0) {
-    let detailsHTML = ``;
+    let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
     refillEvents.forEach(event => { 
-        // Format: Date Time - Tank: Amount
-        detailsHTML += `
-        <div style="border-bottom:1px solid #eee; padding:4px 0; font-size:0.8rem;">
-            📅 <b>${event.date} ${event.time}</b><br>
-            🛢️ <b style="color:#0052cc">${event.tank}</b>: +${formatNumber(event.amount)} L
-        </div>`; 
+        detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${formatNumber(event.amount)}L<br>`; 
     });
     refillDetailsEl.innerHTML = detailsHTML;
   } else {
