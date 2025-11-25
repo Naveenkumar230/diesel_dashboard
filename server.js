@@ -1,6 +1,7 @@
 /**
  * DG Monitoring System - Main Server
- * FINAL VERSION: Secure, Cleaned, and Robust Error Handling
+ * TAILSCALE COMPATIBLE VERSION
+ * Simpler, Faster, No Redirect Issues.
  */
 
 require('dotenv').config();
@@ -8,22 +9,19 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const compression = require('compression');
-const https = require('https');
-const fs = require('fs');
+const http = require('http'); // Changed from https
 const mongoose = require('mongoose');
-const os = require('os'); // Added to detect IP automatically
+const os = require('os');
 
 // Import modules
 const { connectMongoDB, isMongoConnected } = require('./config/database');
-// Removed unused imports (readAllSystemData, getSystemData) to keep code clean
 const { connectToPLC, closePLC } = require('./services/plcService');
 const { startScheduledTasks } = require('./services/schedulerService');
 const apiRoutes = require('./routes/api');
 const { initializeEmail } = require('./services/emailService');
 
 // -------------------- Config --------------------
-const httpPort = 3000;  // For redirecting
-const httpsPort = 3001; // Your new SECURE port
+const PORT = 3000;  // Standard HTTP port (Tailscale will map to this)
 // ------------------------------------------------
 
 // -------------------- Express Setup --------------------
@@ -37,7 +35,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   lastModified: true 
 }));
 
-// Cache control for static assets
+// Cache control
 app.use((req, res, next) => {
   if (/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/.test(req.url)) {
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -64,7 +62,7 @@ app.get('/electrical.html', (req, res) => {
 async function gracefulShutdown() {
   console.log('\nShutting down gracefully...');
   try {
-    closePLC(); // Close PLC connection
+    closePLC();
     if (mongoose.connection.readyState === 1) {
         await mongoose.connection.close();
         console.log('MongoDB connection closed.');
@@ -79,10 +77,9 @@ async function gracefulShutdown() {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
-// ✅ SAFETY NET: Global Error Handlers (Prevents crashes from random timeouts)
+// Safety Nets
 process.on('uncaughtException', (err) => {
     console.error('❌ UNCAUGHT EXCEPTION:', err);
-    // Optional: gracefulShutdown(); // Don't exit immediately for minor errors
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -105,49 +102,29 @@ function getLocalIP() {
 // -------------------- Start Server --------------------
 async function startServer() {
   try {
-    // Connect to MongoDB
+    // 1. Connect to MongoDB
     await connectMongoDB();
     
-    // Read SSL Certificate Files
-    const httpsOptions = {
-      key: fs.readFileSync(path.join(__dirname, 'ssl/server.key')),
-      cert: fs.readFileSync(path.join(__dirname, 'ssl/server.crt'))
-    };
-
-    // Create HTTPS Server
-    const httpsServer = https.createServer(httpsOptions, app);
+    // 2. Start Simple HTTP Server (No SSL needed internally)
+    const server = http.createServer(app);
     
-    httpsServer.listen(httpsPort, '0.0.0.0', () => { 
+    server.listen(PORT, '0.0.0.0', () => { 
       const ip = getLocalIP();
       console.log('\n===========================================');
       console.log(`DG Monitoring System Server Started`);
-      console.log(`✅ SECURE SERVER: https://${ip}:${httpsPort}`);
+      console.log(`✅ LOCAL:  http://${ip}:${PORT}`);
+      console.log(`✅ REMOTE: https://dg-monitor... (via Tailscale)`);
       console.log(`===========================================`);
       console.log(`MongoDB: ${isMongoConnected() ? 'Connected' : 'Disconnected'}`);
       
-      // Connect to PLC and start services
+      // 3. Connect to PLC and start services
       connectToPLC();
       initializeEmail();
       startScheduledTasks();
     });
 
-    // Create HTTP server to redirect to HTTPS
-    const httpApp = express();
-    httpApp.get('*', (req, res) => {
-        const host = req.headers.host.split(':')[0]; 
-        res.redirect(`https://${host}:${httpsPort}${req.url}`);
-    });
-    httpApp.listen(httpPort, '0.0.0.0', () => { 
-        console.log(`Redirecting HTTP (${httpPort}) to HTTPS (${httpsPort})...`);
-    });
-
   } catch (err) {
-    if (err.code === 'ENOENT') {
-      console.error(`[FATAL ERROR] Cannot read SSL certificates.`);
-      console.error(`Please run 'openssl' command to create 'ssl/server.key' and 'ssl/server.crt'.`);
-    } else {
-      console.error('Failed to start server:', err);
-    }
+    console.error('Failed to start server:', err);
     process.exit(1);
   }
 }
