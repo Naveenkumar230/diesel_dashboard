@@ -63,75 +63,92 @@ const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
 // --- MASSIVE FALLBACK MAP ---
 const electricalCandidates = {
-dg1: { 
-    currentR:      [C(4322)], // D226 (Phase 1 Amps)
-    currentY:      [C(4324)], // D228 (Phase 2 Amps)
-    currentB:      [C(4326)], // D230 (Phase 3 Amps)
+  // === DG-1 (Base) ===
+  // Voltage Start: D220 (4316) | End: D242 (4338)
+  dg1: { 
+    voltageR:      [C(4316)],       // D220
+    voltageY:      [C(4318)],       // D222
+    voltageB:      [C(4320)],       // D224
+    
+    currentR:      [C(4322)],       // D226
+    currentY:      [C(4324)],       // D228
+    currentB:      [C(4326)],       // D230
     
     frequency:     [C(4328, 0.01)], // D232
     powerFactor:   [C(4330, 0.01)], // D234
     
-    activePower:   [C(4332)],       // D236 (Power)
+    activePower:   [C(4332)],       // D236
     reactivePower: [C(4334)],       // D238
     energyMeter:   [C(4336, 1)],    // D240
     runningHours:  [C(4338, 1)],    // D242
     
-    // Calculated voltages (Usually just before current)
-    voltageR:      [C(4316)], 
-    voltageY:      [C(4318)],
-    voltageB:      [C(4320)],
-    windingTemp:   [C(4352, 1)]
+    windingTemp:   [C(4352, 1)]     // D256 (Outlier register)
   },
 
-  // DG-2 (Shifted back by 40 registers)
+  // === DG-2 (DG1 - 40) ===
+  // Voltage Start: D180 (4276) | End: D202 (4298)
   dg2: { 
-    activePower:   [C(4292)],
-    currentR:      [C(4282)],
-    currentY:      [C(4284)],
-    currentB:      [C(4286)],
-    frequency:     [C(4288, 0.01)],
-    powerFactor:   [C(4290, 0.01)],
-    reactivePower: [C(4294)],
-    energyMeter:   [C(4296, 1)],
-    runningHours:  [C(4298, 1)],
-    voltageR:      [C(4276)],
-    voltageY:      [C(4278)],
-    voltageB:      [C(4280)],
-    windingTemp:   [C(4312, 1)]
+    voltageR:      [C(4276)],       // D180
+    voltageY:      [C(4278)],       // D182
+    voltageB:      [C(4280)],       // D184
+
+    currentR:      [C(4282)],       // D186
+    currentY:      [C(4284)],       // D188
+    currentB:      [C(4286)],       // D190
+
+    frequency:     [C(4288, 0.01)], // D192
+    powerFactor:   [C(4290, 0.01)], // D194
+
+    activePower:   [C(4292)],       // D196
+    reactivePower: [C(4294)],       // D198
+    energyMeter:   [C(4296, 1)],    // D200
+    runningHours:  [C(4298, 1)],    // D202
+
+    windingTemp:   [C(4312, 1)]     // D216 (4352 - 40)
   },
 
-  // DG-3 (Shifted back by another 40)
+  // === DG-3 (DG2 - 40) ===
+  // Voltage Start: D140 (4236) | End: D162 (4258)
   dg3: { 
-    activePower:   [C(4252)],
-    currentR:      [C(4242)],
-    currentY:      [C(4244)],
-    currentB:      [C(4246)],
-    frequency:     [C(4248, 0.01)],
-    powerFactor:   [C(4250, 0.01)],
-    reactivePower: [C(4254)],
-    energyMeter:   [C(4256, 1)],
-    runningHours:  [C(4258, 1)],
-    voltageR:      [C(4236)],
-    voltageY:      [C(4238)],
-    voltageB:      [C(4240)],
-    windingTemp:   [C(4272, 1)]
+    voltageR:      [C(4236)],       // D140
+    voltageY:      [C(4238)],       // D142
+    voltageB:      [C(4240)],       // D144
+
+    currentR:      [C(4242)],       // D146
+    currentY:      [C(4244)],       // D148
+    currentB:      [C(4246)],       // D150
+
+    frequency:     [C(4248, 0.01)], // D152
+    powerFactor:   [C(4250, 0.01)], // D154
+
+    activePower:   [C(4252)],       // D156
+    reactivePower: [C(4254)],       // D158
+    energyMeter:   [C(4256, 1)],    // D160
+    runningHours:  [C(4258, 1)],    // D162
+
+    windingTemp:   [C(4272, 1)]     // D176 (4312 - 40)
   },
 
-  // DG-4 (Shifted back by another 40)
+  // === DG-4 (DG3 - 40) ===
+  // Voltage Start: D100 (4196) | End: D122 (4218)
   dg4: { 
-    activePower:   [C(4212)],
-    currentR:      [C(4202)],
-    currentY:      [C(4204)],
-    currentB:      [C(4206)],
-    frequency:     [C(4208, 0.01)],
-    powerFactor:   [C(4210, 0.01)],
-    reactivePower: [C(4214)],
-    energyMeter:   [C(4216, 1)],
-    runningHours:  [C(4218, 1)],
-    voltageR:      [C(4196)],
-    voltageY:      [C(4198)],
-    voltageB:      [C(4200)],
-    windingTemp:   [C(4232, 1)]
+    voltageR:      [C(4196)],       // D100
+    voltageY:      [C(4198)],       // D102
+    voltageB:      [C(4200)],       // D104
+
+    currentR:      [C(4202)],       // D106
+    currentY:      [C(4204)],       // D108
+    currentB:      [C(4206)],       // D110
+
+    frequency:     [C(4208, 0.01)], // D112
+    powerFactor:   [C(4210, 0.01)], // D114
+
+    activePower:   [C(4212)],       // D116
+    reactivePower: [C(4214)],       // D118
+    energyMeter:   [C(4216, 1)],    // D120
+    runningHours:  [C(4218, 1)],    // D122
+
+    windingTemp:   [C(4232, 1)]     // D136 (4272 - 40)
   }
 };
 
