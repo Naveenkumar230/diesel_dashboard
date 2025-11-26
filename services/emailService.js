@@ -1,6 +1,6 @@
 /**
- * Email Service - All email functionality centralized
- * FIXED: Added sendStartupAlert function
+ * Email Service - Centralized Email Logic
+ * STATUS: Diesel Alerts = ON | Electrical Startup Alerts = OFF
  */
 
 const nodemailer = require('nodemailer');
@@ -16,7 +16,7 @@ let emailEnabled = false;
 // Alert state tracking
 const alertState = {
   currentAlerts: new Set(),
-  startupAlerts: new Map() // Track DG startup alerts separately
+  startupAlerts: new Map()
 };
 
 // Initialize email transporter
@@ -31,7 +31,7 @@ function initializeEmail() {
         }
       });
       emailEnabled = true;
-      console.log('✅ Email alerts enabled');
+      console.log('✅ Email alerts enabled (Diesel Only)');
     } else {
       console.log('⚠️ Email configuration missing - alerts disabled');
     }
@@ -43,7 +43,7 @@ function initializeEmail() {
 
 // Get dashboard URL
 function getDashboardUrl() {
-  const port = process.env.PORT || 3001; // Updated to match your HTTPS port
+  const port = process.env.PORT || 3001;
   const protocol = process.env.USE_HTTPS === 'true' ? 'https' : 'http';
   return `${protocol}://${process.env.PI_IP_ADDRESS || 'localhost'}:${port}`;
 }
@@ -82,66 +82,6 @@ function getDieselAlertTemplate(data, criticalDGs) {
           <p style="font-size:14px;margin-top:20px;">Alert Time: ${timestamp}</p>
           <a href="${getDashboardUrl()}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">
             View Dashboard
-          </a>
-        </div>
-      </div>
-    `
-  };
-}
-
-function getStartupAlertTemplate(dgName, electricalData) {
-  const timestamp = new Date().toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    dateStyle: 'full',
-    timeStyle: 'long'
-  });
-
-  const dgKey = dgName.toLowerCase().replace('-', '');
-  const data = electricalData[dgKey] || {};
-
-  return {
-    subject: `🟢 ${dgName} Started - Power: ${(data.activePower || 0).toFixed(1)} kW`,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
-        <div style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:20px;border-radius:8px 8px 0 0;">
-          <h1 style="margin:0;">🟢 ${dgName} STARTED</h1>
-        </div>
-        <div style="padding:20px;background:#f9fafb;color:#333;">
-          <p style="font-weight:bold;color:#10b981;font-size:16px;">
-            ${dgName} has been powered on and is now running
-          </p>
-          
-          <h3 style="color:#2563eb;margin-top:20px;">Current Parameters:</h3>
-          <table style="width:100%;border-collapse:collapse;background:#fff;margin-bottom:15px;">
-            <tr>
-              <td style="padding:10px;border:1px solid #e5e7eb;font-weight:bold;">Active Power</td>
-              <td style="padding:10px;border:1px solid #e5e7eb;text-align:right;color:#10b981;font-weight:bold;">${(data.activePower || 0).toFixed(1)} kW</td>
-            </tr>
-            <tr>
-              <td style="padding:10px;border:1px solid #e5e7eb;">Voltage (R-Y-B)</td>
-              <td style="padding:10px;border:1px solid #e5e7eb;text-align:right;">${(data.voltageR || 0).toFixed(1)}V / ${(data.voltageY || 0).toFixed(1)}V / ${(data.voltageB || 0).toFixed(1)}V</td>
-            </tr>
-            <tr>
-              <td style="padding:10px;border:1px solid #e5e7eb;">Current (R-Y-B)</td>
-              <td style="padding:10px;border:1px solid #e5e7eb;text-align:right;">${(data.currentR || 0).toFixed(1)}A / ${(data.currentY || 0).toFixed(1)}A / ${(data.currentB || 0).toFixed(1)}A</td>
-            </tr>
-            <tr>
-              <td style="padding:10px;border:1px solid #e5e7eb;">Frequency</td>
-              <td style="padding:10px;border:1px solid #e5e7eb;text-align:right;">${(data.frequency || 0).toFixed(2)} Hz</td>
-            </tr>
-            <tr>
-              <td style="padding:10px;border:1px solid #e5e7eb;">Power Factor</td>
-              <td style="padding:10px;border:1px solid #e5e7eb;text-align:right;">${(data.powerFactor || 0).toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td style="padding:10px;border:1px solid #e5e7eb;">Running Hours</td>
-              <td style="padding:10px;border:1px solid #e5e7eb;text-align:right;">${(data.runningHours || 0).toFixed(1)} hrs</td>
-            </tr>
-          </table>
-
-          <p style="font-size:14px;margin-top:20px;">Startup Time: ${timestamp}</p>
-          <a href="${getDashboardUrl()}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;margin-top:15px;">
-            View Live Dashboard
           </a>
         </div>
       </div>
@@ -254,24 +194,10 @@ async function sendDieselAlert(data, criticalDGs) {
   }
 }
 
-// ✅ NEW FUNCTION: Send startup alert
+// 🔴 DISABLED: Electrical/Startup Alerts are now turned OFF
 async function sendStartupAlert(dgName, electricalData) {
-  // Cooldown per DG (prevent spam if DG flickers)
-  const cooldownKey = `startup_${dgName}`;
-  const lastAlert = alertState.startupAlerts.get(cooldownKey);
-  
-  if (lastAlert && (Date.now() - lastAlert) < ALERT_COOLDOWN) {
-    console.log(`⏳ Startup alert for ${dgName} skipped (cooldown active)`);
-    return;
-  }
-
-  const template = getStartupAlertTemplate(dgName, electricalData);
-  const sent = await sendEmail(ALERT_RECIPIENTS, template.subject, template.html);
-
-  if (sent) {
-    alertState.startupAlerts.set(cooldownKey, Date.now());
-    console.log(`✅ Startup alert email sent for ${dgName}`);
-  }
+  // Do nothing. This prevents the electrical email from being sent.
+  return; 
 }
 
 async function sendDailySummary(summary, previousDay = null) {
@@ -286,7 +212,7 @@ async function sendDailySummary(summary, previousDay = null) {
 module.exports = {
   initializeEmail,
   sendDieselAlert,
-  sendStartupAlert, // ✅ NOW EXPORTED
+  sendStartupAlert, // Kept in export to avoid crashing server.js, but it does nothing now.
   sendDailySummary,
   isEmailEnabled: () => emailEnabled
 };

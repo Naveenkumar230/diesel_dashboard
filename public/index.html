@@ -307,7 +307,7 @@
   </div>
 
 <script>
-    // index.html - FINAL: ANTI-SPAM VERSION (Fixes 502 Errors)
+    // index.html - FINAL OPTIMIZED VERSION (Fixes Violation Errors)
 
     const CRITICAL_LEVEL = 50;
     const WARNING_LEVEL = 150;
@@ -319,8 +319,11 @@
     // Cache DB history to reduce API calls
     let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
     
-    // ✅ NEW: Cooldown tracker to prevent 502 Spam
+    // Cooldown tracker
     let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
+
+    // Flag to prevent overlapping updates (Fixes 'setInterval' Violation)
+    let isUpdating = false;
 
     document.querySelectorAll('.expand-icon').forEach(icon => {
       icon.addEventListener('click', (e) => {
@@ -352,39 +355,28 @@
       }
     }
 
-    // ✅ FIXED: SMART HISTORY FETCHING (With 60s Cooldown on Error)
     async function fetchLastHistory(dg) {
-      // 1. If we have cached data, use it (Instant)
       if (dbCache[dg]) return dbCache[dg];
-
-      // 2. If we failed recently (within 60 seconds), DO NOT try again (Prevents 502 Loop)
-      if (Date.now() - historyCooldown[dg] < 60000) {
-          // console.log(`Skipping ${dg} history fetch due to cooldown.`);
-          return null; 
-      }
+      if (Date.now() - historyCooldown[dg] < 60000) return null; 
 
       try {
           const today = new Date().toISOString().split('T')[0];
           let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
           
-          // If server is busy (502), start cooldown and exit
           if (!response.ok) {
-              console.warn(`${dg} History Fetch Failed (${response.status}). Cooling down for 60s.`);
-              historyCooldown[dg] = Date.now(); // Set cooldown
+              historyCooldown[dg] = Date.now();
               return null;
           }
           
           let result = await response.json();
 
-          // If no data today, try yesterday
           if (!result.data || result.data.length === 0) {
                const yest = new Date();
                yest.setDate(yest.getDate() - 1);
                const yestStr = yest.toISOString().split('T')[0];
                response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
-               
                if (!response.ok) {
-                   historyCooldown[dg] = Date.now(); // Set cooldown
+                   historyCooldown[dg] = Date.now(); 
                    return null;
                }
                result = await response.json();
@@ -392,15 +384,13 @@
 
           if (result.data && result.data.length > 0) {
               const lastRecord = result.data[result.data.length - 1];
-              dbCache[dg] = lastRecord; // Success! Save to cache
+              dbCache[dg] = lastRecord;
               return lastRecord;
           } else {
-              // No data found at all, don't keep asking
               historyCooldown[dg] = Date.now();
           }
       } catch (e) { 
-          console.error(`Network Error fetching ${dg}. Cooling down.`);
-          historyCooldown[dg] = Date.now(); // Set cooldown
+          historyCooldown[dg] = Date.now();
           return null; 
       }
       return {}; 
@@ -441,34 +431,37 @@
     async function updateElectricalParams(data) {
       if (!data || !data.electrical) return;
 
-      for (const dg of ['dg1', 'dg2', 'dg3', 'dg4']) {
+      const dgList = ['dg1', 'dg2', 'dg3', 'dg4'];
+      
+      // 1. Prepare all calculations first (Don't update DOM yet)
+      const updates = [];
+
+      for (const dg of dgList) {
         let liveData = data.electrical[dg] || {};
-        
-        // Check validity (Voltage > 200V)
         const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
-
-        let displayData = {};
-
+        
+        let promise;
         if (hasVoltage) {
-            // DG ON: Show live data
-            displayData = liveData;
-            dbCache[dg] = null; // Clear cache so we fetch fresh history next time it stops
-            historyCooldown[dg] = 0; // Reset cooldown
+            // DG is ON - Use Live Data
+            dbCache[dg] = null; 
+            historyCooldown[dg] = 0; 
+            promise = Promise.resolve(liveData);
         } else {
-            // DG OFF: Fetch last known from DB (Safe Mode)
-            const historyData = await fetchLastHistory(dg);
-            
-            // If history failed (502 or waiting for cooldown), SKIP update
-            // This preserves the old numbers on screen instead of flashing 0
-            if (historyData === null) {
-                continue; 
-            }
-            
-            displayData = historyData;
-            
-            // Fallback to live (0) if DB is truly empty
-            if (!displayData || !displayData.voltageR) displayData = liveData; 
+            // DG is OFF - Fetch History asynchronously
+            promise = fetchLastHistory(dg).then(hist => hist || liveData);
         }
+        updates.push({ dg, liveData, promise });
+      }
+
+      // 2. Wait for all data to be ready (Parallel Processing)
+      // This stops the "Violation" error by not blocking the main thread repeatedly
+      const results = await Promise.all(updates.map(u => u.promise));
+
+      // 3. Update DOM in one go
+      updates.forEach((item, index) => {
+        const dg = item.dg;
+        const displayData = results[index];
+        const liveData = item.liveData;
 
         // Status Badge
         const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
@@ -510,7 +503,7 @@
           const loadPercent = (power > 0 && maxKw > 0) ? (power / maxKw) * 100 : 0;
           loadEl.textContent = formatNum(loadPercent, 1);
         }
-      }
+      });
     }
 
     function updateTimestamp() {
@@ -522,24 +515,35 @@
     }
 
     async function refresh() {
-      const data = await fetchData();
-      const indicator = document.getElementById('server-status');
+      // PREVENT OVERLAP: If previous refresh is still running, skip this one
+      if (isUpdating) return;
+      isUpdating = true;
 
-      if (!data) {
-        if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
-        return; 
+      try {
+          const data = await fetchData();
+          const indicator = document.getElementById('server-status');
+
+          if (!data) {
+            if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
+            return; 
+          }
+
+          if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
+
+          updateDieselLevels(data);
+          await updateElectricalParams(data); 
+          updateTimestamp();
+      } catch (e) {
+          console.error("Refresh error:", e);
+      } finally {
+          // Release the lock so the next timer can run
+          isUpdating = false;
       }
-
-      if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
-
-      updateDieselLevels(data);
-      await updateElectricalParams(data); 
-      updateTimestamp();
     }
 
-    // ✅ INCREASED INTERVAL: 5000ms (5 Seconds) to reduce server load
+    // Interval set to 5000ms (5 Seconds)
     setInterval(refresh, 5000);
     refresh();
-  </script>
+</script>
 </body>
 </html>
