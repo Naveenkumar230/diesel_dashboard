@@ -404,75 +404,84 @@ function processData(data, startDate, endDate) {
   updateCharts(cleanData, startDate, endDate, refillEvents);
 }
 
+// ✅ FIXED TIMELINE: Always 7 AM to 8 PM (Hourly Buckets)
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
-  const timeline = {};
   
+  let labels = [];
+  let consumptionData = [];
+  let levelData = [];
+  let pointColors = [];
+  let pointRadiuses = [];
+
   if (isMultiDay) {
+      // --- MULTI DAY LOGIC (UNCHANGED) ---
+      const dailyMap = {};
       cleanData.forEach(d => {
-          if (!timeline[d.date]) timeline[d.date] = { label: d.date, consumption: 0, level: d.cleanLevel };
-          timeline[d.date].consumption += d.cleanConsumption;
-          timeline[d.date].level = d.cleanLevel;
+          if (!dailyMap[d.date]) dailyMap[d.date] = { label: d.date, consumption: 0, level: d.cleanLevel };
+          dailyMap[d.date].consumption += d.cleanConsumption;
+          dailyMap[d.date].level = d.cleanLevel; // End of day level
       });
+      labels = Object.values(dailyMap).map(t => t.label);
+      consumptionData = Object.values(dailyMap).map(t => t.consumption);
+      levelData = Object.values(dailyMap).map(t => t.level);
+      // Default styles for multi-day
+      levelData.forEach(() => { pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(3); });
+
   } else {
+      // --- SINGLE DAY LOGIC (FIXED 7 AM - 8 PM) ---
+      
+      // 1. Create the fixed 14-hour slots (7, 8, ... 20)
       for (let h = 7; h <= 20; h++) {
+          // Format Label (e.g., "7 AM", "12 PM", "4 PM")
           let ampm = h >= 12 ? 'PM' : 'AM';
           let hour12 = h % 12 || 12;
-          timeline[h] = { 
-              label: `${hour12} ${ampm}`, 
-              consumption: 0, 
-              level: null, 
-              hasData: false
-          };
-      }
-      cleanData.forEach(d => {
-          const h = new Date(d.timestamp).getHours();
-          if (timeline[h]) {
-              timeline[h].consumption += d.cleanConsumption;
-              timeline[h].level = d.cleanLevel; 
-              timeline[h].hasData = true;
+          labels.push(`${hour12} ${ampm}`);
+
+          // 2. Find data for this specific hour
+          // We sum up ALL consumption that happened in this hour (e.g. 10:20 + 10:45)
+          let hourRecords = cleanData.filter(d => new Date(d.timestamp).getHours() === h);
+          
+          if (hourRecords.length > 0) {
+              // Sum Consumption
+              let totalCons = hourRecords.reduce((sum, r) => sum + r.cleanConsumption, 0);
+              consumptionData.push(totalCons);
+
+              // Use the LAST recorded level of the hour for the Line Chart
+              let lastRecord = hourRecords[hourRecords.length - 1];
+              levelData.push(lastRecord.cleanLevel);
+
+              // Check for Refills in this hour (for Dot Color)
+              let hasRefill = refillEvents.some(e => new Date(e.timestamp).getHours() === h);
+              if (hasRefill) {
+                  pointColors.push('#0052cc'); // Blue for Refill
+                  pointRadiuses.push(6);
+              } else {
+                  pointColors.push('rgba(0, 135, 90, 1)'); // Green for Normal
+                  pointRadiuses.push(4);
+              }
+          } else {
+              // NO DATA for this hour (e.g. 7 AM)
+              consumptionData.push(0); // 0 Consumption
+              levelData.push(null);    // Empty Gap in Line Chart
+              pointColors.push('transparent');
+              pointRadiuses.push(0);
           }
-      });
+      }
   }
 
-  const labels = Object.values(timeline).map(t => t.label);
-  const consumptionData = Object.values(timeline).map(t => t.consumption);
-  
-  // ✅ FIX: Filter out nulls/zeros to find Zoom Range
-  const levelData = Object.values(timeline).map(t => (t.level && t.level > 1) ? t.level : null);
-  
-  // Calculate Min/Max for Zoom
-  const validLevels = levelData.filter(v => v !== null);
-  let yMin = undefined; // Default Chart.js auto
+  // --- AUTO ZOOM CALCULATION (Y-Axis) ---
+  // Filter out nulls to find the min/max fuel level
+  const validLevels = levelData.filter(v => v !== null && v > 0);
+  let yMin = undefined;
   let yMax = undefined;
 
   if (validLevels.length > 0) {
       const minVal = Math.min(...validLevels);
       const maxVal = Math.max(...validLevels);
-      // Create padding (5 Liters above/below)
-      yMin = Math.floor(minVal - 5);
-      yMax = Math.ceil(maxVal + 5);
-      if (yMin < 0) yMin = 0; // Don't go below 0
-  }
-
-  // Setup Points
-  const pointColors = [];
-  const pointRadiuses = [];
-  
-  if (!isMultiDay) {
-      Object.keys(timeline).forEach(h => {
-          let hasRefill = refillEvents.some(e => new Date(e.timestamp).getHours() == h);
-          let hasData = timeline[h].hasData;
-          if (hasRefill) {
-              pointColors.push('#0052cc'); pointRadiuses.push(6);
-          } else if (hasData) {
-              pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(3);
-          } else {
-              pointColors.push('rgba(0,0,0,0)'); pointRadiuses.push(0);
-          }
-      });
-  } else {
-      levelData.forEach(() => { pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(2); });
+      yMin = Math.floor(minVal - 5); // Zoom: 5L below min
+      yMax = Math.ceil(maxVal + 5);  // Zoom: 5L above max
+      if (yMin < 0) yMin = 0;
   }
 
   // 1. Consumption Bar Chart
@@ -482,7 +491,7 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
       consumptionChart = new Chart(ctx1, {
         type: 'bar',
         data: { 
-            labels: labels, 
+            labels: labels, // Fixed 7 AM - 8 PM labels
             datasets: [{ 
                 label: 'Consumption (L)', 
                 data: consumptionData, 
@@ -496,28 +505,31 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
             maintainAspectRatio: false, 
             scales: { 
                 y: { beginAtZero: true, title: { display: true, text: 'Liters' } }, 
-                x: { ticks: { maxRotation: 0, autoSkip: false } }
+                x: { 
+                    ticks: { autoSkip: false }, // Force show ALL labels
+                    grid: { display: false }
+                } 
             } 
         }
       });
   }
 
-  // 2. Level Line Chart (With Zoom)
+  // 2. Level Line Chart
   const ctx2 = document.getElementById('levelChart');
   if (ctx2) {
       if (levelChart) { levelChart.destroy(); levelChart = null; }
       levelChart = new Chart(ctx2, {
         type: 'line',
         data: { 
-            labels: labels, 
+            labels: labels, // Fixed 7 AM - 8 PM labels
             datasets: [{ 
-                label: 'Diesel Level (L)', 
+                label: 'End-of-Hour Level (L)', 
                 data: levelData, 
                 borderColor: 'rgba(0, 135, 90, 1)', 
                 backgroundColor: 'rgba(0, 135, 90, 0.1)', 
                 borderWidth: 3, 
                 fill: true, 
-                spanGaps: true, 
+                spanGaps: true, // Connect lines across empty hours
                 pointBackgroundColor: pointColors, 
                 pointRadius: pointRadiuses 
             }] 
@@ -525,15 +537,27 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
         options: { 
             responsive: true, 
             maintainAspectRatio: false, 
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            if (pointColors[ctx.dataIndex] === '#0052cc') return `⛽ Refill! Level: ${ctx.raw}L`;
+                            return `Level: ${ctx.raw}L`;
+                        }
+                    }
+                }
+            },
             scales: { 
                 y: { 
                     beginAtZero: false, 
                     title: { display: true, text: 'Liters' },
-                    // ✅ Apply Zoom Here
-                    min: yMin,
+                    min: yMin, // Apply Auto-Zoom
                     max: yMax
                 }, 
-                x: { ticks: { maxRotation: 0, autoSkip: false } } 
+                x: { 
+                    ticks: { autoSkip: false }, // Force show ALL labels
+                    grid: { display: true }
+                } 
             } 
         }
       });
