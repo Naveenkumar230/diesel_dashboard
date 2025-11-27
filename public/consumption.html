@@ -147,7 +147,7 @@
   </div>
 
 <script>
-// consumption.html - FINAL FIXED TIMELINE (7 AM - 8 PM)
+// consumption.html - FINAL VERSION: Auto-Zoom Graph
 
 let consumptionChart = null;
 let levelChart = null;
@@ -193,7 +193,6 @@ function setDateRange(range) {
     if(endEl) endEl.value = end.toISOString().split('T')[0];
 }
 
-// Initialize Date Range
 setDateRange('today'); 
 const quickSelect = document.getElementById('quick-select');
 if(quickSelect) {
@@ -228,9 +227,7 @@ async function loadData(silent = false) {
     const query = `startDate=${startDate}&endDate=${endDate}`;
     const url = (dgType === 'total') ? `/api/consumption?${query}` : `/api/consumption?dg=${dgType}&${query}`;
     const response = await fetch(url);
-    
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    
     const result = await response.json();
     let displayData = result.data || [];
 
@@ -238,27 +235,17 @@ async function loadData(silent = false) {
     
     const emptyStateEl = document.getElementById('empty-state');
     if(emptyStateEl) emptyStateEl.style.display = 'none';
-    
     setupAutoRefresh();
 
   } catch (err) {
     console.error('Error loading data:', err);
-    // showEmptyState(); // Don't show empty state, show empty graph instead
-    processData([], startDate, endDate); // Render empty graph
+    processData([], startDate, endDate); 
   } finally {
     if (!silent) {
         const loadingEl = document.getElementById('loading');
         if(loadingEl) loadingEl.style.display = 'none';
     }
   }
-}
-
-function showEmptyState() {
-  const emptyEl = document.getElementById('empty-state');
-  if(emptyEl) emptyEl.style.display = 'block';
-  if (consumptionChart) { consumptionChart.destroy(); consumptionChart = null; }
-  if (levelChart) { levelChart.destroy(); levelChart = null; }
-  clearStats();
 }
 
 function clearStats() {
@@ -277,75 +264,61 @@ function processWithNoiseFilter(data, selectedDg) {
   let refillEvents = [];
   let stableLevel = null; 
   
-  let stableDG1 = null;
-  let stableDG2 = null;
-  let stableDG3 = null;
+  // Track previous levels
+  let prevLevels = { dg1: null, dg2: null, dg3: null, total: null };
 
   let cleanData = data.map((record) => {
     if(record.cleanLevel !== undefined) return record; 
 
-    let mainRawLevel = 0;
+    let currentRaw = 0;
     if (selectedDg === 'total') {
-        mainRawLevel = record.total?.level || 0; 
+        currentRaw = record.total?.level || 0; 
     } else {
-        mainRawLevel = record.level !== undefined ? record.level : (record[selectedDg]?.level || 0);
+        currentRaw = record.level !== undefined ? record.level : (record[selectedDg]?.level || 0);
     }
     
-    if (stableLevel === null) stableLevel = mainRawLevel;
-    
-    let mainDiff = mainRawLevel - stableLevel;
-    let mainConsumption = 0;
+    if (stableLevel === null) stableLevel = currentRaw;
+    if (prevLevels.total === null) {
+        prevLevels.dg1 = record.dg1?.level || 0;
+        prevLevels.dg2 = record.dg2?.level || 0;
+        prevLevels.dg3 = record.dg3?.level || 0;
+        prevLevels.total = currentRaw;
+    }
+
+    let consumption = 0;
+    let diff = currentRaw - stableLevel;
 
     if (selectedDg === 'total') {
-        const dg1Level = record.dg1?.level || 0;
-        const dg2Level = record.dg2?.level || 0;
-        const dg3Level = record.dg3?.level || 0;
-
-        if (stableDG1 === null) { stableDG1 = dg1Level; stableDG2 = dg2Level; stableDG3 = dg3Level; }
-
-        if ((dg1Level - stableDG1) > REFILL_THRESHOLD) {
-            let amt = dg1Level - stableDG1;
-            totalRefilled += amt;
-            refillEvents.push(createRefillEvent(record.timestamp, 'DG-1', amt));
-            stableDG1 = dg1Level;
-        } else { stableDG1 = dg1Level; }
-
-        if ((dg2Level - stableDG2) > REFILL_THRESHOLD) {
-            let amt = dg2Level - stableDG2;
-            totalRefilled += amt;
-            refillEvents.push(createRefillEvent(record.timestamp, 'DG-2', amt));
-            stableDG2 = dg2Level;
-        } else { stableDG2 = dg2Level; }
-
-        if ((dg3Level - stableDG3) > REFILL_THRESHOLD) {
-            let amt = dg3Level - stableDG3;
-            totalRefilled += amt;
-            refillEvents.push(createRefillEvent(record.timestamp, 'DG-3', amt));
-            stableDG3 = dg3Level;
-        } else { stableDG3 = dg3Level; }
-
+        ['dg1', 'dg2', 'dg3'].forEach(tank => {
+            let lvl = record[tank]?.level || 0;
+            let prev = prevLevels[tank];
+            if ((lvl - prev) > REFILL_THRESHOLD) {
+                let amt = lvl - prev;
+                totalRefilled += amt;
+                refillEvents.push(createRefillEvent(record.timestamp, tank.toUpperCase(), amt));
+            }
+            prevLevels[tank] = lvl;
+        });
+        if (diff > REFILL_THRESHOLD) stableLevel = currentRaw;
     } else {
-        if (mainDiff > REFILL_THRESHOLD) {
-            totalRefilled += mainDiff;
-            refillEvents.push(createRefillEvent(record.timestamp, selectedDg.toUpperCase(), mainDiff));
-            stableLevel = mainRawLevel; 
+        if (diff > REFILL_THRESHOLD) {
+            totalRefilled += diff;
+            refillEvents.push(createRefillEvent(record.timestamp, selectedDg.toUpperCase(), diff));
+            stableLevel = currentRaw; 
+            diff = 0; 
         }
     }
 
-    if (mainDiff < -NOISE_THRESHOLD) {
-        mainConsumption = Math.abs(mainDiff);
-        totalConsumption += mainConsumption;
-        stableLevel = mainRawLevel; 
-    } else if (selectedDg === 'total' && mainDiff > REFILL_THRESHOLD) {
-        stableLevel = mainRawLevel;
-    } else if (selectedDg !== 'total' && mainDiff > REFILL_THRESHOLD) {
-        stableLevel = mainRawLevel;
+    if (diff < -NOISE_THRESHOLD) {
+        consumption = Math.abs(diff);
+        totalConsumption += consumption;
+        stableLevel = currentRaw; 
     }
 
     return { 
         ...record, 
         cleanLevel: stableLevel, 
-        cleanConsumption: mainConsumption,
+        cleanConsumption: consumption,
         dateStr: record.timestamp.split('T')[0]
     };
   });
@@ -431,34 +404,27 @@ function processData(data, startDate, endDate) {
   updateCharts(cleanData, startDate, endDate, refillEvents);
 }
 
-// ✅ FIXED TIMELINE: Always 7 AM to 8 PM
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
-  
-  // 1. Setup the 7 AM to 8 PM Timeline (14 slots)
   const timeline = {};
   
   if (isMultiDay) {
-      // For multi-day, group by date naturally
       cleanData.forEach(d => {
           if (!timeline[d.date]) timeline[d.date] = { label: d.date, consumption: 0, level: d.cleanLevel };
           timeline[d.date].consumption += d.cleanConsumption;
           timeline[d.date].level = d.cleanLevel;
       });
   } else {
-      // For Single Day: Force 7 AM - 8 PM Slots
       for (let h = 7; h <= 20; h++) {
           let ampm = h >= 12 ? 'PM' : 'AM';
           let hour12 = h % 12 || 12;
           timeline[h] = { 
               label: `${hour12} ${ampm}`, 
               consumption: 0, 
-              level: null, // Empty unless data exists
+              level: null, 
               hasData: false
           };
       }
-
-      // Fill timeline with actual data
       cleanData.forEach(d => {
           const h = new Date(d.timestamp).getHours();
           if (timeline[h]) {
@@ -469,15 +435,27 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
       });
   }
 
-  // Convert to Arrays
   const labels = Object.values(timeline).map(t => t.label);
   const consumptionData = Object.values(timeline).map(t => t.consumption);
   
-  // For line chart: if "level" is null, it shows a gap. 
-  // If we want to connect lines, we can forward-fill, but user asked for "empty if not there".
-  const levelData = Object.values(timeline).map(t => t.level);
+  // ✅ FIX: Filter out nulls/zeros to find Zoom Range
+  const levelData = Object.values(timeline).map(t => (t.level && t.level > 1) ? t.level : null);
+  
+  // Calculate Min/Max for Zoom
+  const validLevels = levelData.filter(v => v !== null);
+  let yMin = undefined; // Default Chart.js auto
+  let yMax = undefined;
 
-  // Setup Points for Refills
+  if (validLevels.length > 0) {
+      const minVal = Math.min(...validLevels);
+      const maxVal = Math.max(...validLevels);
+      // Create padding (5 Liters above/below)
+      yMin = Math.floor(minVal - 5);
+      yMax = Math.ceil(maxVal + 5);
+      if (yMin < 0) yMin = 0; // Don't go below 0
+  }
+
+  // Setup Points
   const pointColors = [];
   const pointRadiuses = [];
   
@@ -485,23 +463,19 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
       Object.keys(timeline).forEach(h => {
           let hasRefill = refillEvents.some(e => new Date(e.timestamp).getHours() == h);
           let hasData = timeline[h].hasData;
-          
           if (hasRefill) {
-              pointColors.push('#0052cc');
-              pointRadiuses.push(6);
+              pointColors.push('#0052cc'); pointRadiuses.push(6);
           } else if (hasData) {
-              pointColors.push('rgba(0, 135, 90, 1)');
-              pointRadiuses.push(3);
+              pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(3);
           } else {
-              pointColors.push('rgba(0,0,0,0)');
-              pointRadiuses.push(0);
+              pointColors.push('rgba(0,0,0,0)'); pointRadiuses.push(0);
           }
       });
   } else {
       levelData.forEach(() => { pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(2); });
   }
 
-  // 2. Consumption Bar Chart
+  // 1. Consumption Bar Chart
   const ctx1 = document.getElementById('consumptionChart');
   if (ctx1) {
       if (consumptionChart) { consumptionChart.destroy(); consumptionChart = null; }
@@ -522,13 +496,13 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
             maintainAspectRatio: false, 
             scales: { 
                 y: { beginAtZero: true, title: { display: true, text: 'Liters' } }, 
-                x: { ticks: { maxRotation: 0, autoSkip: false } } // Show all 7AM-8PM labels
+                x: { ticks: { maxRotation: 0, autoSkip: false } }
             } 
         }
       });
   }
 
-  // 3. Level Line Chart
+  // 2. Level Line Chart (With Zoom)
   const ctx2 = document.getElementById('levelChart');
   if (ctx2) {
       if (levelChart) { levelChart.destroy(); levelChart = null; }
@@ -543,7 +517,7 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
                 backgroundColor: 'rgba(0, 135, 90, 0.1)', 
                 borderWidth: 3, 
                 fill: true, 
-                spanGaps: true, // Connect lines across empty hours
+                spanGaps: true, 
                 pointBackgroundColor: pointColors, 
                 pointRadius: pointRadiuses 
             }] 
@@ -552,7 +526,13 @@ function updateCharts(cleanData, startDate, endDate, refillEvents) {
             responsive: true, 
             maintainAspectRatio: false, 
             scales: { 
-                y: { beginAtZero: false, title: { display: true, text: 'Liters' } }, 
+                y: { 
+                    beginAtZero: false, 
+                    title: { display: true, text: 'Liters' },
+                    // ✅ Apply Zoom Here
+                    min: yMin,
+                    max: yMax
+                }, 
                 x: { ticks: { maxRotation: 0, autoSkip: false } } 
             } 
         }
@@ -566,7 +546,6 @@ function exportAllData() {
   window.location.href = `/api/export/all?startDate=${startDate}&endDate=${endDate}`;
 }
 
-// Initial Load
 loadData();
 window.addEventListener('beforeunload', () => { if (autoRefreshInterval) clearInterval(autoRefreshInterval); });
 </script>
