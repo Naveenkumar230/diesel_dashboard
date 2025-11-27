@@ -504,104 +504,118 @@ function processData(data, startDate, endDate) {
 
 function updateCharts(cleanData, startDate, endDate, refillEvents) {
   const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
-  let labels = []; let consumptionData = []; let levelData = []; let pointColors = []; let pointRadiuses = [];
+  let labels = []; 
+  let consumptionData = []; 
+  let levelData = []; 
+  let pointColors = []; 
+  let pointRadiuses = [];
   let tooltipTimes = [];
 
-  if (!isMultiDay) {
-    const now = new Date();
-    const isToday = (startDate === now.toISOString().split('T')[0]);
-    let startHour = 7; let endHour = isToday ? now.getHours() : 20; let currentMinute = now.getMinutes();
-    let lastKnownLevel = parseFloat(document.getElementById('start-level').textContent) || 0;
+  // ✅ FIX: Loop through the ACTUAL data, don't force a strict time grid
+  cleanData.forEach(d => {
+      const dateObj = new Date(d.timestamp);
+      
+      // Format X-Axis Label
+      let timeLabel;
+      if (isMultiDay) {
+          timeLabel = d.date; // Just date for multi-day
+      } else {
+          // Time for single day (e.g. "10:12 AM")
+          timeLabel = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      }
+      labels.push(timeLabel);
 
-    const dataMap = {};
-    cleanData.forEach(d => {
-        let h = new Date(d.timestamp).getHours();
-        let m = new Date(d.timestamp).getMinutes();
-        dataMap[`${h}:${m}`] = d;
-    });
+      // Full Tooltip Date/Time
+      tooltipTimes.push(dateObj.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
 
-    for (let h = startHour; h <= endHour; h++) {
-        for (let m of [0, 30]) { 
-            if (isToday && h === now.getHours() && m > currentMinute) break;
-            let hour12 = (h > 12) ? h - 12 : (h === 0 ? 12 : h);
-            let ampm = (h >= 12) ? 'PM' : 'AM';
-            let timeStr = `${hour12}:${m.toString().padStart(2,'0')} ${ampm}`;
-            labels.push(timeStr);
-            tooltipTimes.push(timeStr);
+      // Data Points
+      levelData.push(d.cleanLevel);
+      consumptionData.push(d.cleanConsumption);
 
-            let timeKey = `${h}:${m}`;
-            let record = dataMap[timeKey];
-            if(!record) {
-                 record = cleanData.find(d => {
-                    let dh = new Date(d.timestamp).getHours();
-                    let dm = new Date(d.timestamp).getMinutes();
-                    return dh === h && Math.abs(dm - m) < 5;
-                 });
-            }
+      // Check for Refills (visual marker)
+      let isRefill = refillEvents.some(e => {
+          // Loose match: Did a refill happen within 30 mins of this record?
+          let refillTime = new Date(e.timestamp).getTime();
+          let recordTime = dateObj.getTime();
+          return Math.abs(refillTime - recordTime) < (30 * 60 * 1000);
+      });
 
-            if (record) {
-                lastKnownLevel = record.cleanLevel; 
-                levelData.push(lastKnownLevel);
-                consumptionData.push(record.cleanConsumption);
-                // Check if ANY refill happened around this time
-                let isRefill = refillEvents.some(e => {
-                    let ed = new Date(e.timestamp);
-                    return ed.getHours() === h && Math.abs(ed.getMinutes() - m) < 5;
-                });
-                pointColors.push(isRefill ? '#0052cc' : 'rgba(0, 135, 90, 1)');
-                pointRadiuses.push(isRefill ? 6 : 0);
-            } else {
-                levelData.push(lastKnownLevel); 
-                consumptionData.push(0);
-                pointColors.push('rgba(0, 135, 90, 1)');
-                pointRadiuses.push(0);
-            }
-        }
-    }
-    document.getElementById('consumption-chart-title').textContent = '📈 Diesel Consumption (Filtered)';
-    document.getElementById('level-chart-title').textContent = '📉 Diesel Level (Noise Reduced)';
-  } else {
-    cleanData.forEach(d => {
-         labels.push(d.date); 
-         const t = new Date(d.timestamp);
-         tooltipTimes.push(t.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
-         levelData.push(d.cleanLevel);
-         consumptionData.push(d.cleanConsumption);
-         pointColors.push('rgba(0, 135, 90, 1)');
-         pointRadiuses.push(3);
-    });
-  }
+      pointColors.push(isRefill ? '#0052cc' : 'rgba(0, 135, 90, 1)');
+      pointRadiuses.push(isRefill ? 6 : 2); // Small dot for normal, Big dot for refill
+  });
 
+  // 1. Consumption Bar Chart
   if (consumptionChart) consumptionChart.destroy();
   consumptionChart = new Chart(document.getElementById('consumptionChart'), {
     type: 'bar',
-    data: { labels: labels, datasets: [{ label: 'Consumption (L)', data: consumptionData, backgroundColor: 'rgba(222, 53, 11, 0.8)', borderColor: 'rgba(222, 53, 11, 1)', borderWidth: 1 }] },
+    data: { 
+        labels: labels, 
+        datasets: [{ 
+            label: 'Consumption (L)', 
+            data: consumptionData, 
+            backgroundColor: 'rgba(222, 53, 11, 0.8)', 
+            borderColor: 'rgba(222, 53, 11, 1)', 
+            borderWidth: 1 
+        }] 
+    },
     options: { 
-        responsive: true, maintainAspectRatio: false, 
-        plugins: { tooltip: { callbacks: { title: ctx => `Time: ${tooltipTimes[ctx[0].dataIndex]}`, label: ctx => `Consumption: ${ctx.raw} L` } } },
-        scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } 
+        responsive: true, 
+        maintainAspectRatio: false, 
+        plugins: { 
+            tooltip: { 
+                callbacks: { 
+                    title: ctx => `Time: ${tooltipTimes[ctx[0].dataIndex]}`, 
+                    label: ctx => `Consumption: ${ctx.raw.toFixed(2)} L` 
+                } 
+            } 
+        },
+        scales: { 
+            y: { beginAtZero: true, title: { display: true, text: 'Liters' } }, 
+            x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 20 } } 
+        } 
     }
   });
 
+  // 2. Level Line Chart
   if (levelChart) levelChart.destroy();
   levelChart = new Chart(document.getElementById('levelChart'), {
     type: 'line',
-    data: { labels: labels, datasets: [{ label: 'Diesel Level (L)', data: levelData, borderColor: 'rgba(0, 135, 90, 1)', backgroundColor: 'rgba(0, 135, 90, 0.1)', borderWidth: 3, fill: true, tension: 0, spanGaps: true, pointBackgroundColor: pointColors, pointRadius: pointRadiuses }] },
+    data: { 
+        labels: labels, 
+        datasets: [{ 
+            label: 'Diesel Level (L)', 
+            data: levelData, 
+            borderColor: 'rgba(0, 135, 90, 1)', 
+            backgroundColor: 'rgba(0, 135, 90, 0.1)', 
+            borderWidth: 3, 
+            fill: true, 
+            tension: 0.2, // Slight curve looks better
+            spanGaps: true, 
+            pointBackgroundColor: pointColors, 
+            pointRadius: pointRadiuses 
+        }] 
+    },
     options: { 
-        responsive: true, maintainAspectRatio: false, 
-        plugins: { tooltip: { callbacks: { 
-            title: ctx => `Time: ${tooltipTimes[ctx[0].dataIndex]}`, 
-            label: ctx => { 
-                let idx = ctx.dataIndex; 
-                if (pointColors[idx] === '#0052cc') {
-                    // Find specific refill for tooltip
-                    // (Simplification: just show Refill Detected)
-                    return `⛽ Refill Detected! Level: ${ctx.raw}L`; 
-                }
-                return `Level: ${ctx.raw}L`; 
+        responsive: true, 
+        maintainAspectRatio: false, 
+        plugins: { 
+            tooltip: { 
+                callbacks: { 
+                    title: ctx => `Time: ${tooltipTimes[ctx[0].dataIndex]}`, 
+                    label: ctx => { 
+                        let idx = ctx.dataIndex; 
+                        if (pointColors[idx] === '#0052cc') {
+                            return `⛽ Refill Detected! Level: ${ctx.raw}L`; 
+                        }
+                        return `Level: ${ctx.raw}L`; 
+                    } 
+                } 
             } 
-        } } }, 
-        scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 45, minRotation: 45 } } } 
+        }, 
+        scales: { 
+            y: { beginAtZero: false, title: { display: true, text: 'Liters' } }, 
+            x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 20 } } 
+        } 
     }
   });
 }
