@@ -1,8 +1,10 @@
 /**
- * Scheduler Service - CORRECTED VERSION
- * - 30-minute consumption tracking (7 AM - 8 PM) with CORRECT calculation
- * - Daily summary email at 8 PM
- * - Electrical parameters logging every 30 minutes
+ * Scheduler Service - FIXED VERSION
+ * FIXES:
+ * 1. Proper initialization of dayStartLevels
+ * 2. Better error handling
+ * 3. Immediate first reading on startup
+ * 4. Clearer logging
  */
 
 const cron = require('node-cron');
@@ -13,8 +15,39 @@ const { sendDailySummary } = require('./emailService');
 const DG_RUNNING_THRESHOLD = 5; // kW
 
 let dayStartLevels = null;
+let lastSavedLevels = { dg1: null, dg2: null, dg3: null, total: null };
 
-// ✅ FIXED: Track consumption with CORRECT calculation (decrease only)
+// ✅ FIXED: Initialize day start levels properly
+async function initializeDayStartLevels() {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // Check if we already have records for today
+    const todayRecords = await DieselConsumption.findOne({ date: today })
+      .sort({ timestamp: 1 })
+      .limit(1);
+    
+    if (todayRecords) {
+      // Use first record of the day as start levels
+      dayStartLevels = {
+        dg1: todayRecords.dg1?.level || 0,
+        dg2: todayRecords.dg2?.level || 0,
+        dg3: todayRecords.dg3?.level || 0,
+        total: todayRecords.total?.level || 0,
+        date: today
+      };
+      console.log('✅ Day start levels loaded from first record:', dayStartLevels);
+    } else {
+      // No records yet, will be set on first reading
+      console.log('⏳ No records yet today, will initialize on first reading');
+    }
+  } catch (err) {
+    console.error('❌ Error initializing day start levels:', err.message);
+  }
+}
+
+// ✅ FIXED: Track consumption with proper initialization
 async function trackConsumption() {
   try {
     const now = new Date();
@@ -22,6 +55,7 @@ async function trackConsumption() {
 
     // Only track between 7 AM and 8 PM
     if (hour < 7 || hour >= 20) {
+      console.log(`⏰ Outside tracking hours (${hour}:00), skipping...`);
       return;
     }
 
@@ -32,21 +66,23 @@ async function trackConsumption() {
       return;
     }
 
-    // Store day start levels (at 7 AM)
-    if (hour === 7 && now.getMinutes() < 30 && !dayStartLevels) {
+    const today = now.toISOString().split('T')[0];
+
+    // Initialize day start levels if not set
+    if (!dayStartLevels || dayStartLevels.date !== today) {
       dayStartLevels = {
         dg1: systemData.dg1,
         dg2: systemData.dg2,
         dg3: systemData.dg3,
         total: systemData.total,
-        date: now.toISOString().split('T')[0]
+        date: today
       };
-      console.log('📊 Day start levels recorded:', dayStartLevels);
+      console.log('📊 Day start levels initialized:', dayStartLevels);
     }
 
-    // Get previous record to calculate consumption correctly
+    // Get previous record to calculate consumption
     const previousRecord = await DieselConsumption.findOne({
-      date: now.toISOString().split('T')[0]
+      date: today
     }).sort({ timestamp: -1 }).limit(1);
 
     const currentData = {
@@ -57,7 +93,7 @@ async function trackConsumption() {
       electrical: systemData.electrical
     };
 
-    // ✅ CORRECT: Calculate consumption (DECREASE ONLY)
+    // Calculate consumption (DECREASE ONLY)
     let consumption = {
       dg1: 0,
       dg2: 0,
@@ -77,6 +113,8 @@ async function trackConsumption() {
         consumption.dg3 = previousRecord.dg3.level - currentData.dg3;
       }
       consumption.total = consumption.dg1 + consumption.dg2 + consumption.dg3;
+    } else {
+      console.log('📝 First record of the day');
     }
 
     // Check if DGs are running
@@ -108,19 +146,30 @@ async function trackConsumption() {
         level: currentData.total,
         consumption: consumption.total
       },
-      date: now.toISOString().split('T')[0],
+      date: today,
       hour: hour,
       minute: now.getMinutes()
     });
 
     await record.save();
-    console.log(`✅ Consumption tracked at ${now.toLocaleTimeString('en-IN')} - Total: ${consumption.total.toFixed(1)}L`);
+    
+    // Update last saved levels
+    lastSavedLevels = {
+      dg1: currentData.dg1,
+      dg2: currentData.dg2,
+      dg3: currentData.dg3,
+      total: currentData.total
+    };
 
-    // Also save electrical parameters for all DGs
+    const time = now.toLocaleTimeString('en-IN');
+    const status = Object.values(isRunning).some(v => v) ? '🟢' : '⚪';
+    console.log(`${status} ${time} | Saved: DG1=${currentData.dg1.toFixed(1)}L DG2=${currentData.dg2.toFixed(1)}L DG3=${currentData.dg3.toFixed(1)}L | Consumed: ${consumption.total.toFixed(1)}L`);
+
+    // Also save electrical parameters for running DGs
     await saveElectricalData(currentData.electrical, now);
 
   } catch (err) {
-    console.error('Error tracking consumption:', err.message);
+    console.error('❌ Error tracking consumption:', err.message);
   }
 }
 
@@ -158,14 +207,15 @@ async function saveElectricalData(electricalData, timestamp) {
         });
 
         await electricalRecord.save();
+        console.log(`⚡ Saved electrical data for ${dgKey.toUpperCase()}`);
       }
     }
   } catch (err) {
-    console.error('Error saving electrical data:', err.message);
+    console.error('❌ Error saving electrical data:', err.message);
   }
 }
 
-// ✅ FIXED: Generate daily summary with correct consumption calculation
+// ✅ Generate daily summary
 async function generateDailySummary() {
   try {
     const now = new Date();
@@ -187,31 +237,16 @@ async function generateDailySummary() {
       return;
     }
 
-    // ✅ CORRECT: Calculate total consumption from level DECREASES only
+    // Calculate total consumption from stored values (already calculated correctly)
     let totalConsumption = {
-      dg1: 0,
-      dg2: 0,
-      dg3: 0
+      dg1: todayRecords.reduce((sum, r) => sum + (r.dg1?.consumption || 0), 0),
+      dg2: todayRecords.reduce((sum, r) => sum + (r.dg2?.consumption || 0), 0),
+      dg3: todayRecords.reduce((sum, r) => sum + (r.dg3?.consumption || 0), 0)
     };
-
-    let previousLevels = { dg1: null, dg2: null, dg3: null };
-
-    todayRecords.forEach(record => {
-      ['dg1', 'dg2', 'dg3'].forEach(dg => {
-        const currentLevel = record[dg]?.level || 0;
-        const prevLevel = previousLevels[dg];
-
-        if (prevLevel !== null && currentLevel < prevLevel) {
-          totalConsumption[dg] += (prevLevel - currentLevel);
-        }
-
-        previousLevels[dg] = currentLevel;
-      });
-    });
 
     totalConsumption.total = totalConsumption.dg1 + totalConsumption.dg2 + totalConsumption.dg3;
 
-    // Calculate running hours
+    // Calculate running hours (each record = 30 minutes)
     const runningHours = {
       dg1: todayRecords.filter(r => r.dg1?.isRunning).length * 0.5,
       dg2: todayRecords.filter(r => r.dg2?.isRunning).length * 0.5,
@@ -248,6 +283,10 @@ async function generateDailySummary() {
 
     await summary.save();
     console.log(`📊 Daily summary saved for ${today}`);
+    console.log(`   Total consumption: ${totalConsumption.total.toFixed(1)}L`);
+    console.log(`   DG1: ${totalConsumption.dg1.toFixed(1)}L (${runningHours.dg1}h)`);
+    console.log(`   DG2: ${totalConsumption.dg2.toFixed(1)}L (${runningHours.dg2}h)`);
+    console.log(`   DG3: ${totalConsumption.dg3.toFixed(1)}L (${runningHours.dg3}h)`);
 
     // Get yesterday's summary for comparison
     const previousSummary = await DailySummary.findOne({ date: yesterday });
@@ -258,7 +297,7 @@ async function generateDailySummary() {
     // Reset for next day
     dayStartLevels = null;
   } catch (err) {
-    console.error('Error generating daily summary:', err.message);
+    console.error('❌ Error generating daily summary:', err.message);
   }
 }
 
@@ -268,7 +307,7 @@ function startScheduledTasks() {
 
   // Track consumption every 30 minutes (7 AM - 8 PM)
   cron.schedule('0,30 7-19 * * *', () => {
-    console.log('⏰ Running 30-minute consumption/electrical tracking...');
+    console.log('\n⏰ Running 30-minute consumption/electrical tracking...');
     trackConsumption();
   }, {
     timezone: "Asia/Kolkata"
@@ -276,25 +315,34 @@ function startScheduledTasks() {
 
   // Generate and send daily summary at 8 PM
   cron.schedule('0 20 * * *', () => {
-    console.log('⏰ Running daily summary generation...');
+    console.log('\n⏰ Running daily summary generation...');
     generateDailySummary();
   }, {
     timezone: "Asia/Kolkata"
   });
 
-  // Initialize first reading if within operating hours
+  // Initialize and take first reading
   const now = new Date();
   const hour = now.getHours();
-  if (hour >= 7 && hour < 20) {
-    setTimeout(() => {
-      trackConsumption();
-    }, 5000);
-  }
-
+  
   console.log('✅ Scheduled tasks configured:');
   console.log('   - Consumption tracking: Every 30 minutes (7 AM - 8 PM)');
   console.log('   - Electrical logging: Every 30 minutes (during DG running)');
   console.log('   - Daily summary: 8:00 PM');
+  console.log(`   - Current time: ${now.toLocaleTimeString('en-IN')}`);
+
+  // Initialize day start levels from database
+  initializeDayStartLevels();
+
+  // Take first reading after 10 seconds if within operating hours
+  if (hour >= 7 && hour < 20) {
+    console.log('⏳ Taking first reading in 10 seconds...');
+    setTimeout(() => {
+      trackConsumption();
+    }, 10000);
+  } else {
+    console.log(`⏸️ Outside operating hours (${hour}:00), waiting for 7 AM...`);
+  }
 }
 
 module.exports = {
