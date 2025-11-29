@@ -1,10 +1,11 @@
 /**
- * Scheduler Service - FIXED VERSION
- * FIXES:
- * 1. Proper initialization of dayStartLevels
- * 2. Better error handling
- * 3. Immediate first reading on startup
- * 4. Clearer logging
+ * Scheduler Service - PROPERLY FIXED VERSION
+ * 
+ * KEY FIXES:
+ * 1. Initialize dayStartLevels from CURRENT system data on new day
+ * 2. Don't rely on database records that might not exist yet
+ * 3. Reset dayStartLevels AFTER first reading, not before
+ * 4. Extended cron to include 8 PM hour (7-20 instead of 7-19)
  */
 
 const cron = require('node-cron');
@@ -16,14 +17,21 @@ const DG_RUNNING_THRESHOLD = 5; // kW
 
 let dayStartLevels = null;
 let lastSavedLevels = { dg1: null, dg2: null, dg3: null, total: null };
+let lastTrackingDate = null; // Track which date we're currently on
 
-// ✅ FIXED: Initialize day start levels properly
+// ✅ FIXED: Initialize from CURRENT system data, not database
 async function initializeDayStartLevels() {
   try {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     
-    // Check if we already have records for today
+    // If we already have start levels for today, don't reinitialize
+    if (dayStartLevels && dayStartLevels.date === today) {
+      console.log('✅ Day start levels already set for today:', dayStartLevels);
+      return;
+    }
+
+    // Try to get from database first (if records exist)
     const todayRecords = await DieselConsumption.findOne({ date: today })
       .sort({ timestamp: 1 })
       .limit(1);
@@ -39,22 +47,43 @@ async function initializeDayStartLevels() {
       };
       console.log('✅ Day start levels loaded from first record:', dayStartLevels);
     } else {
-      // No records yet, will be set on first reading
-      console.log('⏳ No records yet today, will initialize on first reading');
+      // No records yet - get CURRENT levels from PLC
+      const systemData = getSystemData();
+      
+      if (systemData && systemData.lastUpdate) {
+        dayStartLevels = {
+          dg1: systemData.dg1 || 0,
+          dg2: systemData.dg2 || 0,
+          dg3: systemData.dg3 || 0,
+          total: systemData.total || 0,
+          date: today
+        };
+        console.log('✅ Day start levels initialized from CURRENT PLC data:', dayStartLevels);
+      } else {
+        console.log('⚠️ No system data available yet, will initialize on first reading');
+      }
     }
   } catch (err) {
     console.error('❌ Error initializing day start levels:', err.message);
   }
 }
 
-// ✅ FIXED: Track consumption with proper initialization
+// ✅ FIXED: Better tracking with proper day change handling
 async function trackConsumption() {
   try {
     const now = new Date();
     const hour = now.getHours();
+    const today = now.toISOString().split('T')[0];
 
-    // Only track between 7 AM and 8 PM
-    if (hour < 7 || hour >= 20) {
+    // Check if day changed - reinitialize if needed
+    if (lastTrackingDate && lastTrackingDate !== today) {
+      console.log(`📅 Day changed from ${lastTrackingDate} to ${today} - reinitializing...`);
+      await initializeDayStartLevels();
+    }
+    lastTrackingDate = today;
+
+    // Only track between 7 AM and 8 PM (inclusive)
+    if (hour < 7 || hour > 20) {
       console.log(`⏰ Outside tracking hours (${hour}:00), skipping...`);
       return;
     }
@@ -66,9 +95,7 @@ async function trackConsumption() {
       return;
     }
 
-    const today = now.toISOString().split('T')[0];
-
-    // Initialize day start levels if not set
+    // Initialize day start levels if not set OR if date changed
     if (!dayStartLevels || dayStartLevels.date !== today) {
       dayStartLevels = {
         dg1: systemData.dg1,
@@ -77,7 +104,7 @@ async function trackConsumption() {
         total: systemData.total,
         date: today
       };
-      console.log('📊 Day start levels initialized:', dayStartLevels);
+      console.log('📊 Day start levels set for', today, ':', dayStartLevels);
     }
 
     // Get previous record to calculate consumption
@@ -163,7 +190,7 @@ async function trackConsumption() {
 
     const time = now.toLocaleTimeString('en-IN');
     const status = Object.values(isRunning).some(v => v) ? '🟢' : '⚪';
-    console.log(`${status} ${time} | Saved: DG1=${currentData.dg1.toFixed(1)}L DG2=${currentData.dg2.toFixed(1)}L DG3=${currentData.dg3.toFixed(1)}L | Consumed: ${consumption.total.toFixed(1)}L`);
+    console.log(`${status} ${time} | DG1=${currentData.dg1.toFixed(1)}L DG2=${currentData.dg2.toFixed(1)}L DG3=${currentData.dg3.toFixed(1)}L | Consumed: ${consumption.total.toFixed(1)}L`);
 
     // Also save electrical parameters for running DGs
     await saveElectricalData(currentData.electrical, now);
@@ -173,7 +200,7 @@ async function trackConsumption() {
   }
 }
 
-// ✅ Save electrical parameters to database
+// Save electrical parameters to database
 async function saveElectricalData(electricalData, timestamp) {
   try {
     const dateStr = timestamp.toISOString().split('T')[0];
@@ -207,7 +234,6 @@ async function saveElectricalData(electricalData, timestamp) {
         });
 
         await electricalRecord.save();
-        console.log(`⚡ Saved electrical data for ${dgKey.toUpperCase()}`);
       }
     }
   } catch (err) {
@@ -215,7 +241,7 @@ async function saveElectricalData(electricalData, timestamp) {
   }
 }
 
-// ✅ Generate daily summary
+// Generate daily summary
 async function generateDailySummary() {
   try {
     const now = new Date();
@@ -237,7 +263,7 @@ async function generateDailySummary() {
       return;
     }
 
-    // Calculate total consumption from stored values (already calculated correctly)
+    // Calculate total consumption
     let totalConsumption = {
       dg1: todayRecords.reduce((sum, r) => sum + (r.dg1?.consumption || 0), 0),
       dg2: todayRecords.reduce((sum, r) => sum + (r.dg2?.consumption || 0), 0),
@@ -294,8 +320,9 @@ async function generateDailySummary() {
     // Send email
     await sendDailySummary(summary, previousSummary);
 
-    // Reset for next day
-    dayStartLevels = null;
+    // ✅ DON'T reset here - let it reset naturally on next day's first reading
+    console.log('📧 Daily summary email sent. Day start levels will reset on next tracking cycle.');
+
   } catch (err) {
     console.error('❌ Error generating daily summary:', err.message);
   }
@@ -305,16 +332,16 @@ async function generateDailySummary() {
 function startScheduledTasks() {
   console.log('🕐 Starting scheduled tasks...');
 
-  // Track consumption every 30 minutes (7 AM - 8 PM)
-  cron.schedule('0,30 7-19 * * *', () => {
+  // ✅ FIXED: Extended to include 8 PM (7-20 instead of 7-19)
+  cron.schedule('0,30 7-20 * * *', () => {
     console.log('\n⏰ Running 30-minute consumption/electrical tracking...');
     trackConsumption();
   }, {
     timezone: "Asia/Kolkata"
   });
 
-  // Generate and send daily summary at 8 PM
-  cron.schedule('0 20 * * *', () => {
+  // Generate and send daily summary at 8:30 PM (after last tracking at 8:00 PM)
+  cron.schedule('30 20 * * *', () => {
     console.log('\n⏰ Running daily summary generation...');
     generateDailySummary();
   }, {
@@ -328,14 +355,14 @@ function startScheduledTasks() {
   console.log('✅ Scheduled tasks configured:');
   console.log('   - Consumption tracking: Every 30 minutes (7 AM - 8 PM)');
   console.log('   - Electrical logging: Every 30 minutes (during DG running)');
-  console.log('   - Daily summary: 8:00 PM');
+  console.log('   - Daily summary: 8:30 PM');
   console.log(`   - Current time: ${now.toLocaleTimeString('en-IN')}`);
 
-  // Initialize day start levels from database
+  // Initialize day start levels from database or system
   initializeDayStartLevels();
 
   // Take first reading after 10 seconds if within operating hours
-  if (hour >= 7 && hour < 20) {
+  if (hour >= 7 && hour <= 20) {
     console.log('⏳ Taking first reading in 10 seconds...');
     setTimeout(() => {
       trackConsumption();
