@@ -32,31 +32,22 @@
   
   .container { max-width: 1400px; margin: 0 auto; }
   
-  /* ✅ UPDATED HEADER STYLES FOR LOGO */
-/* ✅ UPDATED HEADER: Logo Left, Status Right */
+  /* HEADER STYLES */
   .header {
-    display: flex; /* Use Flexbox to arrange items horizontally */
-    justify-content: space-between; /* Pushes Logo/Title to Left, Status to Right */
-    align-items: center; /* Vertically centers items */
-    padding: 15px 30px; /* Adds nice spacing on sides */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
     background: var(--bg-secondary);
     border-radius: 12px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     border: 1px solid var(--border);
-    text-align: left; /* Reset default center alignment */
+    text-align: left;
     margin-bottom: 25px;
   }
   
-  .header-content {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start; /* Forces Logo & Title to the Left */
-    gap: 20px; /* Space between Logo and Title */
-    margin-bottom: 0; /* Remove bottom margin */
-  }
-
   .header-logo {
-    height: 65px; /* Increased size to fit the corner slot perfectly */
+    height: 65px;
     width: auto;
     object-fit: contain;
   }
@@ -71,26 +62,21 @@
   }
   
   .status-line {
-    text-align: right; /* Aligns status text to the right */
+    text-align: right;
     font-size: 0.85rem;
     color: var(--text-muted);
     display: flex;
-    flex-direction: column; /* Stacks the dot and the date neatly */
+    flex-direction: column;
     align-items: flex-end;
     gap: 5px;
   }
 
-  /* Mobile Responsiveness: Stacks them back to center on small screens */
   @media (max-width: 768px) {
     .header {
       flex-direction: column;
       text-align: center;
       gap: 15px;
       padding: 20px;
-    }
-    .header-content {
-      flex-direction: column;
-      justify-content: center;
     }
     .status-line {
       align-items: center;
@@ -204,6 +190,7 @@
       </div>
     </div>
 
+    <!-- DG 1 -->
     <div class="dg-electrical-section expanded" id="dg1-section">
       <a href="/electrical.html?dg=dg1" class="dg-header-link">
         <div class="dg-header">
@@ -229,6 +216,7 @@
       </div>
     </div>
 
+    <!-- DG 2 -->
     <div class="dg-electrical-section expanded" id="dg2-section">
       <a href="/electrical.html?dg=dg2" class="dg-header-link">
         <div class="dg-header">
@@ -254,6 +242,7 @@
       </div>
     </div>
 
+    <!-- DG 3 -->
     <div class="dg-electrical-section expanded" id="dg3-section">
       <a href="/electrical.html?dg=dg3" class="dg-header-link">
         <div class="dg-header">
@@ -279,6 +268,7 @@
       </div>
     </div>
 
+    <!-- DG 4 -->
     <div class="dg-electrical-section expanded" id="dg4-section">
       <a href="/electrical.html?dg=dg4" class="dg-header-link">
         <div class="dg-header">
@@ -307,7 +297,7 @@
   </div>
 
 <script>
-    // index.html - FINAL OPTIMIZED VERSION (Fixes Violation Errors)
+    // index.html - SMART DB FALLBACK VERSION
 
     const CRITICAL_LEVEL = 50;
     const WARNING_LEVEL = 150;
@@ -318,11 +308,13 @@
 
     // Cache DB history to reduce API calls
     let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
+    let dieselHistoryCache = { dg1: null, dg2: null, dg3: null };
     
     // Cooldown tracker
     let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
+    let dieselCooldown = { dg1: 0, dg2: 0, dg3: 0 };
 
-    // Flag to prevent overlapping updates (Fixes 'setInterval' Violation)
+    // Flag to prevent overlapping updates
     let isUpdating = false;
 
     document.querySelectorAll('.expand-icon').forEach(icon => {
@@ -353,6 +345,40 @@
         console.warn('Network glitch (fetchData), skipping update.');
         return null;
       }
+    }
+
+    // ✅ NEW: Fetch Diesel History if Live Data is 0
+    async function fetchLastDieselHistory(dg) {
+       if (dieselHistoryCache[dg]) return dieselHistoryCache[dg];
+       if (Date.now() - dieselCooldown[dg] < 60000) return 0; // 1 min cooldown
+
+       try {
+           const today = new Date().toISOString().split('T')[0];
+           // Fetch today's consumption to get last level
+           let response = await fetch(`/api/consumption?dg=${dg}&startDate=${today}&endDate=${today}`);
+           let result = await response.json();
+           
+           if (!result.data || result.data.length === 0) {
+                // If empty today, try yesterday
+                const yest = new Date();
+                yest.setDate(yest.getDate() - 1);
+                const yestStr = yest.toISOString().split('T')[0];
+                response = await fetch(`/api/consumption?dg=${dg}&startDate=${yestStr}&endDate=${yestStr}`);
+                result = await response.json();
+           }
+           
+           if (result.data && result.data.length > 0) {
+               const lastRecord = result.data[result.data.length - 1];
+               const level = lastRecord.level || 0;
+               if (level > 0) {
+                   dieselHistoryCache[dg] = level;
+                   return level;
+               }
+           }
+       } catch(e) { console.error("History fetch error:", e); }
+       
+       dieselCooldown[dg] = Date.now();
+       return 0;
     }
 
     async function fetchLastHistory(dg) {
@@ -402,10 +428,19 @@
       return num.toFixed(decimals);
     }
 
-    function updateDieselLevels(data) {
+    async function updateDieselLevels(data) {
       if(!data) return;
 
-      const levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
+      let levels = { dg1: data.dg1 || 0, dg2: data.dg2 || 0, dg3: data.dg3 || 0 };
+      
+      // ✅ SMART FALLBACK: If live level is 0, fetch from DB
+      for (const dg of ['dg1', 'dg2', 'dg3']) {
+          if (levels[dg] === 0) {
+              const historyLevel = await fetchLastDieselHistory(dg);
+              if (historyLevel > 0) levels[dg] = historyLevel;
+          }
+      }
+
       ['dg1', 'dg2', 'dg3'].forEach(dg => {
         const level = levels[dg];
         const card = document.getElementById(`${dg}-diesel-card`);
@@ -418,7 +453,9 @@
           else card.classList.add('normal');
         }
       });
-      document.getElementById('total-diesel').textContent = formatNum(data.total, 0);
+      
+      const total = levels.dg1 + levels.dg2 + levels.dg3;
+      document.getElementById('total-diesel').textContent = formatNum(total, 0);
 
       const criticalDGs = Object.entries(levels).filter(([_, value]) => value <= CRITICAL_LEVEL).map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
       const container = document.getElementById('alert-container');
@@ -432,8 +469,6 @@
       if (!data || !data.electrical) return;
 
       const dgList = ['dg1', 'dg2', 'dg3', 'dg4'];
-      
-      // 1. Prepare all calculations first (Don't update DOM yet)
       const updates = [];
 
       for (const dg of dgList) {
@@ -442,28 +477,22 @@
         
         let promise;
         if (hasVoltage) {
-            // DG is ON - Use Live Data
             dbCache[dg] = null; 
             historyCooldown[dg] = 0; 
             promise = Promise.resolve(liveData);
         } else {
-            // DG is OFF - Fetch History asynchronously
             promise = fetchLastHistory(dg).then(hist => hist || liveData);
         }
         updates.push({ dg, liveData, promise });
       }
 
-      // 2. Wait for all data to be ready (Parallel Processing)
-      // This stops the "Violation" error by not blocking the main thread repeatedly
       const results = await Promise.all(updates.map(u => u.promise));
 
-      // 3. Update DOM in one go
       updates.forEach((item, index) => {
         const dg = item.dg;
         const displayData = results[index];
         const liveData = item.liveData;
 
-        // Status Badge
         const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
         const statusEl = document.getElementById(`${dg}-status`);
         if (statusEl) {
@@ -471,7 +500,6 @@
           statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
         }
 
-        // Render Values
         ['r', 'y', 'b'].forEach(phase => {
           const el = document.getElementById(`${dg}-voltage-${phase}`);
           if (el) el.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
@@ -515,7 +543,6 @@
     }
 
     async function refresh() {
-      // PREVENT OVERLAP: If previous refresh is still running, skip this one
       if (isUpdating) return;
       isUpdating = true;
 
@@ -530,18 +557,16 @@
 
           if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
 
-          updateDieselLevels(data);
+          await updateDieselLevels(data);
           await updateElectricalParams(data); 
           updateTimestamp();
       } catch (e) {
           console.error("Refresh error:", e);
       } finally {
-          // Release the lock so the next timer can run
           isUpdating = false;
       }
     }
 
-    // Interval set to 5000ms (5 Seconds)
     setInterval(refresh, 5000);
     refresh();
 </script>

@@ -45,7 +45,7 @@ function initializeEmail() {
 function getDashboardUrl() {
   const port = process.env.PORT || 3001;
   const protocol = process.env.USE_HTTPS === 'true' ? 'https' : 'http';
-  return `${protocol}://${process.env.PI_IP_ADDRESS || 'localhost'}:${port}`;
+  return 'https://dg-monitor.tailed4097.ts.net/';
 }
 
 // ============ EMAIL TEMPLATES ============
