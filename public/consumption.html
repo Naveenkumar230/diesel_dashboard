@@ -147,33 +147,34 @@
   </div>
 
 <script>
-// consumption.html - FINAL VERSION: Auto-Zoom Graph
+// ============================================================
+// COMPLETE FIXED <script> for consumption.html
+// Replace ENTIRE <script> section with this code
+// ============================================================
 
 let consumptionChart = null;
 let levelChart = null;
 let autoRefreshInterval = null;
 
-// CONFIG
 const CRITICAL_LEVEL = 50;
-const REFILL_THRESHOLD = 20; 
-const NOISE_THRESHOLD = 0.5; 
-const CONSUMPTION_PER_HOUR = 7; 
+const REFILL_THRESHOLD = 20;
+const NOISE_THRESHOLD = 1.5; // ✅ Ignore fluctuations < 1.5L
+const CONSUMPTION_PER_HOUR = 7;
 
 const urlParams = new URLSearchParams(window.location.search);
 const dgType = urlParams.get('dg') || 'dg1';
 
-const titles = { 
-    'dg1': 'DG-1 Consumption', 
-    'dg2': 'DG-2 Consumption', 
-    'dg3': 'DG-3 Consumption', 
-    'total': 'Total Consumption' 
+const titles = {
+    'dg1': 'DG-1 Consumption',
+    'dg2': 'DG-2 Consumption',
+    'dg3': 'DG-3 Consumption',
+    'total': 'Total Consumption'
 };
-const titleEl = document.getElementById('page-title');
-if(titleEl) titleEl.textContent = titles[dgType] || titles['dg1'];
+document.getElementById('page-title').textContent = titles[dgType] || titles['dg1'];
 
 function formatNumber(num) {
     if (num === null || num === undefined || isNaN(num)) return '--';
-    return parseFloat(Number(num).toFixed(2)); 
+    return parseFloat(Number(num).toFixed(2));
 }
 
 function setDateRange(range) {
@@ -187,391 +188,426 @@ function setDateRange(range) {
     } else if (range === 'month') {
         start.setDate(start.getDate() - 29);
     }
-    const startEl = document.getElementById('start-date');
-    const endEl = document.getElementById('end-date');
-    if(startEl) startEl.value = start.toISOString().split('T')[0];
-    if(endEl) endEl.value = end.toISOString().split('T')[0];
+    document.getElementById('start-date').value = start.toISOString().split('T')[0];
+    document.getElementById('end-date').value = end.toISOString().split('T')[0];
 }
 
-setDateRange('today'); 
-const quickSelect = document.getElementById('quick-select');
-if(quickSelect) {
-    quickSelect.value = 'today';
-    quickSelect.addEventListener('change', function() {
-      if (this.value !== 'custom') setDateRange(this.value);
-    });
-}
-
-function setupAutoRefresh() {
-  const startDate = document.getElementById('start-date').value;
-  const endDate = document.getElementById('end-date').value;
-  const today = new Date().toISOString().split('T')[0];
-  if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
-  if (startDate === today && endDate === today) {
-    autoRefreshInterval = setInterval(() => { loadData(true); }, 30000);
-  }
-}
-
-async function loadData(silent = false) {
-  const startDate = document.getElementById('start-date').value;
-  const endDate = document.getElementById('end-date').value;
-  
-  if (!silent) { 
-      const loadingEl = document.getElementById('loading');
-      const emptyEl = document.getElementById('empty-state');
-      if(loadingEl) loadingEl.style.display = 'block'; 
-      if(emptyEl) emptyEl.style.display = 'none'; 
-  }
-
-  try {
-    const query = `startDate=${startDate}&endDate=${endDate}`;
-    const url = (dgType === 'total') ? `/api/consumption?${query}` : `/api/consumption?dg=${dgType}&${query}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const result = await response.json();
-    let displayData = result.data || [];
-
-    processData(displayData, startDate, endDate);
-    
-    const emptyStateEl = document.getElementById('empty-state');
-    if(emptyStateEl) emptyStateEl.style.display = 'none';
-    setupAutoRefresh();
-
-  } catch (err) {
-    console.error('Error loading data:', err);
-    processData([], startDate, endDate); 
-  } finally {
-    if (!silent) {
-        const loadingEl = document.getElementById('loading');
-        if(loadingEl) loadingEl.style.display = 'none';
-    }
-  }
-}
-
-function clearStats() {
-  const ids = ['start-level', 'end-level', 'total-consumption', 'running-hours', 'avg-consumption', 'total-refilled', 'refill-prediction'];
-  ids.forEach(id => {
-      const el = document.getElementById(id);
-      if(el) el.textContent = '--';
-  });
-  const details = document.getElementById('refill-details');
-  if(details) details.innerHTML = '';
-}
-
-function processWithNoiseFilter(data, selectedDg) {
-  let totalConsumption = 0;
-  let totalRefilled = 0;
-  let refillEvents = [];
-  let stableLevel = null; 
-  
-  // Track previous levels
-  let prevLevels = { dg1: null, dg2: null, dg3: null, total: null };
-
-  let cleanData = data.map((record) => {
-    if(record.cleanLevel !== undefined) return record; 
-
-    let currentRaw = 0;
-    if (selectedDg === 'total') {
-        currentRaw = record.total?.level || 0; 
-    } else {
-        currentRaw = record.level !== undefined ? record.level : (record[selectedDg]?.level || 0);
-    }
-    
-    if (stableLevel === null) stableLevel = currentRaw;
-    if (prevLevels.total === null) {
-        prevLevels.dg1 = record.dg1?.level || 0;
-        prevLevels.dg2 = record.dg2?.level || 0;
-        prevLevels.dg3 = record.dg3?.level || 0;
-        prevLevels.total = currentRaw;
-    }
-
-    let consumption = 0;
-    let diff = currentRaw - stableLevel;
-
-    if (selectedDg === 'total') {
-        ['dg1', 'dg2', 'dg3'].forEach(tank => {
-            let lvl = record[tank]?.level || 0;
-            let prev = prevLevels[tank];
-            if ((lvl - prev) > REFILL_THRESHOLD) {
-                let amt = lvl - prev;
-                totalRefilled += amt;
-                refillEvents.push(createRefillEvent(record.timestamp, tank.toUpperCase(), amt));
-            }
-            prevLevels[tank] = lvl;
-        });
-        if (diff > REFILL_THRESHOLD) stableLevel = currentRaw;
-    } else {
-        if (diff > REFILL_THRESHOLD) {
-            totalRefilled += diff;
-            refillEvents.push(createRefillEvent(record.timestamp, selectedDg.toUpperCase(), diff));
-            stableLevel = currentRaw; 
-            diff = 0; 
-        }
-    }
-
-    if (diff < -NOISE_THRESHOLD) {
-        consumption = Math.abs(diff);
-        totalConsumption += consumption;
-        stableLevel = currentRaw; 
-    }
-
-    return { 
-        ...record, 
-        cleanLevel: stableLevel, 
-        cleanConsumption: consumption,
-        dateStr: record.timestamp.split('T')[0]
-    };
-  });
-  
-  return { totalConsumption, totalRefilled, refillEvents, cleanData };
-}
+setDateRange('today');
+document.getElementById('quick-select').value = 'today';
+document.getElementById('quick-select').addEventListener('change', function() {
+    if (this.value !== 'custom') setDateRange(this.value);
+});
 
 function createRefillEvent(timestamp, tankName, amount) {
     const d = new Date(timestamp);
     return {
         timestamp: timestamp,
         amount: amount,
-        tank: tankName.replace('DG', 'DG-'), 
+        tank: tankName.replace('DG', 'DG-'),
         date: d.toLocaleDateString('en-IN'),
         time: d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
     };
 }
 
-function processData(data, startDate, endDate) {
-  const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  const dateRangeEl = document.getElementById('date-range');
-  if(dateRangeEl) dateRangeEl.textContent = startStr;
-
-  const { totalConsumption, totalRefilled, refillEvents, cleanData } = processWithNoiseFilter(data, dgType);
-
-  let startLevel = 0;
-  let endLevel = 0;
-  if (cleanData.length > 0) {
-      startLevel = cleanData[0].cleanLevel;
-      endLevel = cleanData[cleanData.length - 1].cleanLevel;
-  }
-
-  let runningHours = (totalConsumption > 0) ? (totalConsumption / CONSUMPTION_PER_HOUR) : 0;
-  const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0;
-
-  let timeRemaining = '--';
-  const predCard = document.getElementById('refill-prediction');
-  const predCardContainer = document.getElementById('refill-card');
-
-  if (endLevel > CRITICAL_LEVEL) {
-      const rate = avgConsumptionRate > 0 ? avgConsumptionRate : CONSUMPTION_PER_HOUR;
-      const usableDiesel = endLevel - CRITICAL_LEVEL;
-      timeRemaining = (usableDiesel / rate).toFixed(1);
-      
-      if (parseFloat(timeRemaining) > 12) {
-          predCard.style.color = 'var(--success)'; 
-          predCardContainer.style.borderTopColor = 'var(--success)';
-      } else {
-          predCard.style.color = 'var(--warning)'; 
-          predCardContainer.style.borderTopColor = 'var(--warning)';
-      }
-      if(avgConsumptionRate === 0) timeRemaining += " (Est)";
-  } else {
-      timeRemaining = "0.0 (Critical)";
-      predCard.style.color = 'var(--danger)';
-      predCardContainer.style.borderTopColor = 'var(--danger)';
-  }
-
-  document.getElementById('start-level').textContent = formatNumber(startLevel);
-  document.getElementById('end-level').textContent = formatNumber(endLevel);
-  document.getElementById('total-consumption').textContent = formatNumber(totalConsumption);
-  document.getElementById('running-hours').textContent = formatNumber(runningHours);
-  document.getElementById('avg-consumption').textContent = formatNumber(avgConsumptionRate || CONSUMPTION_PER_HOUR);
-  document.getElementById('refill-prediction').textContent = timeRemaining;
-
-  const totalRefilledEl = document.getElementById('total-refilled');
-  const refillDetailsEl = document.getElementById('refill-details');
-  const refillCard = document.getElementById('refill-info-card');
-  
-  if(refillCard) refillCard.style.display = 'block'; 
-  if(totalRefilledEl) totalRefilledEl.textContent = formatNumber(totalRefilled);
-
-  if (totalRefilled > 0 && refillEvents.length > 0 && refillDetailsEl) {
-    let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
-    refillEvents.forEach(event => { 
-        detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${formatNumber(event.amount)}L<br>`; 
-    });
-    refillDetailsEl.innerHTML = detailsHTML;
-  } else if(refillDetailsEl) {
-    refillDetailsEl.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No refills detected.</span>';
-  }
-
-  updateCharts(cleanData, startDate, endDate, refillEvents);
+function setupAutoRefresh() {
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    const today = new Date().toISOString().split('T')[0];
+    if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
+    if (startDate === today && endDate === today) {
+        autoRefreshInterval = setInterval(() => { loadData(true); }, 30000);
+    }
 }
 
-// ✅ FIXED TIMELINE: Always 7 AM to 8 PM (Hourly Buckets)
-function updateCharts(cleanData, startDate, endDate, refillEvents) {
-  const isMultiDay = (new Date(endDate) - new Date(startDate)) > 0;
-  
-  let labels = [];
-  let consumptionData = [];
-  let levelData = [];
-  let pointColors = [];
-  let pointRadiuses = [];
+// ============================================================
+// ✅ FIXED: Load and structure data correctly
+// ============================================================
+async function loadData(silent = false) {
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
 
-  if (isMultiDay) {
-      // --- MULTI DAY LOGIC (UNCHANGED) ---
-      const dailyMap = {};
-      cleanData.forEach(d => {
-          if (!dailyMap[d.date]) dailyMap[d.date] = { label: d.date, consumption: 0, level: d.cleanLevel };
-          dailyMap[d.date].consumption += d.cleanConsumption;
-          dailyMap[d.date].level = d.cleanLevel; // End of day level
-      });
-      labels = Object.values(dailyMap).map(t => t.label);
-      consumptionData = Object.values(dailyMap).map(t => t.consumption);
-      levelData = Object.values(dailyMap).map(t => t.level);
-      // Default styles for multi-day
-      levelData.forEach(() => { pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(3); });
+    if (!silent) {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('empty-state').style.display = 'none';
+    }
 
-  } else {
-      // --- SINGLE DAY LOGIC (FIXED 7 AM - 8 PM) ---
-      
-      // 1. Create the fixed 14-hour slots (7, 8, ... 20)
-      for (let h = 7; h <= 20; h++) {
-          // Format Label (e.g., "7 AM", "12 PM", "4 PM")
-          let ampm = h >= 12 ? 'PM' : 'AM';
-          let hour12 = h % 12 || 12;
-          labels.push(`${hour12} ${ampm}`);
+    try {
+        const query = `startDate=${startDate}&endDate=${endDate}`;
+        const url = (dgType === 'total') ? `/api/consumption?${query}` : `/api/consumption?dg=${dgType}&${query}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
 
-          // 2. Find data for this specific hour
-          // We sum up ALL consumption that happened in this hour (e.g. 10:20 + 10:45)
-          let hourRecords = cleanData.filter(d => new Date(d.timestamp).getHours() === h);
-          
-          if (hourRecords.length > 0) {
-              // Sum Consumption
-              let totalCons = hourRecords.reduce((sum, r) => sum + r.cleanConsumption, 0);
-              consumptionData.push(totalCons);
-
-              // Use the LAST recorded level of the hour for the Line Chart
-              let lastRecord = hourRecords[hourRecords.length - 1];
-              levelData.push(lastRecord.cleanLevel);
-
-              // Check for Refills in this hour (for Dot Color)
-              let hasRefill = refillEvents.some(e => new Date(e.timestamp).getHours() === h);
-              if (hasRefill) {
-                  pointColors.push('#0052cc'); // Blue for Refill
-                  pointRadiuses.push(6);
-              } else {
-                  pointColors.push('rgba(0, 135, 90, 1)'); // Green for Normal
-                  pointRadiuses.push(4);
-              }
-          } else {
-              // NO DATA for this hour (e.g. 7 AM)
-              consumptionData.push(0); // 0 Consumption
-              levelData.push(null);    // Empty Gap in Line Chart
-              pointColors.push('transparent');
-              pointRadiuses.push(0);
-          }
-      }
-  }
-
-  // --- AUTO ZOOM CALCULATION (Y-Axis) ---
-  // Filter out nulls to find the min/max fuel level
-  const validLevels = levelData.filter(v => v !== null && v > 0);
-  let yMin = undefined;
-  let yMax = undefined;
-
-  if (validLevels.length > 0) {
-      const minVal = Math.min(...validLevels);
-      const maxVal = Math.max(...validLevels);
-      yMin = Math.floor(minVal - 5); // Zoom: 5L below min
-      yMax = Math.ceil(maxVal + 5);  // Zoom: 5L above max
-      if (yMin < 0) yMin = 0;
-  }
-
-  // 1. Consumption Bar Chart
-  const ctx1 = document.getElementById('consumptionChart');
-  if (ctx1) {
-      if (consumptionChart) { consumptionChart.destroy(); consumptionChart = null; }
-      consumptionChart = new Chart(ctx1, {
-        type: 'bar',
-        data: { 
-            labels: labels, // Fixed 7 AM - 8 PM labels
-            datasets: [{ 
-                label: 'Consumption (L)', 
-                data: consumptionData, 
-                backgroundColor: 'rgba(222, 53, 11, 0.8)', 
-                borderColor: 'rgba(222, 53, 11, 1)', 
-                borderWidth: 1 
-            }] 
-        },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            scales: { 
-                y: { beginAtZero: true, title: { display: true, text: 'Liters' } }, 
-                x: { 
-                    ticks: { autoSkip: false }, // Force show ALL labels
-                    grid: { display: false }
-                } 
-            } 
+        let displayData = [];
+        if (result.data && result.data.length > 0) {
+            displayData = result.data.map(record => {
+                if (dgType === 'total') {
+                    return {
+                        timestamp: record.timestamp,
+                        date: record.date,
+                        level: record.total?.level || 0,
+                        consumption: record.total?.consumption || 0,
+                        dg1: record.dg1,
+                        dg2: record.dg2,
+                        dg3: record.dg3,
+                        total: record.total
+                    };
+                } else {
+                    return {
+                        timestamp: record.timestamp,
+                        date: record.date,
+                        level: record[dgType]?.level || 0,
+                        consumption: record[dgType]?.consumption || 0,
+                        isRunning: record[dgType]?.isRunning || false,
+                        dg1: record.dg1,
+                        dg2: record.dg2,
+                        dg3: record.dg3
+                    };
+                }
+            });
         }
-      });
-  }
 
-  // 2. Level Line Chart
-  const ctx2 = document.getElementById('levelChart');
-  if (ctx2) {
-      if (levelChart) { levelChart.destroy(); levelChart = null; }
-      levelChart = new Chart(ctx2, {
-        type: 'line',
-        data: { 
-            labels: labels, // Fixed 7 AM - 8 PM labels
-            datasets: [{ 
-                label: 'End-of-Hour Level (L)', 
-                data: levelData, 
-                borderColor: 'rgba(0, 135, 90, 1)', 
-                backgroundColor: 'rgba(0, 135, 90, 0.1)', 
-                borderWidth: 3, 
-                fill: true, 
-                spanGaps: true, // Connect lines across empty hours
-                pointBackgroundColor: pointColors, 
-                pointRadius: pointRadiuses 
-            }] 
-        },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: ctx => {
-                            if (pointColors[ctx.dataIndex] === '#0052cc') return `⛽ Refill! Level: ${ctx.raw}L`;
-                            return `Level: ${ctx.raw}L`;
+        if (displayData.length === 0) {
+            document.getElementById('empty-state').style.display = 'block';
+            clearStats();
+        } else {
+            processData(displayData, startDate, endDate);
+            document.getElementById('empty-state').style.display = 'none';
+        }
+
+        setupAutoRefresh();
+
+    } catch (err) {
+        console.error('Error loading data:', err);
+        document.getElementById('empty-state').style.display = 'block';
+        clearStats();
+    } finally {
+        if (!silent) document.getElementById('loading').style.display = 'none';
+    }
+}
+
+function clearStats() {
+    const ids = ['start-level', 'end-level', 'total-consumption', 'running-hours', 'avg-consumption', 'total-refilled', 'refill-prediction'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.textContent = '--';
+    });
+    const details = document.getElementById('refill-details');
+    if(details) details.innerHTML = '';
+}
+
+// ============================================================
+// ✅ FIXED: Recalculate consumption with proper noise filtering
+// ============================================================
+function processData(data, startDate, endDate) {
+    const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    document.getElementById('date-range').textContent = startStr;
+
+    // ✅ Recalculate consumption from actual level changes (ignore DB consumption)
+    let totalConsumption = 0;
+    let totalRefilled = 0;
+    let refillEvents = [];
+
+    let prevLevels = { dg1: null, dg2: null, dg3: null, total: null };
+    const hourlyConsumption = {};
+    const hourlyLevels = {};
+
+    // Initialize 24 hours
+    for (let h = 0; h < 24; h++) {
+        hourlyConsumption[h] = 0;
+        hourlyLevels[h] = [];
+    }
+
+    let cleanData = data.map((record, index) => {
+        const timestamp = new Date(record.timestamp);
+        const hour = timestamp.getHours();
+        const actualLevel = record.level || 0;
+
+        hourlyLevels[hour].push(actualLevel);
+
+        // Initialize on first record
+        if (index === 0) {
+            prevLevels.dg1 = record.dg1?.level || 0;
+            prevLevels.dg2 = record.dg2?.level || 0;
+            prevLevels.dg3 = record.dg3?.level || 0;
+            prevLevels.total = actualLevel;
+        }
+
+        let consumption = 0;
+
+        // ========================================
+        // REFILL DETECTION
+        // ========================================
+        if (dgType === 'total') {
+            ['dg1', 'dg2', 'dg3'].forEach(tank => {
+                let lvl = record[tank]?.level || 0;
+                let prev = prevLevels[tank];
+                if (prev !== null) {
+                    let diff = lvl - prev;
+                    if (diff > REFILL_THRESHOLD) {
+                        totalRefilled += diff;
+                        refillEvents.push(createRefillEvent(record.timestamp, tank.toUpperCase(), diff));
+                    }
+                    prevLevels[tank] = lvl;
+                }
+            });
+        } else {
+            let diff = actualLevel - prevLevels.total;
+            if (diff > REFILL_THRESHOLD) {
+                totalRefilled += diff;
+                refillEvents.push(createRefillEvent(record.timestamp, dgType.toUpperCase(), diff));
+            }
+        }
+
+        // ========================================
+        // ✅ CONSUMPTION CALCULATION (NOISE FILTERED)
+        // ========================================
+        let diff = actualLevel - prevLevels.total;
+
+        // Only count if:
+        // 1. Level dropped (negative diff)
+        // 2. Drop is significant (> NOISE_THRESHOLD)
+        // 3. Not a refill
+        if (diff < -NOISE_THRESHOLD && diff > -100) {
+            consumption = Math.abs(diff);
+            totalConsumption += consumption;
+            hourlyConsumption[hour] += consumption;
+        } else if (diff < 0 && diff >= -NOISE_THRESHOLD) {
+            // ✅ Sensor noise - ignore it
+            console.log(`🔇 Noise filtered at ${timestamp.toLocaleTimeString()}: ${diff.toFixed(2)}L`);
+            consumption = 0;
+        }
+
+        prevLevels.total = actualLevel;
+
+        return {
+            ...record,
+            cleanLevel: actualLevel,
+            cleanConsumption: consumption,
+            hour: hour,
+            dateStr: record.date || record.timestamp.split('T')[0]
+        };
+    });
+
+    // ✅ Use ACTUAL start/end levels
+    let startLevel = cleanData.length > 0 ? cleanData[0].cleanLevel : 0;
+    let endLevel = cleanData.length > 0 ? cleanData[cleanData.length - 1].cleanLevel : 0;
+
+    let runningHours = (totalConsumption > 0) ? (totalConsumption / CONSUMPTION_PER_HOUR) : 0;
+    const avgConsumptionRate = runningHours > 0 ? (totalConsumption / runningHours) : 0;
+
+    // ========================================
+    // REFILL PREDICTION
+    // ========================================
+    let timeRemaining = '--';
+    const predCard = document.getElementById('refill-prediction');
+    const predCardContainer = document.getElementById('refill-card');
+
+    if (endLevel > CRITICAL_LEVEL) {
+        const rate = avgConsumptionRate > 0 ? avgConsumptionRate : CONSUMPTION_PER_HOUR;
+        const usableDiesel = endLevel - CRITICAL_LEVEL;
+        timeRemaining = (usableDiesel / rate).toFixed(1);
+
+        if (parseFloat(timeRemaining) > 12) {
+            predCard.style.color = 'var(--success)';
+            predCardContainer.style.borderTopColor = 'var(--success)';
+        } else {
+            predCard.style.color = 'var(--warning)';
+            predCardContainer.style.borderTopColor = 'var(--warning)';
+        }
+        if (avgConsumptionRate === 0) timeRemaining += " (Est)";
+    } else {
+        timeRemaining = "0.0 (Critical)";
+        predCard.style.color = 'var(--danger)';
+        predCardContainer.style.borderTopColor = 'var(--danger)';
+    }
+
+    // ========================================
+    // UPDATE UI
+    // ========================================
+    document.getElementById('start-level').textContent = formatNumber(startLevel);
+    document.getElementById('end-level').textContent = formatNumber(endLevel);
+    document.getElementById('total-consumption').textContent = formatNumber(totalConsumption);
+    document.getElementById('running-hours').textContent = formatNumber(runningHours);
+    document.getElementById('avg-consumption').textContent = formatNumber(avgConsumptionRate || CONSUMPTION_PER_HOUR);
+    document.getElementById('refill-prediction').textContent = timeRemaining;
+
+    const totalRefilledEl = document.getElementById('total-refilled');
+    const refillDetailsEl = document.getElementById('refill-details');
+
+    if (totalRefilledEl) totalRefilledEl.textContent = formatNumber(totalRefilled);
+
+    if (totalRefilled > 0 && refillEvents.length > 0 && refillDetailsEl) {
+        let detailsHTML = `<strong>📋 ${refillEvents.length} Refill(s):</strong><br>`;
+        refillEvents.forEach(event => {
+            detailsHTML += `<span style="color:#0052cc">⛽ ${event.time}</span>: +${formatNumber(event.amount)}L<br>`;
+        });
+        refillDetailsEl.innerHTML = detailsHTML;
+    } else if (refillDetailsEl) {
+        refillDetailsEl.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No refills detected.</span>';
+    }
+
+    updateCharts(cleanData, startDate, endDate, refillEvents, hourlyConsumption, hourlyLevels);
+}
+
+// ============================================================
+// ✅ FIXED: Chart with hourly data
+// ============================================================
+function updateCharts(cleanData, startDate, endDate, refillEvents, hourlyConsumption, hourlyLevels) {
+    const isMultiDay = (new Date(endDate) - new Date(startDate)) > 86400000;
+
+    let labels = [];
+    let consumptionData = [];
+    let levelData = [];
+    let pointColors = [];
+    let pointRadiuses = [];
+
+    if (isMultiDay) {
+        // Multi-day aggregation
+        const dailyMap = {};
+        cleanData.forEach(d => {
+            const dateKey = d.dateStr || d.date;
+            if (!dailyMap[dateKey]) dailyMap[dateKey] = { label: dateKey, consumption: 0, levels: [] };
+            dailyMap[dateKey].consumption += d.cleanConsumption;
+            dailyMap[dateKey].levels.push(d.cleanLevel);
+        });
+
+        labels = Object.keys(dailyMap);
+        consumptionData = Object.values(dailyMap).map(t => t.consumption);
+        levelData = Object.values(dailyMap).map(t => {
+            const levels = t.levels.filter(l => l > 0);
+            return levels.length > 0 ? levels[levels.length - 1] : null;
+        });
+        levelData.forEach(() => { pointColors.push('rgba(0, 135, 90, 1)'); pointRadiuses.push(3); });
+
+    } else {
+        // ✅ Single day - Show all 24 hours
+        for (let h = 0; h <= 23; h++) {
+            let ampm = h >= 12 ? 'PM' : 'AM';
+            let hour12 = h % 12 || 12;
+            labels.push(`${hour12} ${ampm}`);
+
+            // Use hourly aggregated consumption
+            consumptionData.push(hourlyConsumption[h] || 0);
+
+            // Use last level in hour
+            if (hourlyLevels[h] && hourlyLevels[h].length > 0) {
+                const validLevels = hourlyLevels[h].filter(l => l > 0);
+                levelData.push(validLevels.length > 0 ? validLevels[validLevels.length - 1] : null);
+
+                let hasRefill = refillEvents.some(e => new Date(e.timestamp).getHours() === h);
+                if (hasRefill) {
+                    pointColors.push('#0052cc');
+                    pointRadiuses.push(6);
+                } else {
+                    pointColors.push('rgba(0, 135, 90, 1)');
+                    pointRadiuses.push(4);
+                }
+            } else {
+                levelData.push(null);
+                pointColors.push('transparent');
+                pointRadiuses.push(0);
+            }
+        }
+    }
+
+    // Auto-zoom Y-axis
+    const validLevels = levelData.filter(v => v !== null && v > 0);
+    let yMin = undefined;
+    let yMax = undefined;
+
+    if (validLevels.length > 0) {
+        const minVal = Math.min(...validLevels);
+        const maxVal = Math.max(...validLevels);
+        yMin = Math.floor(minVal - 5);
+        yMax = Math.ceil(maxVal + 5);
+        if (yMin < 0) yMin = 0;
+    }
+
+    // Consumption Chart
+    const ctx1 = document.getElementById('consumptionChart');
+    if (ctx1) {
+        if (consumptionChart) { consumptionChart.destroy(); consumptionChart = null; }
+        consumptionChart = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Consumption (L)',
+                    data: consumptionData,
+                    backgroundColor: 'rgba(222, 53, 11, 0.8)',
+                    borderColor: 'rgba(222, 53, 11, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Liters' } },
+                    x: { ticks: { autoSkip: false }, grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // Level Chart
+    const ctx2 = document.getElementById('levelChart');
+    if (ctx2) {
+        if (levelChart) { levelChart.destroy(); levelChart = null; }
+        levelChart = new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Level (L)',
+                    data: levelData,
+                    borderColor: 'rgba(0, 135, 90, 1)',
+                    backgroundColor: 'rgba(0, 135, 90, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    spanGaps: true,
+                    pointBackgroundColor: pointColors,
+                    pointRadius: pointRadiuses
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                if (pointColors[ctx.dataIndex] === '#0052cc') return `⛽ Refill! Level: ${ctx.raw}L`;
+                                return `Level: ${ctx.raw}L`;
+                            }
                         }
                     }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: { display: true, text: 'Liters' },
+                        min: yMin,
+                        max: yMax
+                    },
+                    x: { ticks: { autoSkip: false }, grid: { display: true } }
                 }
-            },
-            scales: { 
-                y: { 
-                    beginAtZero: false, 
-                    title: { display: true, text: 'Liters' },
-                    min: yMin, // Apply Auto-Zoom
-                    max: yMax
-                }, 
-                x: { 
-                    ticks: { autoSkip: false }, // Force show ALL labels
-                    grid: { display: true }
-                } 
-            } 
-        }
-      });
-  }
+            }
+        });
+    }
 }
 
 function exportAllData() {
-  const startDate = document.getElementById('start-date').value;
-  const endDate = document.getElementById('end-date').value;
-  window.location.href = `/api/export/all?startDate=${startDate}&endDate=${endDate}`;
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    window.location.href = `/api/export/all?startDate=${startDate}&endDate=${endDate}`;
 }
 
 loadData();
-window.addEventListener('beforeunload', () => { if (autoRefreshInterval) clearInterval(autoRefreshInterval); });
+window.addEventListener('beforeunload', () => {
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+});
 </script>
 </body>
 </html>
