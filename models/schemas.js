@@ -38,7 +38,7 @@ const DieselConsumptionSchema = new mongoose.Schema({
 });
 
 // ✅ Define indexes explicitly
-DieselConsumptionSchema.index({ date: 1, timestamp: 1 }, { name: 'date_timestamp_idx' });
+DieselConsumptionSchema.index({ date: 1, timestamp: -1 }, { name: 'date_timestamp_idx' });
 DieselConsumptionSchema.index({ timestamp: -1 }, { name: 'timestamp_desc_idx' });
 
 // ========================================

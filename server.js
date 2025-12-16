@@ -15,12 +15,15 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const os = require('os'); 
 
+
 // Import modules
 const { connectMongoDB, isMongoConnected } = require('./config/database');
 const { connectToPLC, closePLC } = require('./services/plcService');
 const { startScheduledTasks } = require('./services/schedulerService');
 const apiRoutes = require('./routes/api');
 const { initializeEmail } = require('./services/emailService');
+const rateLimit = require('express-rate-limit');
+
 
 // -------------------- Config --------------------
 // ✅ Uses .env PORT (3005) or defaults to 3005
@@ -89,6 +92,13 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ UNHANDLED REJECTION:', reason);
 });
+
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 100 // 100 requests per minute
+});
+
+app.use('/api/', apiLimiter);
 
 // -------------------- Helper: Get Local IP --------------------
 function getLocalIP() {

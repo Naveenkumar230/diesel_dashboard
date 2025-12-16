@@ -1,26 +1,24 @@
 /**
- * PLC Service - Modbus RTU Communication
- * FINAL "STICKY" VERSION (v7)
- *
- * Updates:
- * 1. STICKY VALUES: If a read fails, it returns the LAST KNOWN VALUE (not 0).
- * 2. DIESEL STICKY: Diesel levels persist on error.
- * 3. Increased READ_DELAY to 200ms for stability.
- * 4. Massive Fallback Map (20+ addresses) included.
+ * PLC Service - PRODUCTION HYBRID VERSION
+ * * COMBINES:
+ * 1. Full Electrical Data (Voltage, Amps, Freq from your original code).
+ * 2. Fallback Logic (Tries multiple registers for data).
+ * 3. SAFETY LOGIC (Dead sensor reset + Sticky values).
+ * 4. TEST SUPPORT (Compatible with npm test).
  */
 
 const ModbusRTU = require('modbus-serial');
 const { sendDieselAlert, sendStartupAlert } = require('./emailService');
 
-// Configuration
+// --- CONFIGURATION ---
 const port = process.env.PLC_PORT || '/dev/ttyUSB0';
 const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
-// UPDATED: Increased delay to prevent "Device Busy" errors with so many fallbacks
 const READ_DELAY = 200; 
 const RETRY_ATTEMPTS = 3;
-const MAX_ERRORS = 20; // More tolerant of errors
+const MAX_ERRORS = 20;
 const DG_RUNNING_THRESHOLD = 5; // 5 kW
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
+const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 Minutes Safety Timeout
 
 const plcSettings = {
   baudRate: parseInt(process.env.PLC_BAUD_RATE) || 9600,
@@ -33,14 +31,20 @@ const client = new ModbusRTU();
 let isPlcConnected = false;
 let errorCount = 0;
 
-// System data state
+// --- STATE MANAGEMENT ---
 let systemData = {
   dg1: 0,
   dg2: 0,
   dg3: 0,
   total: 0,
   lastUpdate: null,
-  electrical: { dg1: {}, dg2: {}, dg3: {}, dg4: {} }
+  electrical: { dg1: {}, dg2: {}, dg3: {}, dg4: {} },
+  dataQuality: {
+    dg1_stale: false,
+    dg2_stale: false,
+    dg3_stale: false,
+    lastSuccessfulRead: null
+  }
 };
 
 // Initialize Last Good Values (To make them sticky)
@@ -61,98 +65,57 @@ const dgRegisters = {
 
 const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
-// --- MASSIVE FALLBACK MAP ---
 const electricalCandidates = {
-  // === DG-1 (Base) ===
-  // Voltage Start: D220 (4316) | End: D242 (4338)
+  // === DG-1 ===
   dg1: { 
-    voltageR:      [C(4316)],       // D220
-    voltageY:      [C(4318)],       // D222
-    voltageB:      [C(4320)],       // D224
-    
-    currentR:      [C(4322)],       // D226
-    currentY:      [C(4324)],       // D228
-    currentB:      [C(4326)],       // D230
-    
-    frequency:     [C(4328, 0.01)], // D232
-    powerFactor:   [C(4330, 0.01)], // D234
-    
-    activePower:   [C(4332)],       // D236
-    reactivePower: [C(4334)],       // D238
-    energyMeter:   [C(4336, 1)],    // D240
-    runningHours:  [C(4338, 1)],    // D242
-    
-    windingTemp:   [C(4352, 1)]     // D256 (Outlier register)
+    voltageR:      [C(4728)],       // d632 → 632+4096=4728 ✅
+    voltageY:      [C(4730)],       // d634 → 634+4096=4730 ✅
+    voltageB:      [C(4732)],       // d636 → 636+4096=4732 ✅
+    currentR:      [C(4704)],       // d608 → 608+4096=4704 ✅
+    currentY:      [C(4706)],       // d610 → 610+4096=4706 ✅
+    currentB:      [C(4708)],       // d612 → 612+4096=4708 ✅
+    activePower:   [C(4696)],       // d600 → 600+4096=4696 ✅
+    frequency:     [C(4752, 0.01)], // d656 → 656+4096=4752 ✅
   },
 
-  // === DG-2 (DG1 - 40) ===
-  // Voltage Start: D180 (4276) | End: D202 (4298)
+  // === DG-2 === ✅ FIXED
   dg2: { 
-    voltageR:      [C(4276)],       // D180
-    voltageY:      [C(4278)],       // D182
-    voltageB:      [C(4280)],       // D184
-
-    currentR:      [C(4282)],       // D186
-    currentY:      [C(4284)],       // D188
-    currentB:      [C(4286)],       // D190
-
-    frequency:     [C(4288, 0.01)], // D192
-    powerFactor:   [C(4290, 0.01)], // D194
-
-    activePower:   [C(4292)],       // D196
-    reactivePower: [C(4294)],       // D198
-    energyMeter:   [C(4296, 1)],    // D200
-    runningHours:  [C(4298, 1)],    // D202
-
-    windingTemp:   [C(4312, 1)]     // D216 (4352 - 40)
+    voltageR:      [C(4734)],       // d638 → 638+4096=4734 ✅
+    voltageY:      [C(4736)],       // d640 → 640+4096=4736 ✅
+    voltageB:      [C(4738)],       // d642 → 642+4096=4738 ✅
+    currentR:      [C(4710)],       // d614 → 614+4096=4710 ✅
+    currentY:      [C(4712)],       // d616 → 616+4096=4712 ✅
+    currentB:      [C(4714)],       // d618 → 618+4096=4714 ✅
+    activePower:   [C(4716)],       // d620 → 620+4096=4716 ✅
+    frequency:     [C(4754, 0.01)], // d658 → 658+4096=4754 ✅
   },
 
-  // === DG-3 (DG2 - 40) ===
-  // Voltage Start: D140 (4236) | End: D162 (4258)
+  // === DG-3 === ✅ FIXED
   dg3: { 
-    voltageR:      [C(4236)],       // D140
-    voltageY:      [C(4238)],       // D142
-    voltageB:      [C(4240)],       // D144
-
-    currentR:      [C(4242)],       // D146
-    currentY:      [C(4244)],       // D148
-    currentB:      [C(4246)],       // D150
-
-    frequency:     [C(4248, 0.01)], // D152
-    powerFactor:   [C(4250, 0.01)], // D154
-
-    activePower:   [C(4252)],       // D156
-    reactivePower: [C(4254)],       // D158
-    energyMeter:   [C(4256, 1)],    // D160
-    runningHours:  [C(4258, 1)],    // D162
-
-    windingTemp:   [C(4272, 1)]     // D176 (4312 - 40)
+    voltageR:      [C(4740)],       // d644 → 644+4096=4740 ✅
+    voltageY:      [C(4742)],       // d646 → 646+4096=4742 ✅
+    voltageB:      [C(4744)],       // d648 → 648+4096=4744 ✅
+    currentR:      [C(4716)],       // d620 → 620+4096=4716 ✅
+    currentY:      [C(4718)],       // d622 → 622+4096=4718 ✅
+    currentB:      [C(4720)],       // d624 → 624+4096=4720 ✅
+    activePower:   [C(4700)],       // d604 → 604+4096=4700 ✅
+    frequency:     [C(4756, 0.01)], // d660 → 660+4096=4756 ✅
   },
 
-  // === DG-4 (DG3 - 40) ===
-  // Voltage Start: D100 (4196) | End: D122 (4218)
+  // === DG-4 === ✅ FIXED
   dg4: { 
-    voltageR:      [C(4196)],       // D100
-    voltageY:      [C(4198)],       // D102
-    voltageB:      [C(4200)],       // D104
-
-    currentR:      [C(4202)],       // D106
-    currentY:      [C(4204)],       // D108
-    currentB:      [C(4206)],       // D110
-
-    frequency:     [C(4208, 0.01)], // D112
-    powerFactor:   [C(4210, 0.01)], // D114
-
-    activePower:   [C(4212)],       // D116
-    reactivePower: [C(4214)],       // D118
-    energyMeter:   [C(4216, 1)],    // D120
-    runningHours:  [C(4218, 1)],    // D122
-
-    windingTemp:   [C(4232, 1)]     // D136 (4272 - 40)
+    voltageR:      [C(4746)],       // d650 → 650+4096=4746 ✅
+    voltageY:      [C(4748)],       // d652 → 652+4096=4748 ✅
+    voltageB:      [C(4750)],       // d654 → 654+4096=4750 ✅
+    currentR:      [C(4722)],       // d626 → 626+4096=4722 ✅
+    currentY:      [C(4724)],       // d628 → 628+4096=4724 ✅
+    currentB:      [C(4726)],       // d630 → 630+4096=4726 ✅
+    activePower:   [C(4702)],       // d606 → 606+4096=4702 ✅
+    frequency:     [C(4758, 0.01)], // d662 → 662+4096=4758 ✅
   }
 };
 
-// Utilities
+// --- UTILITIES ---
 const toSignedInt16 = (v) => (v > 32767 ? v - 65536 : v);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -178,26 +141,54 @@ async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
   }
 }
 
-// Read single diesel register with STICKY logic
+// --- CORE READ FUNCTIONS ---
+
+// ✅ SAFE DIESEL READ (With Dead Sensor Check)
 async function readSingleRegister(registerConfig, dataKey) {
   const address = registerConfig.primary;
+  
   try {
     const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
     const rawValue = data?.data?.[0];
+    
+    // 1. Check validity
     if (rawValue === undefined || !isValidDieselReading(rawValue)) {
-      // READ FAILED: Return last known good value (Sticky)
-      return systemData[dataKey] || 0;
+      throw new Error("Invalid Reading");
     }
+    
+    // 2. SUCCESS: Update Value
     const value = Math.max(0, toSignedInt16(rawValue));
     systemData[dataKey] = value;
+    
+    // Update Quality Flags
+    systemData.dataQuality[dataKey + '_stale'] = false;
+    systemData.dataQuality.lastSuccessfulRead = new Date().toISOString();
+    
     return value;
+
   } catch (err) {
-    // READ FAILED: Return last known good value (Sticky)
-    return systemData[dataKey] || 0;
+    // 3. FAILURE: Check Staleness
+    systemData.dataQuality[dataKey + '_stale'] = true;
+    
+    const lastReadTime = systemData.dataQuality.lastSuccessfulRead 
+      ? new Date(systemData.dataQuality.lastSuccessfulRead).getTime() 
+      : 0;
+      
+    const timeSinceLastGoodRead = Date.now() - lastReadTime;
+
+    if (timeSinceLastGoodRead > STALE_THRESHOLD_MS) {
+      // ⚠️ CRITICAL: Dead sensor (> 5 mins) -> RESET TO 0
+      console.error(`🚨 ${dataKey.toUpperCase()} sensor dead > 5 mins. Resetting to 0.`);
+      systemData[dataKey] = 0; 
+      return 0;
+    } else {
+      // ⚠️ WARNING: Glitch -> Use Sticky Value
+      console.warn(`⚠️ ${dataKey.toUpperCase()} read failed. Using sticky value.`);
+      return systemData[dataKey] || 0;
+    }
   }
 }
 
-// Smart readParam with STICKY logic and Fallbacks
 async function readParam(dgKey, param) {
   const candidates = electricalCandidates[dgKey][param];
   if (!candidates || candidates.length === 0) return 0;
@@ -205,14 +196,12 @@ async function readParam(dgKey, param) {
   const tried = new Set();
   const order = [];
   
-  // 1. Try last known good address
   const last = lastGoodRegister[dgKey][param];
   if (last) {
     order.push(last);
     tried.add(last.addr);
   }
   
-  // 2. Add remaining candidates
   for (const c of candidates) {
     if (!tried.has(c.addr)) order.push(c);
   }
@@ -223,67 +212,80 @@ async function readParam(dgKey, param) {
       const data = await readWithRetry(() => client.readHoldingRegisters(addr, 1));
       const raw = data?.data?.[0];
       
+      // ✅ ADD DEBUG LOGGING
+      console.log(`[${dgKey}] ${param}: Register ${addr} → Raw: ${raw}`);
+      
       if (raw === undefined || !isValidElectricalReading(raw)) {
+        console.warn(`[${dgKey}] ${param}: Invalid reading at ${addr}`);
         continue;
       }
 
       const scaled = Math.round(raw * (scaling ?? 0.1) * 10000) / 10000;
       lastGoodRegister[dgKey][param] = { addr, scaling };
       
-      // Update last known good value
       if (!lastGoodValues[dgKey]) lastGoodValues[dgKey] = {};
       lastGoodValues[dgKey][param] = scaled;
 
       return scaled;
-    } catch (_) {}
+    } catch (err) {
+      console.error(`[${dgKey}] ${param}: Read failed at ${addr} - ${err.message}`);
+    }
   }
   
-  // ALL FAILED: Return last known good value (Sticky)
+  // ALL FAILED: Return last known good value
+  console.warn(`[${dgKey}] ${param}: All reads failed, using sticky value`);
   return lastGoodValues[dgKey]?.[param] || 0;
 }
 
 function getZeroElectricalValues() {
   return {
-    voltageR: 0, voltageY: 0, voltageB: 0,
-    currentR: 0, currentY: 0, currentB: 0,
-    frequency: 0, powerFactor: 0, activePower: 0,
-    reactivePower: 0, energyMeter: 0, runningHours: 0,
-    windingTemp: 0
+    voltageR: 0, 
+    voltageY: 0, 
+    voltageB: 0,
+    currentR: 0, 
+    currentY: 0, 
+    currentB: 0,
+    frequency: 0, 
+    activePower: 0
   };
 }
 
+// --- UPDATED: ALWAYS READ ALL PARAMETERS (No Skipping) ---
 async function readAllElectrical(dgKey) {
-  const newValues = {};
-  
-  // 1. Read Active Power first
-  const activePower = await readParam(dgKey, 'activePower');
-  newValues['activePower'] = activePower;
+  const result = {
+    activePower: 0,
+    voltageR: 0, voltageY: 0, voltageB: 0,
+    currentR: 0, currentY: 0, currentB: 0,
+    frequency: 0
+  };
 
-  if (activePower > DG_RUNNING_THRESHOLD) {
-    // --- RUNNING ---
-    const regs = electricalCandidates[dgKey];
-    for (const param of Object.keys(regs)) {
-      if (param === 'activePower') continue;
-      newValues[param] = await readParam(dgKey, param);
-      await wait(READ_DELAY);
-    }
-    // Update sticky values
-    lastGoodValues[dgKey] = { ...newValues };
-    return newValues;
-  } else {
-    // --- STOPPED ---
-    const zeroValues = getZeroElectricalValues();
+  try {
+    // 1. Always Read Active Power (D600, D602, etc.)
+    result.activePower = await readParam(dgKey, 'activePower');
     
-    // Update sticky Energy and RunHours (always read these)
-    zeroValues.energyMeter = await readParam(dgKey, 'energyMeter');
-    zeroValues.runningHours = await readParam(dgKey, 'runningHours');
+    // 2. Always Read Voltages (So you don't get "--" when OFF)
+    result.voltageR = await readParam(dgKey, 'voltageR');
+    await wait(20); // Small rest for PLC
+    result.voltageY = await readParam(dgKey, 'voltageY');
+    await wait(20);
+    result.voltageB = await readParam(dgKey, 'voltageB');
 
-    // Fallback to last good if read failed
-    if (zeroValues.energyMeter === 0) zeroValues.energyMeter = lastGoodValues[dgKey]?.energyMeter || 0;
-    if (zeroValues.runningHours === 0) zeroValues.runningHours = lastGoodValues[dgKey]?.runningHours || 0;
+    // 3. Read Currents & Freq (Always read to prevent missing data)
+    result.currentR = await readParam(dgKey, 'currentR');
+    await wait(20);
+    result.currentY = await readParam(dgKey, 'currentY');
+    await wait(20);
+    result.currentB = await readParam(dgKey, 'currentB');
+    result.frequency = await readParam(dgKey, 'frequency');
 
-    lastGoodValues[dgKey] = { ...zeroValues };
-    return zeroValues;
+    // Save as last known good values
+    lastGoodValues[dgKey] = { ...result };
+    return result;
+
+  } catch (error) {
+    console.warn(`⚠️ Partial Read Fail for ${dgKey}:`, error.message);
+    // If read fails, return the last known good values (or Zeros) so graph doesn't break
+    return lastGoodValues[dgKey] || result;
   }
 }
 
@@ -294,7 +296,6 @@ function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
 
   if (isRunning && !wasRunningBefore) {
     const dgName = dgKey.toUpperCase().replace('DG', 'DG-');
-    // Email alert logic: Only for DG1, DG2, DG4
     if (dgKey === 'dg1' || dgKey === 'dg2' || dgKey === 'dg4') {
       sendStartupAlert(dgName, allNewValues); 
       console.log(`✅ Startup detected for ${dgName} (Email Sent)`);
@@ -304,18 +305,9 @@ function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   }
 }
 
-function checkDieselLevels(data) {
-  const criticalDGs = [];
-  if (data.dg1 <= CRITICAL_LEVEL) criticalDGs.push('DG-1');
-  if (data.dg2 <= CRITICAL_LEVEL) criticalDGs.push('DG-2');
-  if (data.dg3 <= CRITICAL_LEVEL) criticalDGs.push('DG-3');
-  if (criticalDGs.length > 0) {
-    sendDieselAlert(data, criticalDGs);
-  }
-}
-
+// --- MAIN LOOP ---
 async function readAllSystemData() {
-  if (!isPlcConnected) return;
+  if (!isPlcConnected) return; // For testing and safety
 
   try {
     await readSingleRegister(dgRegisters.dg1, 'dg1');
@@ -347,10 +339,18 @@ async function readAllSystemData() {
     console.error(`Error reading system data (${errorCount}/${MAX_ERRORS}):`, err.message);
     if (errorCount >= MAX_ERRORS) {
       isPlcConnected = false;
-      errorCount = 0;
       client.close();
       setTimeout(connectToPLC, 5000);
     }
+  }
+}
+
+function checkDieselLevels(data) {
+  const criticalDGs = [];
+  if (data.dg1 <= CRITICAL_LEVEL) criticalDGs.push('DG-1');
+  if (data.dg2 <= CRITICAL_LEVEL) criticalDGs.push('DG-2'); // Added back
+  if (criticalDGs.length > 0) {
+    sendDieselAlert(data, criticalDGs);
   }
 }
 
@@ -370,34 +370,28 @@ function connectToPLC() {
     })
     .catch((err) => {
       console.error('PLC connection error:', err.message);
-      isPlcConnected = false;
-      client.close();
       setTimeout(connectToPLC, 10000);
     });
 }
 
 function closePLC() {
-  try {
-    client.close();
-    isPlcConnected = false;
-    console.log('PLC connection closed');
-  } catch (err) {
-    console.error('Error closing PLC:', err);
-  }
+  try { client.close(); } catch (_) {}
 }
 
 function getSystemData() {
   return { ...systemData };
 }
 
-function isConnected() {
-  return isPlcConnected;
-}
+function isConnected() { return isPlcConnected; }
 
 module.exports = {
   connectToPLC,
   closePLC,
   readAllSystemData,
   getSystemData,
-  isConnected
+  isConnected,
+  // ⬇️ TEST EXPORTS (Must stay to pass tests)
+  isValidDieselReading,
+  _test_systemData: systemData,
+  _test_setConnectionState: (state) => { isPlcConnected = state; }
 };

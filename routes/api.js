@@ -1,10 +1,7 @@
 /**
- * API Routes - FIXED VERSION
- * KEY FIXES:
- * 1. Proper data structure for consumption endpoint
- * 2. Better error handling for electrical endpoint
- * 3. Removed caching that was causing stale data
- * 4. Added proper logging
+ * API Routes - SYNCED VERSION
+ * KEY FIX: Merges Historical DB Data + Live PLC Data
+ * Result: Graph "End Level" matches Dashboard "Current Level" perfectly.
  */
 
 const express = require('express');
@@ -56,96 +53,280 @@ router.get('/data', (req, res) => {
     }
 });
 
-// ✅ FIXED: Consumption endpoint with proper structure
+// ✅ FIXED: Consumption endpoint that merges DB + Live Data
+// =================================================================
+// 📡 CONSUMPTION API - PRODUCTION READY WITH COMPREHENSIVE VALIDATION
+// =================================================================
+
 router.get('/consumption', async (req, res) => {
     try {
         const { dg, startDate, endDate } = req.query;
         
+        // ========================================
+        // ✅ STEP 1: VALIDATE REQUEST PARAMETERS
+        // ========================================
         if (!startDate || !endDate) {
-            return res.status(400).json({ success: false, error: 'Dates required' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Both startDate and endDate are required',
+                example: '/api/consumption?dg=dg1&startDate=2025-12-01&endDate=2025-12-03'
+            });
         }
 
+        // ========================================
+        // ✅ STEP 2: VALIDATE DATE FORMATS
+        // ========================================
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        console.log(`📊 Consumption query: ${dg || 'total'} from ${startDate} to ${endDate}`);
+        // Check if dates are valid
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid date format. Use YYYY-MM-DD format',
+                received: { startDate, endDate }
+            });
+        }
 
-        // Query database
-        const records = await DieselConsumption.find({
-            timestamp: { $gte: start, $lte: end }
-        })
-        .sort({ timestamp: 1 })
-        .lean();
+        // ========================================
+        // ✅ STEP 3: VALIDATE DATE RANGE
+        // ========================================
+        if (start > end) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Start date must be before or equal to end date',
+                received: { 
+                    startDate: start.toISOString().split('T')[0], 
+                    endDate: end.toISOString().split('T')[0] 
+                }
+            });
+        }
 
-        console.log(`📦 Found ${records.length} consumption records`);
+        // ========================================
+        // ✅ STEP 4: VALIDATE DATE RANGE SIZE (Prevent DB overload)
+        // ========================================
+        const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        const MAX_DAYS = 90; // 3 months maximum
+        
+        if (daysDiff > MAX_DAYS) {
+            return res.status(400).json({ 
+                success: false, 
+                error: `Date range too large. Maximum ${MAX_DAYS} days allowed`,
+                requested: daysDiff,
+                suggestion: 'Break your query into smaller date ranges'
+            });
+        }
 
-        // ✅ FIX: Return proper structure based on DG selection
+        // ========================================
+        // ✅ STEP 5: VALIDATE DG PARAMETER (if provided)
+        // ========================================
+        const validDGs = ['dg1', 'dg2', 'dg3', 'total'];
+        if (dg && !validDGs.includes(dg)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid DG parameter',
+                validOptions: validDGs,
+                received: dg
+            });
+        }
+
+        // ========================================
+        // ✅ STEP 6: FETCH HISTORICAL DATA FROM DATABASE
+        // ========================================
+        let records = [];
+        try {
+            records = await DieselConsumption.find({
+                timestamp: { $gte: start, $lte: end }
+            })
+            .sort({ timestamp: 1 })
+            .limit(10000) // Safety limit
+            .lean()
+            .maxTimeMS(15000); // 15 second timeout
+        } catch (dbError) {
+            console.error('❌ Database query error:', dbError.message);
+            return res.status(500).json({ 
+                success: false, 
+                error: 'Database query failed',
+                details: dbError.message
+            });
+        }
+
+        // ========================================
+        // ✅ STEP 7: FORMAT HISTORICAL DATA
+        // ========================================
         let responseData = [];
 
         if (!dg || dg === 'total') {
-            // Return all DG data for total view
             responseData = records.map(r => ({
                 timestamp: r.timestamp,
                 date: r.date,
-                dg1: {
-                    level: r.dg1?.level || 0,
-                    consumption: r.dg1?.consumption || 0,
-                    isRunning: r.dg1?.isRunning || false
-                },
-                dg2: {
-                    level: r.dg2?.level || 0,
-                    consumption: r.dg2?.consumption || 0,
-                    isRunning: r.dg2?.isRunning || false
-                },
-                dg3: {
-                    level: r.dg3?.level || 0,
-                    consumption: r.dg3?.consumption || 0,
-                    isRunning: r.dg3?.isRunning || false
-                },
-                total: {
-                    level: r.total?.level || 0,
-                    consumption: r.total?.consumption || 0
-                }
+                dg1: r.dg1, 
+                dg2: r.dg2, 
+                dg3: r.dg3, 
+                total: r.total
             }));
         } else {
-            // Return specific DG data
             responseData = records.map(r => ({
                 timestamp: r.timestamp,
                 date: r.date,
                 level: r[dg]?.level || 0,
                 consumption: r[dg]?.consumption || 0,
                 isRunning: r[dg]?.isRunning || false,
-                // Include other DGs for context in frontend processing
-                dg1: r.dg1,
-                dg2: r.dg2,
-                dg3: r.dg3,
+                dg1: r.dg1, 
+                dg2: r.dg2, 
+                dg3: r.dg3, 
                 total: r.total
             }));
         }
 
-        // If today and no data, return live data
-        const today = new Date().toISOString().split('T')[0];
-        if (responseData.length === 0 && startDate === today && endDate === today) {
-            const liveData = getSystemData();
-            console.log('📡 No historical data, returning live data');
-            return res.json({ 
-                success: true, 
-                data: [], 
-                liveData: liveData 
-            });
+        // =========================================================
+        // ✅ STEP 8: APPEND LIVE DATA IF TODAY IS INCLUDED
+        // This ensures graphs connect historical data to current levels
+        // =========================================================
+        const todayStr = new Date().toISOString().split('T')[0];
+        const isTodayIncluded = (endDate >= todayStr);
+
+        if (isTodayIncluded) {
+            try {
+                const liveData = getSystemData();
+                
+                // Only append if we have valid live data
+                if (liveData && liveData.lastUpdate) {
+                    // Check if the last DB record is duplicate (same minute) to avoid double dots
+                    const lastRecordTime = responseData.length > 0 
+                        ? new Date(responseData[responseData.length - 1].timestamp).getTime() 
+                        : 0;
+                    const liveTime = new Date().getTime();
+
+                    // If live data is newer than last DB record by at least 1 second
+                    if (liveTime > lastRecordTime + 1000) {
+                        let liveEntry = {};
+
+                        if (!dg || dg === 'total') {
+                            liveEntry = {
+                                timestamp: new Date(), // Current Time
+                                date: todayStr,
+                                dg1: liveData.dg1 || 0,
+                                dg2: liveData.dg2 || 0,
+                                dg3: liveData.dg3 || 0,
+                                total: liveData.total || 0,
+                                // ✅ ADD DATA QUALITY INFO
+                                isLive: true,
+                                dataQuality: liveData.dataQuality
+                            };
+                        } else {
+                            liveEntry = {
+                                timestamp: new Date(), // Current Time
+                                date: todayStr,
+                                level: liveData[dg] || 0,
+                                consumption: 0, // Live data doesn't have calculated consumption yet
+                                isRunning: (liveData.electrical?.[dg]?.activePower || 0) > 5,
+                                dg1: liveData.dg1 || 0,
+                                dg2: liveData.dg2 || 0,
+                                dg3: liveData.dg3 || 0,
+                                total: liveData.total || 0,
+                                // ✅ ADD DATA QUALITY INFO
+                                isLive: true,
+                                dataQuality: liveData.dataQuality
+                            };
+                        }
+                        
+                        responseData.push(liveEntry);
+                    }
+                }
+            } catch (liveDataError) {
+                console.error('⚠️ Failed to append live data:', liveDataError.message);
+                // Continue without live data (not critical)
+            }
         }
-        
-        res.json({ success: true, data: responseData });
+
+        // ========================================
+        // ✅ STEP 9: RETURN SUCCESS RESPONSE
+        // ========================================
+        return res.json({ 
+            success: true, 
+            data: responseData,
+            metadata: {
+                totalRecords: responseData.length,
+                dateRange: {
+                    start: start.toISOString().split('T')[0],
+                    end: end.toISOString().split('T')[0],
+                    days: daysDiff
+                },
+                dg: dg || 'total',
+                includesLiveData: isTodayIncluded
+            }
+        });
 
     } catch (err) {
         console.error('❌ Consumption API Error:', err.message);
-        res.status(500).json({ success: false, error: err.message });
+        console.error('Stack:', err.stack);
+        
+        return res.status(500).json({ 
+            success: false, 
+            error: 'Internal server error',
+            message: err.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
-// ✅ FIXED: Electrical endpoint without problematic caching
+router.get('/health', (req, res) => {
+    const { isConnected } = require('../services/plcService');
+    const mongoose = require('mongoose');
+    
+    const health = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        services: {
+            mongodb: {
+                status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+                readyState: mongoose.connection.readyState,
+                // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+                host: mongoose.connection.host || 'unknown'
+            },
+            plc: {
+                status: isConnected() ? 'connected' : 'disconnected'
+            }
+        },
+        uptime: {
+            seconds: process.uptime(),
+            formatted: formatUptime(process.uptime())
+        },
+        memory: {
+            used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+            total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`
+        }
+    };
+    
+    // Set HTTP status based on critical services
+    const httpStatus = (health.services.mongodb.status === 'connected' && 
+                       health.services.plc.status === 'connected') ? 200 : 503;
+    
+    res.status(httpStatus).json(health);
+});
+
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${days}d ${hours}h ${minutes}m`;
+}
+
+// In api.js:
+router.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        plc: isConnected() ? 'connected' : 'disconnected',
+        uptime: process.uptime()
+    });
+});
+
+
+// ✅ FIXED: Electrical endpoint (Robust error handling)
 router.get('/electrical/:dg', async (req, res) => {
     try {
         const { dg } = req.params;
@@ -155,36 +336,23 @@ router.get('/electrical/:dg', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid DG' });
         }
 
-        if (!startDate || !endDate) {
-            return res.status(400).json({ success: false, error: 'Dates required' });
-        }
-
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        console.log(`⚡ Electrical query: ${dg} from ${startDate} to ${endDate}`);
-
-        const today = new Date().toISOString().split('T')[0];
-        const isToday = startDate === today && endDate === today;
-
-        // Query with timeout
         let records = await ElectricalReading.find({
             dg: dg,
             timestamp: { $gte: start, $lte: end }
         })
         .sort({ timestamp: 1 })
-        .limit(200) // Prevent huge payloads
+        .limit(200)
         .lean()
-        .maxTimeMS(8000); // 8 second timeout
+        .maxTimeMS(8000);
 
-        console.log(`📦 Found ${records.length} electrical records for ${dg}`);
-
-        // If no data today, try to get last known values from yesterday
-        if (records.length === 0 && isToday) {
-            console.log(`🔍 No data today for ${dg}, checking yesterday...`);
-            
+        // Fallback: Check yesterday if today is empty
+        const today = new Date().toISOString().split('T')[0];
+        if (records.length === 0 && startDate === today && endDate === today) {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             yesterday.setHours(0, 0, 0, 0);
@@ -197,31 +365,21 @@ router.get('/electrical/:dg', async (req, res) => {
             })
             .sort({ timestamp: -1 })
             .limit(1)
-            .lean()
-            .maxTimeMS(5000);
+            .lean();
 
-            if (yesterdayRecords.length > 0) {
-                console.log(`✅ Found yesterday's last record for ${dg}`);
-                records = yesterdayRecords;
-            }
+            if (yesterdayRecords.length > 0) records = yesterdayRecords;
         }
 
         return res.json({ success: true, data: records });
 
     } catch (err) {
         console.error(`❌ Electrical API Error [${req.params.dg}]:`, err.message);
-        
-        // Return empty array instead of error to prevent frontend crash
-        return res.json({ 
-            success: true, 
-            data: [],
-            warning: 'Database query failed, showing empty data' 
-        });
+        return res.json({ success: true, data: [], warning: 'Database error' });
     }
 });
 
 // =================================================================
-// 📥 EXCEL EXPORT ROUTES (Unchanged - working fine)
+// 📥 EXCEL EXPORT ROUTES (Kept same as working version)
 // =================================================================
 
 router.get('/export/consumption', async (req, res) => {
@@ -239,17 +397,14 @@ router.get('/export/consumption', async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Consumption');
 
-        await setupExcelSheet(workbook, worksheet, 
-            `Aquarelle India - ${dg.toUpperCase()} Consumption`);
+        await setupExcelSheet(workbook, worksheet, `Aquarelle India - ${dg.toUpperCase()} Consumption`);
 
-        worksheet.addRow(['Timestamp', 'Level (L)', 'Consumed (L)', 
-                         'Refilled (L)', 'Running', 'Notes']);
+        worksheet.addRow(['Timestamp', 'Level (L)', 'Consumed (L)', 'Refilled (L)', 'Running', 'Notes']);
         
         const headerRow = worksheet.lastRow;
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         headerRow.eachCell(cell => {
-            cell.fill = { type: 'pattern', pattern: 'solid', 
-                         fgColor: { argb: 'FF0052CC' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } };
         });
 
         let previousLevel = null;
@@ -262,7 +417,6 @@ router.get('/export/consumption', async (req, res) => {
 
             if (previousLevel !== null) {
                 const diff = currentLevel - previousLevel;
-                
                 if (diff > REFILL_THRESHOLD) {
                     refilled = diff;
                     notes = 'REFILL';
@@ -283,15 +437,10 @@ router.get('/export/consumption', async (req, res) => {
             previousLevel = currentLevel;
         });
 
-        worksheet.columns = [
-            { width: 25 }, { width: 15 }, { width: 15 }, 
-            { width: 15 }, { width: 10 }, { width: 20 }
-        ];
+        worksheet.columns = [{ width: 25 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 10 }, { width: 20 }];
 
-        res.setHeader('Content-Type', 
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 
-            `attachment; filename="Aquarelle_India_${dg}_Consumption.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Aquarelle_India_${dg}_Consumption.xlsx"`);
         await workbook.xlsx.write(res);
         res.end();
 
@@ -311,26 +460,19 @@ router.get('/export/electrical/:dg', async (req, res) => {
         end.setHours(23, 59, 59, 999);
 
         const records = await ElectricalReading.find({
-            dg: dg, 
-            timestamp: { $gte: start, $lte: end }
+            dg: dg, timestamp: { $gte: start, $lte: end }
         }).sort({ timestamp: 1 }).lean();
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Electrical');
 
-        await setupExcelSheet(workbook, worksheet, 
-            `Aquarelle India - ${dg.toUpperCase()} Electrical Details`);
+        await setupExcelSheet(workbook, worksheet, `Aquarelle India - ${dg.toUpperCase()} Electrical Details`);
 
-        worksheet.addRow(['Timestamp', 'Volt R', 'Volt Y', 'Volt B', 
-                         'Amp R', 'Amp Y', 'Amp B', 'Freq', 'PF', 
-                         'kW', 'kVAR', 'kWh', 'Run Hrs']);
+        worksheet.addRow(['Timestamp', 'Volt R', 'Volt Y', 'Volt B', 'Amp R', 'Amp Y', 'Amp B', 'Freq', 'PF', 'kW', 'kVAR', 'kWh', 'Run Hrs']);
         
         const headerRow = worksheet.lastRow;
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        headerRow.eachCell(cell => cell.fill = { 
-            type: 'pattern', pattern: 'solid', 
-            fgColor: { argb: 'FF00875A' } 
-        });
+        headerRow.eachCell(cell => cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00875A' } });
 
         records.forEach(r => {
             worksheet.addRow([
@@ -345,10 +487,8 @@ router.get('/export/electrical/:dg', async (req, res) => {
         worksheet.columns.forEach(column => { column.width = 12; });
         worksheet.getColumn(1).width = 25;
 
-        res.setHeader('Content-Type', 
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 
-            `attachment; filename="Aquarelle_India_${dg}_Electrical.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Aquarelle_India_${dg}_Electrical.xlsx"`);
         await workbook.xlsx.write(res);
         res.end();
 
@@ -373,23 +513,13 @@ router.get('/export/all', async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Total Report');
 
-        await setupExcelSheet(workbook, worksheet, 
-            `Aquarelle India - Complete DG Report`);
+        await setupExcelSheet(workbook, worksheet, `Aquarelle India - Complete DG Report`);
 
-        worksheet.addRow([
-            'Timestamp', 
-            'DG1 Lvl', 'DG1 Used', 'DG1 Refill', 
-            'DG2 Lvl', 'DG2 Used', 'DG2 Refill', 
-            'DG3 Lvl', 'DG3 Used', 'DG3 Refill', 
-            'Total Lvl', 'Total Used'
-        ]);
+        worksheet.addRow(['Timestamp', 'DG1 Lvl', 'DG1 Used', 'DG1 Refill', 'DG2 Lvl', 'DG2 Used', 'DG2 Refill', 'DG3 Lvl', 'DG3 Used', 'DG3 Refill', 'Total Lvl', 'Total Used']);
         
         const headerRow = worksheet.lastRow;
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        headerRow.eachCell(cell => cell.fill = { 
-            type: 'pattern', pattern: 'solid', 
-            fgColor: { argb: 'FFDE350B' } 
-        });
+        headerRow.eachCell(cell => cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDE350B' } });
 
         let previousLevels = { dg1: null, dg2: null, dg3: null };
 
@@ -404,7 +534,6 @@ router.get('/export/all', async (req, res) => {
 
                 if (previousLevels[dg] !== null) {
                     const diff = current - previousLevels[dg];
-                    
                     if (diff > REFILL_THRESHOLD) {
                         refilled = diff;
                     } else if (diff < -NOISE_THRESHOLD) {
@@ -413,11 +542,7 @@ router.get('/export/all', async (req, res) => {
                     }
                 }
 
-                rowData.push(
-                    current.toFixed(1), 
-                    consumption > 0 ? consumption.toFixed(1) : '-', 
-                    refilled > 0 ? refilled.toFixed(1) : '-'
-                );
+                rowData.push(current.toFixed(1), consumption > 0 ? consumption.toFixed(1) : '-', refilled > 0 ? refilled.toFixed(1) : '-');
                 previousLevels[dg] = current;
             });
 
@@ -430,10 +555,8 @@ router.get('/export/all', async (req, res) => {
         worksheet.columns.forEach(col => col.width = 12);
         worksheet.getColumn(1).width = 25;
 
-        res.setHeader('Content-Type', 
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 
-            `attachment; filename="Aquarelle_India_All_Data.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Aquarelle_India_All_Data.xlsx"`);
         await workbook.xlsx.write(res);
         res.end();
 
