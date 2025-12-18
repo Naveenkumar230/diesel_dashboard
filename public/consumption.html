@@ -149,7 +149,7 @@
 <script>
 // ============================================================
 // ACCURATE CONSUMPTION TRACKING
-// ✅ FIXED: Temperature expansion detection (< 10L increase)
+// ✅ FIXED: Temperature expansion detection (< 20L increase)
 // ✅ Refill threshold: 10 Liters
 // ✅ 18 Liters per hour consumption rate
 // ============================================================
@@ -159,7 +159,7 @@ let levelChart = null;
 let autoRefreshInterval = null;
 
 const CRITICAL_LEVEL = 50;
-const REFILL_THRESHOLD = 20; // ✅ CHANGED FROM 20 TO 10 LITERS
+const REFILL_THRESHOLD = 20; 
 const CONSUMPTION_PER_HOUR = 18;
 
 const urlParams = new URLSearchParams(window.location.search);

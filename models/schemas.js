@@ -11,30 +11,47 @@ const mongoose = require('mongoose');
 // ========================================
 const DieselConsumptionSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now },
+  
   dg1: {
     level: { type: Number, required: true },
     consumption: { type: Number, default: 0 },
-    isRunning: { type: Boolean, default: false }
+    isRunning: { type: Boolean, default: false },
+    // ✅ NEW FIELDS
+    adjustedForNoise: { type: Boolean, default: false }, // Was this reading normalized?
+    noiseAmount: { type: Number, default: 0 }, // How much noise was detected?
+    refillDetected: { type: Boolean, default: false } // Was refill detected?
   },
+  
   dg2: {
     level: { type: Number, required: true },
     consumption: { type: Number, default: 0 },
-    isRunning: { type: Boolean, default: false }
+    isRunning: { type: Boolean, default: false },
+    // ✅ NEW FIELDS
+    adjustedForNoise: { type: Boolean, default: false },
+    noiseAmount: { type: Number, default: 0 },
+    refillDetected: { type: Boolean, default: false }
   },
+  
   dg3: {
     level: { type: Number, required: true },
     consumption: { type: Number, default: 0 },
-    isRunning: { type: Boolean, default: false }
+    isRunning: { type: Boolean, default: false },
+    // ✅ NEW FIELDS
+    adjustedForNoise: { type: Boolean, default: false },
+    noiseAmount: { type: Number, default: 0 },
+    refillDetected: { type: Boolean, default: false }
   },
+  
   total: {
     level: { type: Number, required: true },
     consumption: { type: Number, default: 0 }
   },
+  
   date: { type: String, required: true },
   hour: { type: Number },
   minute: { type: Number }
 }, {
-  autoIndex: false // ✅ Prevent auto-indexing, we'll create indexes manually
+  autoIndex: false
 });
 
 // ✅ Define indexes explicitly
