@@ -293,7 +293,7 @@ function clearStats() {
 }
 
 // ============================================================
-// ✅ FIXED: Temperature expansion detection
+// ✅ FIXED: Temperature expansion detection & Start Level Fix
 // ============================================================
 async function processData(data, startDate, endDate) {
     const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -302,7 +302,7 @@ async function processData(data, startDate, endDate) {
     let totalConsumption = 0;
     let totalRefilled = 0;
     let refillEvents = [];
-    let temperatureEvents = []; // ✅ NEW: Track temperature expansions
+    let temperatureEvents = []; 
     
     const hourlyConsumption = {};
     const hourlyLevels = {};
@@ -335,13 +335,13 @@ async function processData(data, startDate, endDate) {
             dbConsumption = record[dgType]?.consumption || 0;
         }
 
-        // ✅ FIXED: Detect increases (refills or temperature)
+        // ✅ DETECT REFILLS & TEMPERATURE EXPANSIONS
         if (index > 0 && previousLevel !== null) {
             const diff = currentLevel - previousLevel;
             
             if (diff > 0) { // Level increased
                 if (diff >= REFILL_THRESHOLD) {
-                    // ✅ Real refill (≥10L)
+                    // ✅ Real refill (≥20L)
                     const refillAmount = diff;
                     totalRefilled += refillAmount;
                     refillEvents.push(createRefillEvent(
@@ -350,7 +350,7 @@ async function processData(data, startDate, endDate) {
                         refillAmount
                     ));
                 } else {
-                    // ✅ Temperature expansion (<10L increase)
+                    // ✅ Temperature expansion (<20L increase)
                     temperatureEvents.push({
                         timestamp: record.timestamp,
                         hour: hour,
@@ -377,11 +377,27 @@ async function processData(data, startDate, endDate) {
     });
 
     // ============================================================
-    // Calculate levels
+    // ✅ FIXED: Calculate levels (Ignore initial 0s)
     // ============================================================
-    let startLevel = cleanData.length > 0 ? cleanData[0].cleanLevel : 0;
-    let endLevel = cleanData.length > 0 ? cleanData[cleanData.length - 1].cleanLevel : 0;
+    let startLevel = 0;
+    let endLevel = 0;
 
+    if (cleanData.length > 0) {
+        // 1. Find the first record where level is greater than 0
+        const firstValidRecord = cleanData.find(d => d.cleanLevel > 0);
+        
+        // If found, use it. If not (all are 0), use the first record (0).
+        if (firstValidRecord) {
+            startLevel = firstValidRecord.cleanLevel;
+        } else {
+            startLevel = cleanData[0].cleanLevel;
+        }
+
+        // 2. Set End Level (Last record)
+        endLevel = cleanData[cleanData.length - 1].cleanLevel;
+    }
+
+    // Handle Live Data Update for Today
     const today = new Date().toISOString().split('T')[0];
     const isViewingToday = (endDate === today);
     
@@ -474,7 +490,6 @@ async function processData(data, startDate, endDate) {
 
     if (totalRefilledEl) totalRefilledEl.textContent = formatNumber(totalRefilled);
 
-    // ✅ UPDATED: Show both refills AND temperature events
     if (refillDetailsEl) {
         let detailsHTML = '';
         

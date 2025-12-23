@@ -331,52 +331,82 @@ function renderStickyStats() {
 }
 
 // ============================================================
-// ✅ FIXED processData - Correct stat calculations
+// ✅ FIXED processData - Calculates Hours STRICTLY based on Voltage
 // ============================================================
-function processData(data, startDate, endDate, runningHoursFromDiesel) {
+function processData(data, startDate, endDate) {
   const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
   document.getElementById('date-range').textContent = startStr;
 
-  // ✅ FILTER: Only use data where DG was running (Voltage > 200V)
+  // 1️⃣ FILTER: CREATE THE "RUNNING" DATASET
+  // We only care about records where Voltage R is > 200V.
+  // This is the single source of truth for "Running".
   const runningData = data.filter(r => r.voltageR > 200);
 
+  // Initialize Stats
+  let totalRunningHours = 0;
+  let totalKwh = 0;
+  let avgLoad = 0;
+  let peakKw = 0;
+
   if (runningData.length > 0) {
-      // ============================================================
-      // ✅ STAT 1: Total Running Hours (From Diesel Consumption)
-      // ============================================================
-      let totalRunningHours = runningHoursFromDiesel;
+      // 2️⃣ STAT 1: CALCULATE TIME FROM VOLTAGE RECORDS
+      // Sort data by time to be safe
+      runningData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      let totalMs = 0;
       
-      // ============================================================
-      // ✅ STAT 2: Total Energy (Sum of all Voltages V-R + V-Y + V-B)
-      // ============================================================
+      // Edge case: If we have only 1 record of voltage, assume 1 minute
+      if (runningData.length === 1) {
+          totalMs = 60000;
+      } else {
+          for (let i = 0; i < runningData.length - 1; i++) {
+              const current = new Date(runningData[i].timestamp);
+              const next = new Date(runningData[i+1].timestamp);
+              const diff = next - current;
+
+              // GAP CHECK: If the gap is less than 15 minutes, assume continuous running.
+              // If the gap is > 15 mins, assume the DG stopped and started again.
+              if (diff < 15 * 60 * 1000) { 
+                  totalMs += diff;
+              }
+          }
+          // Add 1 minute buffer for the duration of the final record
+          totalMs += 60000; 
+      }
+      
+      totalRunningHours = totalMs / (1000 * 60 * 60);
+
+      // 3️⃣ STAT 2: Total Energy (Sum of Voltages as per your logic)
       let totalVoltageSum = 0;
       runningData.forEach(r => {
           totalVoltageSum += (r.voltageR + r.voltageY + r.voltageB);
       });
-      let totalKwh = totalVoltageSum; // As per your requirement
-      
-      // ============================================================
-      // ✅ STAT 3: Average Load % (Average Current)
-      // ============================================================
+      totalKwh = totalVoltageSum; 
+
+      // 4️⃣ STAT 3: Average Load
       let totalCurrentSum = 0;
       runningData.forEach(r => {
           const avgCurrent = (r.currentR + r.currentY + r.currentB) / 3;
           totalCurrentSum += avgCurrent;
       });
-      let avgLoad = totalCurrentSum / runningData.length;
-      
-      // ============================================================
-      // ✅ STAT 4: Peak Active Power (Max kW)
-      // ============================================================
-      let peakKw = 0;
+      avgLoad = totalCurrentSum / runningData.length;
+
+      // 5️⃣ STAT 4: Peak kW
       runningData.forEach(r => {
         if (r.activePower > peakKw) peakKw = r.activePower;
       });
+  }
 
-      updateStickyStats(totalRunningHours, totalKwh, avgLoad, peakKw);
-  } 
-  
-  // ✅ GRAPH: Use ALL data (including 0s) to draw the lines
+  // Update UI
+  document.getElementById('total-hours').textContent = totalRunningHours.toFixed(2);
+  document.getElementById('total-kwh').textContent = totalKwh.toFixed(0);
+  document.getElementById('avg-load').textContent = avgLoad.toFixed(1);
+  document.getElementById('peak-kw').textContent = peakKw.toFixed(1);
+
+  // Update Sticky Values
+  updateStickyStats(totalRunningHours, totalKwh, avgLoad, peakKw);
+
+  // Update Charts (Show ALL data, even 0s, so the user sees when it stopped)
   updateSplitCharts(data); 
   updateCombinedChart(data);
 }
