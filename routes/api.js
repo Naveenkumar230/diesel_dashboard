@@ -82,8 +82,7 @@ function calculateSmartConsumption(records, dgKey) {
     
     // Config
     const NOISE_THRESHOLD = 0.5; // Ignore drops smaller than 0.5L
-    const WAIT_PERIOD_MS = 2 * 60 * 60 * 1000; // 2 Hours in milliseconds
-
+const WAIT_PERIOD_MS = 10 * 60 * 1000; // 10 Minutes
     let previousLevel = records[0][dgKey]?.level || 0;
     
     // Tracker for "Unverified Drops" (Electrical OFF but Fuel dropping)
