@@ -205,7 +205,7 @@ function generateZeroDataForTimeline() {
 }
 
 // ============================================================
-// ✅ FIXED loadData - Fetch BOTH electrical AND diesel data
+// ✅ FIXED loadData - ACCURATE TIME CALCULATION
 // ============================================================
 async function loadData() {
   const startDate = document.getElementById('start-date').value;
@@ -224,9 +224,7 @@ async function loadData() {
     
     // If empty and today, generate zero-line
     const isToday = (new Date(startDate).toDateString() === new Date().toDateString());
-    
     if (displayData.length === 0 && isToday) {
-        console.log("No electrical data. Generating zero-line.");
         displayData = generateZeroDataForTimeline();
     }
 
@@ -239,19 +237,49 @@ async function loadData() {
         const consumptionResult = await consumptionResponse.json();
         
         if (consumptionResult.success && consumptionResult.data) {
-            // Count records where DG was running
+            // Filter only Running Records
             const runningRecords = consumptionResult.data.filter(r => r.isRunning === true);
             
-            // Each record is 5 minutes (0.0833 hours)
-            runningHoursFromDiesel = runningRecords.length * (5 / 60); 
+            // 🛑 OLD WRONG LOGIC: runningRecords.length * (5 / 60);
             
-            console.log(`✅ Running Hours from Diesel Data: ${runningHoursFromDiesel.toFixed(2)} hours`);
+            // ✅ NEW ACCURATE LOGIC: Sum of Time Differences
+            if (runningRecords.length > 0) {
+                // Sort by time to be safe
+                runningRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                let totalMs = 0;
+                
+                for (let i = 0; i < runningRecords.length - 1; i++) {
+                    const current = new Date(runningRecords[i].timestamp);
+                    const next = new Date(runningRecords[i+1].timestamp);
+                    const diff = next - current;
+
+                    // logic: If the gap between two 'Running' records is small (e.g., < 10 mins), 
+                    // it means the DG was running continuously. Add the time.
+                    // If the gap is huge (e.g., 2 hours), the DG stopped and started again. Don't add the gap.
+                    if (diff < 10 * 60 * 1000) { 
+                        totalMs += diff;
+                    }
+                }
+                
+                // Add a small buffer (e.g. 1 min) for the very last record since it represents a duration
+                if (runningRecords.length > 0) totalMs += 60000; 
+
+                // Convert Milliseconds to Hours
+                runningHoursFromDiesel = totalMs / (1000 * 60 * 60);
+            }
+            
+            console.log(`✅ Accurate Running Hours: ${runningHoursFromDiesel.toFixed(2)} hours`);
         }
     } catch (err) {
         console.error('⚠️ Failed to fetch diesel consumption data:', err);
-        // Fallback: Calculate from electrical data
-        const runningData = displayData.filter(r => r.voltageR > 200);
-        runningHoursFromDiesel = runningData.length * 0.5; // 30 min intervals
+        // Fallback: Use electrical data timestamps if diesel data fails
+        const runningElec = displayData.filter(r => r.voltageR > 200);
+        if (runningElec.length > 1) {
+             runningElec.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+             const durationMs = new Date(runningElec[runningElec.length-1].timestamp) - new Date(runningElec[0].timestamp);
+             runningHoursFromDiesel = durationMs / (1000 * 60 * 60);
+        }
     }
 
     if (displayData.length > 0) {

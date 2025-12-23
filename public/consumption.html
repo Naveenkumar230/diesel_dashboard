@@ -231,37 +231,34 @@ async function loadData(silent = false) {
 
     try {
         const query = `startDate=${startDate}&endDate=${endDate}`;
-        const url = (dgType === 'total') ? `/api/consumption?${query}` : `/api/consumption?dg=${dgType}&${query}`;
+        // The API now returns a unified structure for both individual DGs and Total
+        const url = (dgType === 'total') ? `/api/consumption?dg=total&${query}` : `/api/consumption?dg=${dgType}&${query}`;
+        
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
 
         let displayData = [];
+        
         if (result.data && result.data.length > 0) {
+            // ✅ NEW LOGIC: Use the "Smart" values calculated by the backend
             displayData = result.data.map(record => {
-                if (dgType === 'total') {
-                    return {
-                        timestamp: record.timestamp,
-                        date: record.date,
-                        level: record.total?.level || 0,
-                        consumption: record.total?.consumption || 0,
-                        dg1: record.dg1,
-                        dg2: record.dg2,
-                        dg3: record.dg3,
-                        total: record.total
-                    };
-                } else {
-                    return {
-                        timestamp: record.timestamp,
-                        date: record.date,
-                        level: record[dgType]?.level || 0,
-                        consumption: record[dgType]?.consumption || 0,
-                        isRunning: record[dgType]?.isRunning || false,
-                        dg1: record.dg1,
-                        dg2: record.dg2,
-                        dg3: record.dg3
-                    };
-                }
+                return {
+                    timestamp: record.timestamp,
+                    date: record.date,
+                    
+                    // KEY CHANGE: Use 'cleanLevel' (Stable) instead of raw 'level'
+                    level: record.cleanLevel,       
+                    
+                    // KEY CHANGE: Use backend calculated consumption
+                    consumption: record.consumption, 
+                    
+                    // Optional: Keep raw level for debugging or comparison
+                    rawLevel: record.rawLevel,      
+                    
+                    isRunning: record.isRunning,
+                    note: record.note
+                };
             });
         }
 
@@ -269,7 +266,8 @@ async function loadData(silent = false) {
             document.getElementById('empty-state').style.display = 'block';
             clearStats();
         } else {
-            processData(displayData, startDate, endDate);
+            // processData will now use these smooth values for the graph
+            processData(displayData, startDate, endDate); 
             document.getElementById('empty-state').style.display = 'none';
         }
 
