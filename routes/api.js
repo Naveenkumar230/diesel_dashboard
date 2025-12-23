@@ -68,12 +68,11 @@ function smoothData(records, dgKey, windowSize) {
 }
 
 // ============================================================
-// ✅ FIXED: LOGIC WITH ELECTRICAL VERIFICATION (2-HOUR WAIT)
+// ✅ FIXED: SMART LOGIC WITH 10-MINUTE WAIT PERIOD
 // ============================================================
 function calculateSmartConsumption(records, dgKey) {
     if (!records || records.length === 0) return { totalConsumption: 0, processedData: [], events: [] };
 
-    // 1. Sort records by time
     records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     let totalConsumption = 0;
@@ -81,13 +80,11 @@ function calculateSmartConsumption(records, dgKey) {
     let processedData = [];
     
     // Config
-    const NOISE_THRESHOLD = 0.5; // Ignore drops smaller than 0.5L
-    const WAIT_PERIOD_MS = 2 * 60 * 60 * 1000; // 2 Hours in milliseconds
+    const NOISE_THRESHOLD = 0.5; // Liters
+    // ✅ CHANGED: Wait only 10 minutes instead of 2 hours
+    const WAIT_PERIOD_MS = 10 * 60 * 1000; 
 
     let previousLevel = records[0][dgKey]?.level || 0;
-    
-    // Tracker for "Unverified Drops" (Electrical OFF but Fuel dropping)
-    // We store the { timestamp, startLevel, lowestLevel } to check 2 hours later
     let pendingDrop = null; 
 
     for (let i = 0; i < records.length; i++) {
@@ -95,11 +92,13 @@ function calculateSmartConsumption(records, dgKey) {
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
 
-        // ⚡ CHECK ELECTRICAL STATUS
-        // We assume 'record.isRunning' is true if Voltage/Hz > 0
-        // If your DB doesn't have this, we need to fetch it. 
-        // For now, assuming your aggregation pipeline adds 'isRunning'.
-        const isElectricalRunning = record.isRunning || false; 
+        // Check Electrical Status
+        let isElectricalRunning = false;
+        if (dgKey === 'total') {
+            isElectricalRunning = (record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning);
+        } else {
+            isElectricalRunning = record[dgKey]?.isRunning || false;
+        }
 
         let consumption = 0;
         let note = "";
@@ -113,80 +112,72 @@ function calculateSmartConsumption(records, dgKey) {
             consumption = diff;
             totalConsumption += consumption;
             note = "Consumption (Verified)";
-            
-            // Reset any pending noise checks because the engine is running now
             pendingDrop = null; 
             previousLevel = currentLevel;
         }
 
         // ====================================================
-        // CONCEPT 2: Electrical OFF + Drop = NOISE CHECK (Wait 2 Hours)
+        // CONCEPT 2: Electrical OFF + Drop = WAIT 10 MINS
         // ====================================================
         else if (!isElectricalRunning && diff > NOISE_THRESHOLD) {
-            // We have a drop, but no electricity.
             if (!pendingDrop) {
-                // Start tracking this suspicious drop
+                // START WAITING
                 pendingDrop = {
                     startTime: timestamp.getTime(),
                     startLevel: previousLevel,
-                    currentLevel: currentLevel
+                    lowestLevel: currentLevel
                 };
-                note = "Suspicious Drop (Waiting 2h)";
-                consumption = 0; // Don't count yet
+                note = "Suspicious Drop (Waiting 10m)";
+                consumption = 0; 
             } else {
-                // We are already tracking a drop. Check how much time has passed.
+                // ALREADY WAITING
                 const timeElapsed = timestamp.getTime() - pendingDrop.startTime;
                 
+                if (currentLevel < pendingDrop.lowestLevel) pendingDrop.lowestLevel = currentLevel;
+
                 if (timeElapsed < WAIT_PERIOD_MS) {
-                    // Still waiting. Update the current level but don't count consumption.
-                    pendingDrop.currentLevel = currentLevel;
-                    
-                    // Check if it bounced back UP (Restored itself)
+                    // Check recovery
                     if (currentLevel >= pendingDrop.startLevel - NOISE_THRESHOLD) {
-                        note = "Noise Resolved (Level Restored)";
-                        pendingDrop = null; // Reset! It was just noise.
-                        previousLevel = currentLevel; // Sync back up
+                        note = "Noise Resolved (Restored)";
+                        pendingDrop = null; 
+                        previousLevel = currentLevel; 
                     } else {
-                        note = `Waiting... (${(timeElapsed/60000).toFixed(0)} mins)`;
-                        // Keep previousLevel as the 'StartLevel' of the drop 
-                        // so we calculate total drop correctly if confirmed later.
+                        note = `Waiting... (${(timeElapsed/60000).toFixed(0)}m)`;
                     }
                     consumption = 0;
                 } else {
-                    // 2 HOURS PASSED!
-                    // If we are here, the level did NOT bounce back.
-                    // Decision: Is this a leak or theft? 
-                    // Your rule: "If it comes for the same level then don't calculate"
-                    // If it didn't come back, for Consumption charts, we typically IGNORE it 
-                    // because the generator didn't burn it.
+                    // 10 MINUTES PASSED!
+                    // It didn't recover. Count it as 'Unverified Loss' (or Consumption if you prefer)
+                    // Currently set to: IGNORE (Set consumption = 0) based on your request "don't calculate"
+                    // If you want to COUNT it after 10 mins, change consumption = (pendingDrop.startLevel - currentLevel);
                     
                     note = "Unverified Loss (Ignored)";
                     consumption = 0; 
-                    pendingDrop = null; // Reset tracking
-                    previousLevel = currentLevel; // Accept the new low level
+                    pendingDrop = null; 
+                    previousLevel = currentLevel; 
                 }
             }
         } 
         
         // ====================================================
-        // HANDLING LEVEL INCREASES (Refills or Recovery)
+        // HANDLING REFILLS / LEVEL INCREASES
         // ====================================================
         else if (diff < 0) {
-            // Level went UP
             if (pendingDrop) {
-                // If we were waiting for a noise check, this might be the recovery!
                 if (currentLevel >= pendingDrop.startLevel - NOISE_THRESHOLD) {
                     note = "Noise Resolved (Restored)";
                     pendingDrop = null;
                 }
             } else {
+                if (Math.abs(diff) > 10) { 
+                    events.push({ type: 'refill', amount: Math.abs(diff), time: timestamp });
+                }
                 note = "Refill / Increase";
             }
             consumption = 0;
             previousLevel = currentLevel;
         }
         else {
-            // No significant change
             consumption = 0;
             if (!pendingDrop) previousLevel = currentLevel;
         }
@@ -197,7 +188,8 @@ function calculateSmartConsumption(records, dgKey) {
             cleanLevel: currentLevel,
             consumption: consumption,
             isRunning: isElectricalRunning,
-            note: note
+            note: note,
+            dgKey: dgKey 
         });
     }
 
