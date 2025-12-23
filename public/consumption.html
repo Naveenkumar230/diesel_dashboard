@@ -220,6 +220,9 @@ function setupAutoRefresh() {
     }
 }
 
+// ============================================================
+// ✅ FIXED: loadData - Unpacks nested DG data for the Graph
+// ============================================================
 async function loadData(silent = false) {
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
@@ -231,7 +234,6 @@ async function loadData(silent = false) {
 
     try {
         const query = `startDate=${startDate}&endDate=${endDate}`;
-        // The API now returns a unified structure for both individual DGs and Total
         const url = (dgType === 'total') ? `/api/consumption?dg=total&${query}` : `/api/consumption?dg=${dgType}&${query}`;
         
         const response = await fetch(url);
@@ -241,21 +243,33 @@ async function loadData(silent = false) {
         let displayData = [];
         
         if (result.data && result.data.length > 0) {
-            // ✅ NEW LOGIC: Use the "Smart" values calculated by the backend
+            // ✅ CRITICAL FIX: Map the specific DG's data to the top level
             displayData = result.data.map(record => {
+                
+                // 1. Determine the correct level/consumption based on dgType
+                let mappedLevel = 0;
+                let mappedConsumption = 0;
+
+                // Check if data is already flat (smart API) or nested (raw DB)
+                if (record.cleanLevel !== undefined) {
+                    mappedLevel = record.cleanLevel;
+                    mappedConsumption = record.consumption || 0;
+                } else if (dgType === 'total') {
+                    mappedLevel = record.total?.level || 0;
+                    mappedConsumption = record.total?.consumption || 0;
+                } else {
+                    // Extract specific DG data (e.g., record.dg1.level)
+                    mappedLevel = record[dgType]?.level || 0;
+                    mappedConsumption = record[dgType]?.consumption || 0;
+                }
+
                 return {
                     timestamp: record.timestamp,
                     date: record.date,
-                    
-                    // KEY CHANGE: Use 'cleanLevel' (Stable) instead of raw 'level'
-                    level: record.cleanLevel,       
-                    
-                    // KEY CHANGE: Use backend calculated consumption
-                    consumption: record.consumption, 
-                    
-                    // Optional: Keep raw level for debugging or comparison
-                    rawLevel: record.rawLevel,      
-                    
+                    // Pass these standardized values to processData
+                    level: mappedLevel,
+                    consumption: mappedConsumption,
+                    rawLevel: record.rawLevel,
                     isRunning: record.isRunning,
                     note: record.note
                 };
@@ -266,7 +280,7 @@ async function loadData(silent = false) {
             document.getElementById('empty-state').style.display = 'block';
             clearStats();
         } else {
-            // processData will now use these smooth values for the graph
+            // Now processData will receive correct 'level' and 'consumption' values
             processData(displayData, startDate, endDate); 
             document.getElementById('empty-state').style.display = 'none';
         }
@@ -293,7 +307,7 @@ function clearStats() {
 }
 
 // ============================================================
-// ✅ FIXED: Temperature expansion detection & Start Level Fix
+// ✅ FIXED: Graph Data Mapping & Start Level Logic
 // ============================================================
 async function processData(data, startDate, endDate) {
     const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -319,21 +333,12 @@ async function processData(data, startDate, endDate) {
     let cleanData = data.map((record, index) => {
         const hour = new Date(record.timestamp).getHours();
         
-        let currentLevel = 0;
-        if (dgType === 'total') {
-            currentLevel = record.total?.level || 0;
-        } else {
-            currentLevel = record[dgType]?.level || 0;
-        }
+        // ✅ FIX: Read the mapped 'level' directly (It comes from record.cleanLevel in loadData)
+        // We do NOT need to check dgType here because loadData already handled it.
+        const currentLevel = record.level || 0;
+        const dbConsumption = record.consumption || 0;
 
         hourlyLevels[hour].push(currentLevel);
-
-        let dbConsumption = 0;
-        if (dgType === 'total') {
-            dbConsumption = record.total?.consumption || 0;
-        } else {
-            dbConsumption = record[dgType]?.consumption || 0;
-        }
 
         // ✅ DETECT REFILLS & TEMPERATURE EXPANSIONS
         if (index > 0 && previousLevel !== null) {
@@ -341,7 +346,7 @@ async function processData(data, startDate, endDate) {
             
             if (diff > 0) { // Level increased
                 if (diff >= REFILL_THRESHOLD) {
-                    // ✅ Real refill (≥20L)
+                    // Refill
                     const refillAmount = diff;
                     totalRefilled += refillAmount;
                     refillEvents.push(createRefillEvent(
@@ -350,7 +355,7 @@ async function processData(data, startDate, endDate) {
                         refillAmount
                     ));
                 } else {
-                    // ✅ Temperature expansion (<20L increase)
+                    // Temperature expansion
                     temperatureEvents.push({
                         timestamp: record.timestamp,
                         hour: hour,
@@ -377,16 +382,14 @@ async function processData(data, startDate, endDate) {
     });
 
     // ============================================================
-    // ✅ FIXED: Calculate levels (Ignore initial 0s)
+    // ✅ Calculate Start/End Levels
     // ============================================================
     let startLevel = 0;
     let endLevel = 0;
 
     if (cleanData.length > 0) {
-        // 1. Find the first record where level is greater than 0
+        // 1. Scan for the first real number (Start Level)
         const firstValidRecord = cleanData.find(d => d.cleanLevel > 0);
-        
-        // If found, use it. If not (all are 0), use the first record (0).
         if (firstValidRecord) {
             startLevel = firstValidRecord.cleanLevel;
         } else {
