@@ -17,14 +17,13 @@ const { sendDailySummary } = require('./emailService');
 // CONFIGURATION
 // ============================================================
 const DG_RUNNING_THRESHOLD = 5; // kW
-const NOISE_THRESHOLD = 10; // Changes < 10L might be noise
-const REFILL_THRESHOLD = 25; // Changes > 25L are refills
+const NOISE_THRESHOLD = 2; // Changes < 2L might be noise
+const REFILL_THRESHOLD = 20; // Changes > 20L are refills
 const TRACKING_INTERVAL = 5; // Track every 5 minutes
 const STABILITY_REQUIRED = 3; // Readings needed to confirm change (15 minutes)
 const RECOVERY_THRESHOLD = 0.5; // Allow 0.5L recovery without invalidating consumption
 const MAX_CONSUMPTION_PER_HOUR = 25;
 const MAX_NOISE_WHEN_OFF = 2; // Ignore consumption < 2L when DG is OFF
-// ≥25L increase = refill
 
 // ✅ NEW: Sensor quality thresholds
 const SENSOR_QUALITY_THRESHOLD = 50; // Minimum quality score (0-100)
@@ -201,62 +200,251 @@ async function initializeDayStartLevels() {
   }
 }
 
-function processLevelChange(dgKey, currentLevel, dayStartLevel, lastLevel, dgName) {
-  const diff = currentLevel - lastLevel; // Change from last reading
+// ============================================================
+// ✅ FIXED processLevelChange - WITH SENSOR VALIDATION
+// ============================================================
+
+function processLevelChange(dgKey, currentLevel, lastLevel, dgName, groupIsRunning, timestamp) {
   let consumption = 0;
-  let newDayStartLevel = dayStartLevel; // Will be updated if noise/refill
-  let adjusted = false;
-  let refill = false;
-  let noiseAmount = 0;
+  let refill = 0;
+  let newReferenceLevel = lastLevel;
   
+  const diff = currentLevel - lastLevel;
+  const pending = pendingChanges[dgKey];
+
   // ============================================================
-  // CASE 1: Small Increase (≤10L) = NOISE - NORMALIZE EVERYTHING
+  // 🛡️ STEP 1: VALIDATE SENSOR READING QUALITY
   // ============================================================
-  if (diff > 0 && diff <= NOISE_THRESHOLD) {
-    console.log(`🔧 ${dgName}: Noise detected (+${diff.toFixed(1)}L). Normalizing...`);
-    console.log(`   Old Start: ${dayStartLevel.toFixed(1)}L → New Start: ${currentLevel.toFixed(1)}L`);
-    console.log(`   Consumption reset to 0L`);
-    
-    newDayStartLevel = currentLevel; // ✅ Reset start to current level
-    consumption = 0; // ✅ No consumption
-    adjusted = true;
-    noiseAmount = diff;
+  const lastTimestamp = lastTrackingTimestamps[dgKey] || new Date(Date.now() - 300000); // 5 min ago default
+  const sensorQuality = validateSensorReading(
+      currentLevel, 
+      lastLevel, 
+      timestamp, 
+      lastTimestamp
+  );
+
+  // If sensor reading is BAD, reject this reading
+  if (!sensorQuality.trustworthy) {
+      console.error(`🚨 ${dgName} SENSOR FAILURE (Score: ${sensorQuality.score}/100)`);
+      sensorQuality.issues.forEach(issue => console.error(`   - ${issue}`));
+      
+      // Reset pending if sensor is bad
+      if (pending.level !== null) {
+          console.warn(`⚠️ ${dgName} Resetting pending consumption due to sensor failure`);
+          pending.level = null;
+          pending.count = 0;
+          pending.accumulated = 0;
+          pending.originalLevel = null;
+      }
+      
+      return { 
+          consumption: 0, 
+          refill: 0, 
+          newReferenceLevel: lastLevel, // Keep old reference
+          sensorQuality: 'bad'
+      };
   }
-  
+
   // ============================================================
-  // CASE 2: Large Increase (≥25L) = REFILL - RESET BASELINE
+  // 🛡️ STEP 2: DETECT SENSOR ANOMALIES (Spike patterns)
   // ============================================================
-  else if (diff >= REFILL_THRESHOLD) {
-    console.log(`⛽ ${dgName}: Refill detected (+${diff.toFixed(1)}L)`);
-    console.log(`   Old Start: ${dayStartLevel.toFixed(1)}L → New Start: ${currentLevel.toFixed(1)}L`);
-    console.log(`   Consumption reset to 0L`);
-    
-    newDayStartLevel = currentLevel; // ✅ Reset start to current level
-    consumption = 0; // ✅ No consumption
-    refill = true;
+  const anomaly = detectSensorAnomaly(currentLevel, lastLevel, dgKey);
+  if (anomaly.isAnomaly) {
+      console.warn(`🔇 ${dgName} SENSOR ANOMALY DETECTED: ${anomaly.type} - ${anomaly.description}`);
+      
+      // Reset pending
+      pending.level = null;
+      pending.count = 0;
+      pending.accumulated = 0;
+      pending.originalLevel = null;
+      
+      return { 
+          consumption: 0, 
+          refill: 0, 
+          newReferenceLevel: lastLevel,
+          sensorQuality: 'anomaly'
+      };
   }
-  
+
   // ============================================================
-  // CASE 3: Normal Operation - Calculate from Day Start
+  // STEP 3: REFILL DETECTION (Immediate)
   // ============================================================
-  else {
-    // ✅ ALWAYS calculate consumption from the ORIGINAL day start level
-    consumption = Math.max(0, dayStartLevel - currentLevel);
+  if (diff > REFILL_THRESHOLD) {
+    refill = diff;
     
-    if (consumption > 0) {
-      console.log(`📊 ${dgName}: Consumption = ${consumption.toFixed(1)}L`);
-      console.log(`   Start Level: ${dayStartLevel.toFixed(1)}L`);
-      console.log(`   Current Level: ${currentLevel.toFixed(1)}L`);
+    // Auto-confirm any pending consumption before refill
+    if (pending.accumulated > NOISE_THRESHOLD && pending.count >= 2) {
+        consumption = pending.accumulated;
+        console.log(`✅ ${dgName} Auto-confirmed ${consumption.toFixed(1)}L before refill`);
+    }
+    
+    newReferenceLevel = currentLevel;
+    pending.level = null;
+    pending.count = 0;
+    pending.accumulated = 0;
+    pending.originalLevel = null;
+    pending.quality = 'high';
+    
+    return { consumption, refill, newReferenceLevel, sensorQuality: 'high' };
+  }
+
+  // ============================================================
+  // STEP 4: CHECK FOR RECOVERY FROM PENDING DROP (Noise filter)
+  // ============================================================
+  if (pending.level !== null && pending.originalLevel !== null) {
+    const recoveryFromLowest = currentLevel - pending.level;
+    
+    // If recovering significantly, it was noise
+    if (recoveryFromLowest > RECOVERY_THRESHOLD) {
+      console.log(`🔇 ${dgName} PARTIAL RECOVERY: ${pending.level.toFixed(1)}→${currentLevel.toFixed(1)}L - Invalidating ${pending.accumulated.toFixed(1)}L drop`);
+      pending.level = null;
+      pending.count = 0;
+      pending.accumulated = 0;
+      pending.originalLevel = null;
+      return { consumption, refill, newReferenceLevel, sensorQuality: 'recovered' };
     }
   }
-  
-  return { 
-    consumption, 
-    newDayStartLevel, // Updated if noise/refill detected
-    adjusted, // True if noise normalization happened
-    refill, // True if refill detected
-    noiseAmount // Amount of noise detected
-  };
+
+  // ============================================================
+  // STEP 5: LEVEL STABLE (Check if pending becomes confirmed)
+  // ============================================================
+  if (Math.abs(diff) < 0.5) {
+    if (pending.level !== null) {
+      pending.count++;
+      console.log(`⏳ ${dgName} Stability check ${pending.count}/${STABILITY_REQUIRED}: Level stable at ${currentLevel.toFixed(1)}L`);
+      
+      // CONFIRM consumption when stability threshold reached
+      if (pending.count >= STABILITY_REQUIRED) {
+        consumption = pending.accumulated;
+        
+        // ✅ CRITICAL FIX: Validate NET CHANGE
+        const netDrop = pending.originalLevel - currentLevel;
+        
+        console.log(`📊 ${dgName} Validation:`);
+        console.log(`   Original: ${pending.originalLevel.toFixed(1)}L`);
+        console.log(`   Current: ${currentLevel.toFixed(1)}L`);
+        console.log(`   Net Drop: ${netDrop.toFixed(1)}L`);
+        console.log(`   Accumulated: ${consumption.toFixed(1)}L`);
+        
+        // If net drop is less than 70% of accumulated consumption, it's noise
+        if (netDrop < consumption * 0.7) {
+            console.log(`🔇 ${dgName} NET CHANGE MISMATCH: ${netDrop.toFixed(1)}L vs ${consumption.toFixed(1)}L accumulated - FILTERED`);
+            consumption = 0;
+            pending.level = null;
+            pending.count = 0;
+            pending.accumulated = 0;
+            pending.originalLevel = null;
+            return { consumption, refill, newReferenceLevel, sensorQuality: 'noise_filtered' };
+        }
+        
+        newReferenceLevel = currentLevel;
+        console.log(`✅ ${dgName} CONFIRMED CONSUMPTION: ${consumption.toFixed(1)}L (Net drop validated)`);
+        
+        // Rate Validation
+        const timeElapsed = pending.count * TRACKING_INTERVAL / 60; // hours
+        const consumptionRate = consumption / (timeElapsed || 1);
+        
+        if (consumptionRate > MAX_CONSUMPTION_PER_HOUR) {
+            console.log(`⚠️ ${dgName} Rate too high (${consumptionRate.toFixed(1)}L/h) - FILTERED`);
+            consumption = 0; 
+        }
+        
+        // ✅ GROUP RUNNING CHECK
+        if (!groupIsRunning && consumption < MAX_NOISE_WHEN_OFF) {
+            console.log(`🔇 ${dgName} FILTERED NOISE: ${consumption.toFixed(1)}L (GROUP WAS OFF)`);
+            consumption = 0;
+        }
+        
+        // Reset pending
+        pending.level = null;
+        pending.count = 0;
+        pending.accumulated = 0;
+        pending.originalLevel = null;
+      }
+    }
+    return { consumption, refill, newReferenceLevel, sensorQuality: 'stable' };
+  }
+
+  // ============================================================
+  // STEP 6: LEVEL DECREASED (Potential consumption)
+  // ============================================================
+  if (diff < -0.5) {
+    if (pending.level === null) {
+      // New potential consumption
+      pending.level = currentLevel;
+      pending.originalLevel = lastLevel;
+      pending.count = 1;
+      pending.accumulated = Math.abs(diff);
+      console.log(`🔍 ${dgName} Potential consumption: ${Math.abs(diff).toFixed(1)}L (from ${lastLevel.toFixed(1)}L to ${currentLevel.toFixed(1)}L)`);
+    } else {
+      // Continuing drop
+      const incrementalDrop = Math.abs(diff);
+      pending.accumulated += incrementalDrop;
+      pending.count++;
+      pending.level = currentLevel;
+      console.log(`🔍 ${dgName} Accumulating: ${pending.accumulated.toFixed(1)}L (${pending.count}/${STABILITY_REQUIRED}) - Level now ${currentLevel.toFixed(1)}L`);
+      
+      // Auto-confirm if sustained drop
+      if (pending.count >= STABILITY_REQUIRED) {
+        consumption = pending.accumulated;
+        
+        // ✅ VALIDATE NET CHANGE
+        const netDrop = pending.originalLevel - currentLevel;
+        
+        console.log(`📊 ${dgName} Sustained Drop Validation:`);
+        console.log(`   Original: ${pending.originalLevel.toFixed(1)}L`);
+        console.log(`   Current: ${currentLevel.toFixed(1)}L`);
+        console.log(`   Net Drop: ${netDrop.toFixed(1)}L`);
+        console.log(`   Accumulated: ${consumption.toFixed(1)}L`);
+        
+        if (netDrop < consumption * 0.7) {
+            console.log(`🔇 ${dgName} NET CHANGE MISMATCH: ${netDrop.toFixed(1)}L vs ${consumption.toFixed(1)}L - FILTERED`);
+            consumption = 0;
+            pending.level = null;
+            pending.count = 0;
+            pending.accumulated = 0;
+            pending.originalLevel = null;
+            return { consumption, refill, newReferenceLevel, sensorQuality: 'noise_filtered' };
+        }
+        
+        newReferenceLevel = currentLevel;
+        console.log(`✅ ${dgName} CONFIRMED (Sustained Drop): ${consumption.toFixed(1)}L`);
+        
+        // ✅ GROUP RUNNING CHECK
+        if (!groupIsRunning && consumption < MAX_NOISE_WHEN_OFF) {
+            console.log(`🔇 ${dgName} FILTERED: ${consumption.toFixed(1)}L (GROUP OFF)`);
+            consumption = 0;
+        }
+        
+        pending.level = null;
+        pending.count = 0;
+        pending.accumulated = 0;
+        pending.originalLevel = null;
+      }
+    }
+    return { consumption, refill, newReferenceLevel, sensorQuality: 'tracking' };
+  }
+
+  // ============================================================
+  // STEP 7: LEVEL INCREASED (Check for noise)
+  // ============================================================
+  if (diff > 0.5 && diff <= REFILL_THRESHOLD) {
+    if (pending.level !== null) {
+      const totalRecovery = currentLevel - pending.level;
+      if (totalRecovery > RECOVERY_THRESHOLD) {
+        console.log(`🔇 ${dgName} NOISE: Level recovered from ${pending.level.toFixed(1)}L to ${currentLevel.toFixed(1)}L. Resetting pending.`);
+        pending.level = null;
+        pending.count = 0;
+        pending.accumulated = 0;
+        pending.originalLevel = null;
+      }
+    } else {
+      console.log(`🔇 ${dgName} Upward noise: +${diff.toFixed(1)}L (${lastLevel.toFixed(1)}L → ${currentLevel.toFixed(1)}L) - filtered`);
+    }
+    return { consumption, refill, newReferenceLevel, sensorQuality: 'noise' };
+  }
+
+  return { consumption, refill, newReferenceLevel, sensorQuality: 'normal' };
 }
 
 // ============================================================
