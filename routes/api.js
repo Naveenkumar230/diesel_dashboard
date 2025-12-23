@@ -1,7 +1,6 @@
 /**
  * API Routes - SYNCED VERSION
- * KEY FIX: Merges Historical DB Data + Live PLC Data
- * Result: Graph "End Level" matches Dashboard "Current Level" perfectly.
+ * KEY FIX: Accumulator Logic for Instant & Accurate Consumption
  */
 
 const express = require('express');
@@ -10,12 +9,6 @@ const path = require('path');
 const ExcelJS = require('exceljs'); 
 const { getSystemData } = require('../services/plcService');
 const { DieselConsumption, ElectricalReading } = require('../models/schemas');
-
-// --- SMART LOGIC CONFIGURATION ---
-const REFILL_THRESHOLD = 25;       // Liters: Only increase > 25L is a refill
-const NOISE_THRESHOLD = 2;         // Liters: Ignore changes smaller than this
-const STABILITY_WINDOW_MINS = 45;  // Minutes: Level must stay low this long to count
-const SMA_WINDOW = 3;              // Points: Moving Average window for smoothing
 
 const LOGO_PATH = path.join(__dirname, '../public/logo.png');
 
@@ -45,35 +38,13 @@ async function setupExcelSheet(workbook, worksheet, title) {
     worksheet.addRow([]);
 }
 
-function smoothData(records, dgKey, windowSize) {
-    if (records.length === 0) return [];
-    
-    return records.map((record, index) => {
-        // Calculate SMA
-        let sum = 0;
-        let count = 0;
-        for (let i = Math.max(0, index - windowSize + 1); i <= index; i++) {
-            let val = (dgKey === 'total') ? (records[i].total?.level || 0) : (records[i][dgKey]?.level || 0);
-            sum += val;
-            count++;
-        }
-        
-        return {
-            ...record,
-            timestamp: new Date(record.timestamp).getTime(),
-            originalTimestamp: record.timestamp,
-            level: Number((sum / count).toFixed(2)) // Smoothed Level
-        };
-    });
-}
-
 // ============================================================
-// ✅ FIXED: LOGIC WITH ELECTRICAL VERIFICATION (2-HOUR WAIT)
+// ✅ FIXED: ACCUMULATOR LOGIC (Captures Slow Drains & Fast Drops)
 // ============================================================
 function calculateSmartConsumption(records, dgKey) {
     if (!records || records.length === 0) return { totalConsumption: 0, processedData: [], events: [] };
 
-    // 1. Sort records by time
+    // 1. Sort by time
     records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     let totalConsumption = 0;
@@ -81,113 +52,58 @@ function calculateSmartConsumption(records, dgKey) {
     let processedData = [];
     
     // Config
-    const NOISE_THRESHOLD = 0.5; // Ignore drops smaller than 0.5L
-const WAIT_PERIOD_MS = 10 * 60 * 1000; // 10 Minutes
-    let previousLevel = records[0][dgKey]?.level || 0;
-    
-    // Tracker for "Unverified Drops" (Electrical OFF but Fuel dropping)
-    // We store the { timestamp, startLevel, lowestLevel } to check 2 hours later
-    let pendingDrop = null; 
+    const CONSUMPTION_THRESHOLD = 0.20; // Count any accumulated drop > 0.20 Liters
+    const REFILL_THRESHOLD = 5.0;       // Detect refills > 5 Liters
+
+    // 'effectiveLevel' is our baseline. We ONLY update it when we confirm a drop or refill.
+    // This allows us to track slow drains (e.g., 0.05L -> 0.10L -> 0.25L).
+    let effectiveLevel = records[0][dgKey]?.level || 0;
 
     for (let i = 0; i < records.length; i++) {
         const record = records[i];
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
 
-        // ⚡ CHECK ELECTRICAL STATUS
-        // We assume 'record.isRunning' is true if Voltage/Hz > 0
-        // If your DB doesn't have this, we need to fetch it. 
-        // For now, assuming your aggregation pipeline adds 'isRunning'.
-        const isElectricalRunning = record.isRunning || false; 
+        // Check Electrical (Visual only - does not stop calculation)
+        let isElectricalRunning = false;
+        if (dgKey === 'total') {
+            isElectricalRunning = (record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning);
+        } else {
+            isElectricalRunning = record[dgKey]?.isRunning || false;
+        }
 
         let consumption = 0;
-        let note = "";
+        let note = "Stable";
 
-        const diff = previousLevel - currentLevel;
+        // Compare current level against our STICKY baseline (effectiveLevel)
+        const diff = effectiveLevel - currentLevel;
 
-        // ====================================================
-        // CONCEPT 1: Electrical ON + Drop = ACTUAL CONSUMPTION
-        // ====================================================
-        if (isElectricalRunning && diff > 0) {
+        if (diff > CONSUMPTION_THRESHOLD) {
+            // ✅ CASE 1: ACCUMULATED DROP DETECTED
+            // We have dropped enough from the last baseline to count it.
             consumption = diff;
             totalConsumption += consumption;
-            note = "Consumption (Verified)";
             
-            // Reset any pending noise checks because the engine is running now
-            pendingDrop = null; 
-            previousLevel = currentLevel;
-        }
-
-        // ====================================================
-        // CONCEPT 2: Electrical OFF + Drop = NOISE CHECK (Wait 2 Hours)
-        // ====================================================
-        else if (!isElectricalRunning && diff > NOISE_THRESHOLD) {
-            // We have a drop, but no electricity.
-            if (!pendingDrop) {
-                // Start tracking this suspicious drop
-                pendingDrop = {
-                    startTime: timestamp.getTime(),
-                    startLevel: previousLevel,
-                    currentLevel: currentLevel
-                };
-                note = "Suspicious Drop (Waiting 2h)";
-                consumption = 0; // Don't count yet
-            } else {
-                // We are already tracking a drop. Check how much time has passed.
-                const timeElapsed = timestamp.getTime() - pendingDrop.startTime;
-                
-                if (timeElapsed < WAIT_PERIOD_MS) {
-                    // Still waiting. Update the current level but don't count consumption.
-                    pendingDrop.currentLevel = currentLevel;
-                    
-                    // Check if it bounced back UP (Restored itself)
-                    if (currentLevel >= pendingDrop.startLevel - NOISE_THRESHOLD) {
-                        note = "Noise Resolved (Level Restored)";
-                        pendingDrop = null; // Reset! It was just noise.
-                        previousLevel = currentLevel; // Sync back up
-                    } else {
-                        note = `Waiting... (${(timeElapsed/60000).toFixed(0)} mins)`;
-                        // Keep previousLevel as the 'StartLevel' of the drop 
-                        // so we calculate total drop correctly if confirmed later.
-                    }
-                    consumption = 0;
-                } else {
-                    // 2 HOURS PASSED!
-                    // If we are here, the level did NOT bounce back.
-                    // Decision: Is this a leak or theft? 
-                    // Your rule: "If it comes for the same level then don't calculate"
-                    // If it didn't come back, for Consumption charts, we typically IGNORE it 
-                    // because the generator didn't burn it.
-                    
-                    note = "Unverified Loss (Ignored)";
-                    consumption = 0; 
-                    pendingDrop = null; // Reset tracking
-                    previousLevel = currentLevel; // Accept the new low level
-                }
-            }
+            note = isElectricalRunning ? "Consumption (Verified)" : "Consumption (Fuel Drop)";
+            
+            // Sync baseline to the new lower level
+            effectiveLevel = currentLevel;
         } 
-        
-        // ====================================================
-        // HANDLING LEVEL INCREASES (Refills or Recovery)
-        // ====================================================
-        else if (diff < 0) {
-            // Level went UP
-            if (pendingDrop) {
-                // If we were waiting for a noise check, this might be the recovery!
-                if (currentLevel >= pendingDrop.startLevel - NOISE_THRESHOLD) {
-                    note = "Noise Resolved (Restored)";
-                    pendingDrop = null;
-                }
-            } else {
-                note = "Refill / Increase";
-            }
-            consumption = 0;
-            previousLevel = currentLevel;
+        else if (diff < -REFILL_THRESHOLD) {
+            // ✅ CASE 2: REFILL DETECTED
+            // The level went UP significantly.
+            note = "Refill Detected";
+            events.push({ type: 'refill', amount: Math.abs(diff), time: timestamp });
+            
+            // Sync baseline to the new higher level
+            effectiveLevel = currentLevel;
         }
         else {
-            // No significant change
+            // ✅ CASE 3: TINY CHANGE (NOISE)
+            // The change is too small (e.g., 0.05L). 
+            // CRITICAL: We do NOT update 'effectiveLevel' here.
+            // We keep the old baseline so the next tiny drop adds to this one.
             consumption = 0;
-            if (!pendingDrop) previousLevel = currentLevel;
         }
 
         processedData.push({
@@ -195,8 +111,9 @@ const WAIT_PERIOD_MS = 10 * 60 * 1000; // 10 Minutes
             date: record.timestamp.toISOString().split('T')[0],
             cleanLevel: currentLevel,
             consumption: consumption,
-            isRunning: isElectricalRunning,
-            note: note
+            isRunning: consumption > 0, // Force "Running" bars if we have consumption
+            note: note,
+            dgKey: dgKey 
         });
     }
 
@@ -275,7 +192,6 @@ router.get('/health', (req, res) => {
             mongodb: {
                 status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
                 readyState: mongoose.connection.readyState,
-                // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
                 host: mongoose.connection.host || 'unknown'
             },
             plc: {
@@ -292,9 +208,8 @@ router.get('/health', (req, res) => {
         }
     };
     
-    // Set HTTP status based on critical services
     const httpStatus = (health.services.mongodb.status === 'connected' && 
-                       health.services.plc.status === 'connected') ? 200 : 503;
+                        health.services.plc.status === 'connected') ? 200 : 503;
     
     res.status(httpStatus).json(health);
 });
@@ -306,7 +221,6 @@ function formatUptime(seconds) {
     return `${days}d ${hours}h ${minutes}m`;
 }
 
-// ✅ FIXED: Electrical endpoint (Robust error handling)
 router.get('/electrical/:dg', async (req, res) => {
     try {
         const { dg } = req.params;
@@ -330,7 +244,6 @@ router.get('/electrical/:dg', async (req, res) => {
         .lean()
         .maxTimeMS(8000);
 
-        // Fallback: Check yesterday if today is empty
         const today = new Date().toISOString().split('T')[0];
         if (records.length === 0 && startDate === today && endDate === today) {
             const yesterday = new Date();
@@ -368,7 +281,6 @@ router.get('/export/consumption', async (req, res) => {
             timestamp: { $gte: start, $lte: end } 
         }).sort({ timestamp: 1 }).lean();
 
-        // Use the SAME Smart Logic for Excel so numbers match
         const dgKey = dg || 'dg1';
         const result = calculateSmartConsumption(records, dgKey);
         
@@ -377,7 +289,6 @@ router.get('/export/consumption', async (req, res) => {
 
         await setupExcelSheet(workbook, worksheet, `Aquarelle India - ${dg.toUpperCase()} Consumption`);
 
-        // Added 'Stable Level' column to see the difference
         worksheet.addRow(['Timestamp', 'Stable Level (L)', 'Raw Level (L)', 'Consumption (L)', 'Running', 'Notes']);
         
         const headerRow = worksheet.lastRow;
@@ -389,8 +300,8 @@ router.get('/export/consumption', async (req, res) => {
         result.processedData.forEach(r => {
             worksheet.addRow([
                 new Date(r.timestamp).toLocaleString('en-IN'),
-                r.cleanLevel,   // The Smart Stable Level
-                r.rawLevel,     // The Noisy Raw Level (for reference)
+                r.cleanLevel, 
+                r.cleanLevel, // Using cleanLevel as raw since we aren't storing raw separately here
                 r.consumption > 0 ? r.consumption.toFixed(2) : '-',
                 r.isRunning ? 'Yes' : 'No',
                 r.note
@@ -414,10 +325,8 @@ router.get('/export/electrical/:dg', async (req, res) => {
     try {
         const { dg } = req.params;
         const { startDate, endDate } = req.query;
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        const start = new Date(startDate); start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate); end.setHours(23, 59, 59, 999);
 
         const records = await ElectricalReading.find({
             dg: dg, timestamp: { $gte: start, $lte: end }
@@ -464,23 +373,18 @@ router.get('/export/all', async (req, res) => {
         const start = new Date(startDate); start.setHours(0, 0, 0, 0);
         const end = new Date(endDate); end.setHours(23, 59, 59, 999);
 
-        // 1. Fetch Raw Data
         const records = await DieselConsumption.find({ 
             timestamp: { $gte: start, $lte: end } 
         }).sort({ timestamp: 1 }).lean();
 
-        // 2. Run Smart Logic for EACH DG separately
-        // This ensures each tank gets its own noise filtering and stability check
         const r1 = calculateSmartConsumption(records, 'dg1');
         const r2 = calculateSmartConsumption(records, 'dg2');
         const r3 = calculateSmartConsumption(records, 'dg3');
 
-        // 3. Setup Excel
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Total Report');
         await setupExcelSheet(workbook, worksheet, `Aquarelle India - Complete DG Report`);
 
-        // Header
         worksheet.addRow([
             'Timestamp', 
             'DG1 Level', 'DG1 Used', 'DG1 Refill', 
@@ -493,17 +397,13 @@ router.get('/export/all', async (req, res) => {
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         headerRow.eachCell(cell => cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDE350B' } });
 
-        // 4. Merge Data & Build Rows
-        // Since all 3 results come from the same 'records' array, they have the same length and order.
         for (let i = 0; i < records.length; i++) {
             const d1 = r1.processedData[i];
             const d2 = r2.processedData[i];
             const d3 = r3.processedData[i];
 
-            if (!d1 || !d2 || !d3) continue; // Safety skip
+            if (!d1 || !d2 || !d3) continue;
 
-            // Helper to check if a refill happened at this specific timestamp
-            // We look into the 'events' array returned by the smart logic
             const getRefillAmt = (events, time) => {
                 const evt = events.find(e => e.time === time);
                 return evt ? evt.amount : 0;
@@ -513,37 +413,27 @@ router.get('/export/all', async (req, res) => {
             const refill2 = getRefillAmt(r2.events, d2.timestamp);
             const refill3 = getRefillAmt(r3.events, d3.timestamp);
 
-            // Calculate Totals based on Clean (Smart) Data
             const totalLevel = d1.cleanLevel + d2.cleanLevel + d3.cleanLevel;
             const totalUsed = d1.consumption + d2.consumption + d3.consumption;
 
             worksheet.addRow([
                 new Date(d1.timestamp).toLocaleString('en-IN'),
-                
-                // DG1
                 d1.cleanLevel, 
                 d1.consumption > 0 ? d1.consumption.toFixed(1) : '-', 
                 refill1 > 0 ? refill1.toFixed(1) : '-',
-
-                // DG2
                 d2.cleanLevel, 
                 d2.consumption > 0 ? d2.consumption.toFixed(1) : '-', 
                 refill2 > 0 ? refill2.toFixed(1) : '-',
-
-                // DG3
                 d3.cleanLevel, 
                 d3.consumption > 0 ? d3.consumption.toFixed(1) : '-', 
                 refill3 > 0 ? refill3.toFixed(1) : '-',
-
-                // Totals
                 totalLevel.toFixed(1),
                 totalUsed > 0 ? totalUsed.toFixed(1) : '-'
             ]);
         }
 
-        // Styling widths
         worksheet.columns.forEach(col => col.width = 12);
-        worksheet.getColumn(1).width = 25; // Timestamp column wider
+        worksheet.getColumn(1).width = 25;
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="Aquarelle_India_All_Data_Smart.xlsx"`);
