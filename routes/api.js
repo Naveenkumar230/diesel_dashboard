@@ -67,96 +67,143 @@ function smoothData(records, dgKey, windowSize) {
     });
 }
 
-/**
- * 2. CORE LOGIC: State Machine with "Running Override"
- */
-function calculateSmartConsumption(rawRecords, dgKey) {
-    // Step 1: Smooth the raw data
-    const data = smoothData(rawRecords, dgKey, SMA_WINDOW);
-    if (data.length === 0) return { totalConsumption: 0, events: [], processedData: [] };
+// ============================================================
+// ✅ FIXED: Concept 1 (Verified) & Concept 2 (Wait 2h) Logic
+// ============================================================
+function calculateSmartConsumption(records, dgKey) {
+    if (!records || records.length === 0) return { totalConsumption: 0, processedData: [], events: [] };
 
-    let processedData = [];
-    let events = [];
+    records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
     let totalConsumption = 0;
+    let events = [];
+    let processedData = [];
+    
+    // Config
+    const NOISE_THRESHOLD = 0.5; // Liters
+    const WAIT_PERIOD_MS = 2 * 60 * 60 * 1000; // 2 Hours
 
-    // Initialize Baseline
-    let baseline = data[0].level;
+    let previousLevel = records[0][dgKey]?.level || 0;
+    
+    // Tracker for "Unverified Drops" (Concept 2)
+    let pendingDrop = null; 
 
-    for (let i = 0; i < data.length; i++) {
-        const current = data[i];
-        const diff = current.level - baseline;
-        
-        // CHECK IF DG IS RUNNING (Electrical Data)
-        // If total, we can't easily know which one is running, so we default to false
-        const isRunning = (dgKey === 'total') ? false : (current[dgKey]?.isRunning || false);
+    for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        const currentLevel = record[dgKey]?.level || 0;
+        const timestamp = new Date(record.timestamp);
 
-        let isConsumption = false;
-        let note = '';
-
-        // --- CASE 1: REFILL DETECTION ---
-        if (diff >= REFILL_THRESHOLD) {
-            events.push({ type: 'REFILL', amount: diff, time: current.originalTimestamp });
-            baseline = current.level; 
-            note = 'Refill';
-        }
-        
-        // --- CASE 2: DG IS RUNNING (OVERRIDE RULE) ---
-        // If DG is ON, we trust ANY drop, even if it's small (e.g. 1 Liter)
-        // We do NOT check for stability/recovery here. If it's running, fuel IS burning.
-        else if (isRunning && diff < 0) {
-            const consumed = baseline - current.level;
-            totalConsumption += consumed;
-            baseline = current.level; // Immediate Lock-in
-            isConsumption = true;
-            note = 'Running Consumption';
+        // ✅ KEY FIX: Read the isRunning flag from the specific DG
+        // If dgKey is 'total', we check if ANY dg is running
+        let isElectricalRunning = false;
+        if (dgKey === 'total') {
+            isElectricalRunning = (record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning);
+        } else {
+            isElectricalRunning = record[dgKey]?.isRunning || false;
         }
 
-        // --- CASE 3: STANDARD DROP DETECTION (DG OFF) ---
-        // If DG is OFF, we use the strict Stability Window to avoid noise
-        else if (diff < -NOISE_THRESHOLD) {
-            let isPermanent = true;
+        let consumption = 0;
+        let note = "";
+
+        const diff = previousLevel - currentLevel;
+
+        // ====================================================
+        // CONCEPT 1: Electrical ON + Drop = ACTUAL CONSUMPTION
+        // ====================================================
+        if (isElectricalRunning && diff > 0) {
+            consumption = diff;
+            totalConsumption += consumption;
+            note = "Consumption (Verified)";
             
-            // Look ahead to see if it bounces back (Sloshing/Temperature)
-            for (let j = i + 1; j < data.length; j++) {
-                const future = data[j];
-                const timeDiffMins = (future.timestamp - current.timestamp) / (1000 * 60);
-                if (timeDiffMins > STABILITY_WINDOW_MINS) break; 
+            // If we were waiting for a noise check, CANCEL IT because the engine started!
+            pendingDrop = null; 
+            previousLevel = currentLevel;
+        }
 
-                if (future.level >= (baseline - NOISE_THRESHOLD)) {
-                    isPermanent = false; // It recovered -> It was noise
-                    break;
+        // ====================================================
+        // CONCEPT 2: Electrical OFF + Drop = NOISE CHECK (Wait 2 Hours)
+        // ====================================================
+        else if (!isElectricalRunning && diff > NOISE_THRESHOLD) {
+            // Electrical is OFF, but fuel dropped.
+            if (!pendingDrop) {
+                // START WAITING
+                pendingDrop = {
+                    startTime: timestamp.getTime(),
+                    startLevel: previousLevel,
+                    lowestLevel: currentLevel
+                };
+                note = "Suspicious Drop (Waiting 2h)";
+                consumption = 0; 
+            } else {
+                // ALREADY WAITING
+                const timeElapsed = timestamp.getTime() - pendingDrop.startTime;
+                
+                // Update lowest level seen during drop
+                if (currentLevel < pendingDrop.lowestLevel) pendingDrop.lowestLevel = currentLevel;
+
+                if (timeElapsed < WAIT_PERIOD_MS) {
+                    // Check if it bounced back UP (Restored itself)
+                    if (currentLevel >= pendingDrop.startLevel - NOISE_THRESHOLD) {
+                        note = "Noise Resolved (Level Restored)";
+                        pendingDrop = null; // Reset! It was just noise.
+                        previousLevel = currentLevel; 
+                    } else {
+                        note = `Waiting... (${(timeElapsed/60000).toFixed(0)} mins)`;
+                        // Keep previousLevel as the 'StartLevel' of the drop 
+                    }
+                    consumption = 0;
+                } else {
+                    // 2 HOURS PASSED & Did not recover
+                    // Rule: "If it comes for the same level then don't calculate"
+                    // It didn't come back. But since Electrical is OFF, we do NOT count as consumption.
+                    note = "Unverified Loss (Ignored)";
+                    consumption = 0; 
+                    pendingDrop = null; 
+                    previousLevel = currentLevel; // Accept new level, but don't add to total
                 }
             }
-
-            if (isPermanent) {
-                totalConsumption += (baseline - current.level);
-                baseline = current.level; 
-                isConsumption = true;
-                note = 'Passive Consumption'; // Leak or theft
+        } 
+        
+        // ====================================================
+        // HANDLING REFILLS / LEVEL INCREASES
+        // ====================================================
+        else if (diff < 0) {
+            // Level went UP
+            if (pendingDrop) {
+                // Check if this rise resolved our pending drop
+                if (currentLevel >= pendingDrop.startLevel - NOISE_THRESHOLD) {
+                    note = "Noise Resolved (Restored)";
+                    pendingDrop = null;
+                }
             } else {
-                note = 'Ignored (Dip)';
+                // Real Refill
+                if (Math.abs(diff) > 10) { 
+                    events.push({ type: 'refill', amount: Math.abs(diff), time: timestamp });
+                }
+                note = "Refill / Increase";
             }
+            consumption = 0;
+            previousLevel = currentLevel;
         }
-
-        // --- CASE 4: NOISE / EXPANSION ---
         else {
-            // If level goes UP slightly (e.g. 129 -> 130) but less than refill threshold,
-            // we IGNORE it. This handles the "Return to 130" scenario.
-            // The Baseline stays at 129.
+            // No significant change
+            consumption = 0;
+            if (!pendingDrop) previousLevel = currentLevel;
         }
 
         processedData.push({
-            timestamp: current.originalTimestamp,
-            date: current.date,
-            cleanLevel: Number(baseline.toFixed(2)), 
-            rawLevel: current.level, 
-            consumption: isConsumption ? (baseline - current.level) : 0,
-            isRunning: isRunning,
-            note: note
+            timestamp: record.timestamp,
+            date: record.timestamp.toISOString().split('T')[0],
+            cleanLevel: currentLevel,
+            consumption: consumption,
+            isRunning: isElectricalRunning,
+            note: note,
+            // Pass these for the frontend to use
+            dgKey: dgKey 
         });
     }
 
-    return { totalConsumption, events, processedData };
+    return { totalConsumption, processedData, events };
 }
 
 // =================================================================
