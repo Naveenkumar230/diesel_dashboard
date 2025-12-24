@@ -1,16 +1,18 @@
 /**
- * PLC Service - INDUSTRIAL ACCUMULATOR VERSION
+ * PLC Service - INDUSTRIAL ACCUMULATOR VERSION (Full Production Code)
  * * COMBINES:
  * 1. Full Electrical Data (Voltage, Amps, Freq).
  * 2. Fallback Logic (Tries multiple registers).
  * 3. SAFETY LOGIC (Dead sensor reset + Sticky values).
  * 4. TEST SUPPORT.
- * 5. NEW: Fuel Accumulator Logic (Ratchet & Bucket).
+ * 5. Fuel Accumulator Logic (Ratchet & Bucket).
+ * * * NEW UPDATE:
+ * - Ignores fuel readings < 5 Liters to prevent "Ghost Zero" refills.
  */
 
 const ModbusRTU = require('modbus-serial');
 const { sendDieselAlert, sendStartupAlert } = require('./emailService');
-const fuelAccumulator = require('./fuelAccumulator'); // <--- NEW IMPORT
+const fuelAccumulator = require('./fuelAccumulator'); 
 
 // --- CONFIGURATION ---
 const port = process.env.PLC_PORT || '/dev/ttyUSB0';
@@ -80,7 +82,7 @@ const electricalCandidates = {
     frequency:     [C(4752, 0.01)], // d656 → 656+4096=4752 ✅
   },
 
-  // === DG-2 === ✅ FIXED
+  // === DG-2 ===
   dg2: { 
     voltageR:      [C(4734)],       // d638 → 638+4096=4734 ✅
     voltageY:      [C(4736)],       // d640 → 640+4096=4736 ✅
@@ -92,7 +94,7 @@ const electricalCandidates = {
     frequency:     [C(4754, 0.01)], // d658 → 658+4096=4754 ✅
   },
 
-  // === DG-3 === ✅ FIXED
+  // === DG-3 ===
   dg3: { 
     voltageR:      [C(4740)],       // d644 → 644+4096=4740 ✅
     voltageY:      [C(4742)],       // d646 → 646+4096=4742 ✅
@@ -104,7 +106,7 @@ const electricalCandidates = {
     frequency:     [C(4756, 0.01)], // d660 → 660+4096=4756 ✅
   },
 
-  // === DG-4 === ✅ FIXED
+  // === DG-4 ===
   dg4: { 
     voltageR:      [C(4746)],       // d650 → 650+4096=4746 ✅
     voltageY:      [C(4748)],       // d652 → 652+4096=4748 ✅
@@ -121,10 +123,16 @@ const electricalCandidates = {
 const toSignedInt16 = (v) => (v > 32767 ? v - 65536 : v);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
+// ============================================
+// ✅ UPDATED LOGIC: 5-LITER MINIMUM CHECK
+// ============================================
 function isValidDieselReading(value) {
   const s = toSignedInt16(value);
+  // Filter out Error codes (65535) AND values < 5 Liters (Ghost Zeros)
   if (value === 65535 || value === 65534 || s === -1) return false;
-  return s >= 0 && s <= 600;
+  
+  // NEW LOGIC HERE:
+  return s >= 5 && s <= 2000; 
 }
 
 function isValidElectricalReading(value) {
@@ -145,7 +153,7 @@ async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
 
 // --- CORE READ FUNCTIONS ---
 
-// ✅ SAFE DIESEL READ (With Dead Sensor Check)
+// ✅ SAFE DIESEL READ (With Ghost Zero Protection)
 async function readSingleRegister(registerConfig, dataKey) {
   const address = registerConfig.primary;
   
@@ -153,15 +161,13 @@ async function readSingleRegister(registerConfig, dataKey) {
     const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
     const rawValue = data?.data?.[0];
     
-    // 1. Check validity
+    // 1. Check validity (Uses new 5L check)
     if (rawValue === undefined || !isValidDieselReading(rawValue)) {
-      throw new Error("Invalid Reading");
+      throw new Error(`Invalid Reading (Raw: ${rawValue})`);
     }
     
     // 2. SUCCESS: Update Value
     const value = Math.max(0, toSignedInt16(rawValue));
-    // Note: We don't update systemData[dataKey] directly here anymore.
-    // We return the raw value so the Loop can pass it to the Accumulator.
     
     // Update Quality Flags
     systemData.dataQuality[dataKey + '_stale'] = false;
@@ -180,12 +186,16 @@ async function readSingleRegister(registerConfig, dataKey) {
     const timeSinceLastGoodRead = Date.now() - lastReadTime;
 
     if (timeSinceLastGoodRead > STALE_THRESHOLD_MS) {
+      // ⚠️ CRITICAL: Dead sensor (> 5 mins) -> RESET TO 0
       console.error(`🚨 ${dataKey.toUpperCase()} sensor dead > 5 mins. Resetting to 0.`);
       return 0;
     } else {
-      console.warn(`⚠️ ${dataKey.toUpperCase()} read failed. Using sticky value.`);
-      // Return current display level as fallback
-      return fuelAccumulator.getDisplayLevel(dataKey) || 0;
+      // 🛡️ GHOST PROTECTION:
+      // If sensor glitches to 0 (or < 5L), we return the LAST KNOWN STABLE LEVEL.
+      // This stops the accumulator from seeing a "drop to zero".
+      const lastKnownLevel = fuelAccumulator.getDisplayLevel(dataKey);
+      console.warn(`⚠️ ${dataKey.toUpperCase()} invalid reading. Holding level at ${lastKnownLevel}L.`);
+      return lastKnownLevel || 0;
     }
   }
 }
@@ -212,8 +222,6 @@ async function readParam(dgKey, param) {
     try {
       const data = await readWithRetry(() => client.readHoldingRegisters(addr, 1));
       const raw = data?.data?.[0];
-      
-      // console.log(`[${dgKey}] ${param}: Register ${addr} → Raw: ${raw}`); // Debug log
       
       if (raw === undefined || !isValidElectricalReading(raw)) {
         continue;
@@ -290,7 +298,7 @@ function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   }
 }
 
-// --- MAIN LOOP (THE IMPORTANT PART) ---
+// --- MAIN LOOP ---
 async function readAllSystemData() {
   if (!isPlcConnected) return; 
 
@@ -315,6 +323,8 @@ async function readAllSystemData() {
             // The accumulator does the "Ratchet" logic:
             // - If Running: Count drops, ignore rises.
             // - If Stopped: Ignore drops, allow rises.
+            // - NOTE: if readSingleRegister returned the "Last Stable Level" due to a ghost zero,
+            //   rawLevel == Previous Level. Diff is 0. No consumption. CORRECT.
             await fuelAccumulator.processReading(dgKey, rawLevel, isRunning);
 
             // 5. UPDATE SYSTEM DATA FOR DISPLAY
