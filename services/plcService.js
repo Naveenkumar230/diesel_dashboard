@@ -1,14 +1,16 @@
 /**
- * PLC Service - PRODUCTION HYBRID VERSION
+ * PLC Service - INDUSTRIAL ACCUMULATOR VERSION
  * * COMBINES:
- * 1. Full Electrical Data (Voltage, Amps, Freq from your original code).
- * 2. Fallback Logic (Tries multiple registers for data).
+ * 1. Full Electrical Data (Voltage, Amps, Freq).
+ * 2. Fallback Logic (Tries multiple registers).
  * 3. SAFETY LOGIC (Dead sensor reset + Sticky values).
- * 4. TEST SUPPORT (Compatible with npm test).
+ * 4. TEST SUPPORT.
+ * 5. NEW: Fuel Accumulator Logic (Ratchet & Bucket).
  */
 
 const ModbusRTU = require('modbus-serial');
 const { sendDieselAlert, sendStartupAlert } = require('./emailService');
+const fuelAccumulator = require('./fuelAccumulator'); // <--- NEW IMPORT
 
 // --- CONFIGURATION ---
 const port = process.env.PLC_PORT || '/dev/ttyUSB0';
@@ -16,7 +18,7 @@ const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
 const READ_DELAY = 200; 
 const RETRY_ATTEMPTS = 3;
 const MAX_ERRORS = 20;
-const DG_RUNNING_THRESHOLD = 5; // 5 kW
+const DG_RUNNING_THRESHOLD = 5; // 5 kW (Used for Alerts)
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 Minutes Safety Timeout
 
@@ -158,7 +160,8 @@ async function readSingleRegister(registerConfig, dataKey) {
     
     // 2. SUCCESS: Update Value
     const value = Math.max(0, toSignedInt16(rawValue));
-    systemData[dataKey] = value;
+    // Note: We don't update systemData[dataKey] directly here anymore.
+    // We return the raw value so the Loop can pass it to the Accumulator.
     
     // Update Quality Flags
     systemData.dataQuality[dataKey + '_stale'] = false;
@@ -177,14 +180,12 @@ async function readSingleRegister(registerConfig, dataKey) {
     const timeSinceLastGoodRead = Date.now() - lastReadTime;
 
     if (timeSinceLastGoodRead > STALE_THRESHOLD_MS) {
-      // ⚠️ CRITICAL: Dead sensor (> 5 mins) -> RESET TO 0
       console.error(`🚨 ${dataKey.toUpperCase()} sensor dead > 5 mins. Resetting to 0.`);
-      systemData[dataKey] = 0; 
       return 0;
     } else {
-      // ⚠️ WARNING: Glitch -> Use Sticky Value
       console.warn(`⚠️ ${dataKey.toUpperCase()} read failed. Using sticky value.`);
-      return systemData[dataKey] || 0;
+      // Return current display level as fallback
+      return fuelAccumulator.getDisplayLevel(dataKey) || 0;
     }
   }
 }
@@ -212,11 +213,9 @@ async function readParam(dgKey, param) {
       const data = await readWithRetry(() => client.readHoldingRegisters(addr, 1));
       const raw = data?.data?.[0];
       
-      // ✅ ADD DEBUG LOGGING
-      console.log(`[${dgKey}] ${param}: Register ${addr} → Raw: ${raw}`);
+      // console.log(`[${dgKey}] ${param}: Register ${addr} → Raw: ${raw}`); // Debug log
       
       if (raw === undefined || !isValidElectricalReading(raw)) {
-        console.warn(`[${dgKey}] ${param}: Invalid reading at ${addr}`);
         continue;
       }
 
@@ -228,25 +227,18 @@ async function readParam(dgKey, param) {
 
       return scaled;
     } catch (err) {
-      console.error(`[${dgKey}] ${param}: Read failed at ${addr} - ${err.message}`);
+      // console.error(`[${dgKey}] ${param}: Read failed at ${addr}`);
     }
   }
   
-  // ALL FAILED: Return last known good value
-  console.warn(`[${dgKey}] ${param}: All reads failed, using sticky value`);
   return lastGoodValues[dgKey]?.[param] || 0;
 }
 
 function getZeroElectricalValues() {
   return {
-    voltageR: 0, 
-    voltageY: 0, 
-    voltageB: 0,
-    currentR: 0, 
-    currentY: 0, 
-    currentB: 0,
-    frequency: 0, 
-    activePower: 0
+    voltageR: 0, voltageY: 0, voltageB: 0,
+    currentR: 0, currentY: 0, currentB: 0,
+    frequency: 0, activePower: 0
   };
 }
 
@@ -260,17 +252,14 @@ async function readAllElectrical(dgKey) {
   };
 
   try {
-    // 1. Always Read Active Power (D600, D602, etc.)
     result.activePower = await readParam(dgKey, 'activePower');
     
-    // 2. Always Read Voltages (So you don't get "--" when OFF)
     result.voltageR = await readParam(dgKey, 'voltageR');
-    await wait(20); // Small rest for PLC
+    await wait(20);
     result.voltageY = await readParam(dgKey, 'voltageY');
     await wait(20);
     result.voltageB = await readParam(dgKey, 'voltageB');
 
-    // 3. Read Currents & Freq (Always read to prevent missing data)
     result.currentR = await readParam(dgKey, 'currentR');
     await wait(20);
     result.currentY = await readParam(dgKey, 'currentY');
@@ -278,13 +267,11 @@ async function readAllElectrical(dgKey) {
     result.currentB = await readParam(dgKey, 'currentB');
     result.frequency = await readParam(dgKey, 'frequency');
 
-    // Save as last known good values
     lastGoodValues[dgKey] = { ...result };
     return result;
 
   } catch (error) {
     console.warn(`⚠️ Partial Read Fail for ${dgKey}:`, error.message);
-    // If read fails, return the last known good values (or Zeros) so graph doesn't break
     return lastGoodValues[dgKey] || result;
   }
 }
@@ -299,41 +286,59 @@ function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
     if (dgKey === 'dg1' || dgKey === 'dg2' || dgKey === 'dg4') {
       sendStartupAlert(dgName, allNewValues); 
       console.log(`✅ Startup detected for ${dgName} (Email Sent)`);
-    } else {
-      console.log(`✅ Startup detected for ${dgName} (Email NOT sent - as per config)`);
     }
   }
 }
 
-// --- MAIN LOOP ---
+// --- MAIN LOOP (THE IMPORTANT PART) ---
 async function readAllSystemData() {
-  if (!isPlcConnected) return; // For testing and safety
+  if (!isPlcConnected) return; 
 
   try {
-    await readSingleRegister(dgRegisters.dg1, 'dg1');
-    await wait(READ_DELAY);
-    await readSingleRegister(dgRegisters.dg2, 'dg2');
-    await wait(READ_DELAY);
-    await readSingleRegister(dgRegisters.dg3, 'dg3');
-    await wait(READ_DELAY);
-
-    systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
-
     const allNewValues = {};
-    for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
-      allNewValues[dgKey] = await readAllElectrical(dgKey);
+    const dgList = ['dg1', 'dg2', 'dg3', 'dg4'];
+
+    for (const dgKey of dgList) {
+        // 1. Read Electrical Data (Full Params)
+        const electricalData = await readAllElectrical(dgKey);
+        allNewValues[dgKey] = electricalData;
+
+        // 2. CHECK VOLTAGE > 100V to determine if Running
+        // This is safer than Power because it catches Idle runs too
+        const isRunning = (electricalData.voltageR > 100);
+
+        // 3. Read Raw Fuel Level (Only if configured)
+        if (dgRegisters[dgKey]) {
+            const rawLevel = await readSingleRegister(dgRegisters[dgKey], dgKey);
+
+            // 4. FEED TO ACCUMULATOR
+            // The accumulator does the "Ratchet" logic:
+            // - If Running: Count drops, ignore rises.
+            // - If Stopped: Ignore drops, allow rises.
+            await fuelAccumulator.processReading(dgKey, rawLevel, isRunning);
+
+            // 5. UPDATE SYSTEM DATA FOR DISPLAY
+            // We use the stable "Ratchet" level, not the raw one
+            systemData[dgKey] = fuelAccumulator.getDisplayLevel(dgKey);
+        }
     }
+
+    // Update Totals
+    systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
     
     const oldElectricalData = { ...systemData.electrical }; 
     systemData.electrical = allNewValues; 
     systemData.lastUpdate = new Date().toISOString();
 
-    for (const dgKey of ['dg1', 'dg2', 'dg3', 'dg4']) {
+    // Check Startups (Email Alerts)
+    for (const dgKey of dgList) {
       checkStartup(dgKey, allNewValues[dgKey], oldElectricalData, allNewValues); 
     }
 
+    // Check Low Fuel (Email Alerts)
     checkDieselLevels(systemData);
     errorCount = 0;
+
   } catch (err) {
     errorCount++;
     console.error(`Error reading system data (${errorCount}/${MAX_ERRORS}):`, err.message);
@@ -348,7 +353,7 @@ async function readAllSystemData() {
 function checkDieselLevels(data) {
   const criticalDGs = [];
   if (data.dg1 <= CRITICAL_LEVEL) criticalDGs.push('DG-1');
-  if (data.dg2 <= CRITICAL_LEVEL) criticalDGs.push('DG-2'); // Added back
+  if (data.dg2 <= CRITICAL_LEVEL) criticalDGs.push('DG-2'); 
   if (criticalDGs.length > 0) {
     sendDieselAlert(data, criticalDGs);
   }
@@ -365,7 +370,7 @@ function connectToPLC() {
       console.log('✓ PLC connected successfully');
       setTimeout(() => {
         readAllSystemData();
-        setInterval(readAllSystemData, 5000);
+        setInterval(readAllSystemData, 1000); // 1-Second Loop
       }, 2000);
     })
     .catch((err) => {
@@ -390,7 +395,6 @@ module.exports = {
   readAllSystemData,
   getSystemData,
   isConnected,
-  // ⬇️ TEST EXPORTS (Must stay to pass tests)
   isValidDieselReading,
   _test_systemData: systemData,
   _test_setConnectionState: (state) => { isPlcConnected = state; }
