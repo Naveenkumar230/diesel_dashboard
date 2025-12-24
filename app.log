@@ -1,0 +1,59 @@
+nohup: ignoring input
+
+> dg-monitoring-system@2.0.0 start
+> node server.js
+
+MongoDB connection attempt 1/5...
+✅ MongoDB connection established
+✅ MongoDB Connected Successfully
+
+===========================================
+DG Monitoring System Starting...
+===========================================
+MongoDB: Connected
+Attempting to connect to PLC on /dev/ttyUSB0...
+✅ Email alerts enabled (Diesel Only)
+⏰ Scheduler Service Started with Industrial Sensor Validation
+❌ UNCAUGHT EXCEPTION: Error: listen EADDRINUSE: address already in use 0.0.0.0:3005
+    at Server.setupListenHandle [as _listen2] (node:net:1902:16)
+    at listenInCluster (node:net:1959:12)
+    at doListen (node:net:2133:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3005
+}
+❌ UNCAUGHT EXCEPTION: Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:1902:16)
+    at listenInCluster (node:net:1959:12)
+    at doListen (node:net:2133:7)
+    at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
+Attempting to connect to PLC on /dev/ttyUSB0...
+PLC connection error: Error Resource temporarily unavailable Cannot lock port
