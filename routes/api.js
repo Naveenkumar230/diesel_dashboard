@@ -6,6 +6,8 @@
  * 3. VERIFICATION:
  * - Consumption is ONLY counted if Fuel drops > 1.0L AND Active Power > 0.
  * - Refills are ONLY counted if Fuel rises > 25.0L.
+ * * * NEW FIX: 
+ * - Filters out invalid '0' or '1' liter readings to prevent Ghost Refills.
  */
 
 const express = require('express');
@@ -23,15 +25,9 @@ const LOGO_PATH = path.join(__dirname, '../public/logo.png');
 // ============================================================
 // 1. HELPER: Find Closest Electrical Reading
 // ============================================================
-// efficiently finds the electrical reading closest to a specific timestamp
 function findClosestReading(electricalRecords, targetTime) {
     if (!electricalRecords || electricalRecords.length === 0) return null;
 
-    // We assume electricalRecords are sorted by timestamp. 
-    // We can use a simple search or find. Since arrays might be large, 
-    // for production, we map them by minute for O(1) lookup, 
-    // but a simple find is acceptable for daily ranges.
-    
     // Optimization: Search within a 2-minute window
     const targetMs = targetTime.getTime();
     return electricalRecords.find(e => {
@@ -44,12 +40,21 @@ function findClosestReading(electricalRecords, targetTime) {
 // 2. CORE LOGIC: MERGE & VERIFY
 // ============================================================
 function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
-    if (!dieselRecords || dieselRecords.length === 0) {
+    // ---------------------------------------------------------
+    // 🛑 FIX: CLEAN DATA FIRST
+    // Remove any records where level is 0, null, or < 2 (Dead Sensor)
+    // ---------------------------------------------------------
+    const cleanRecords = dieselRecords.filter(r => {
+        const lvl = r[dgKey]?.level;
+        return typeof lvl === 'number' && lvl > 2; // Strict filter: Must be > 2 Liters
+    });
+
+    if (!cleanRecords || cleanRecords.length === 0) {
         return { totalConsumption: 0, processedData: [], events: [] };
     }
 
     // Sort both arrays by time to ensure linear processing
-    dieselRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    cleanRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     if (electricalRecords) {
         electricalRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     }
@@ -58,40 +63,36 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     let events = [];
     let processedData = [];
     
-    // Baseline Level (Sticky)
-    let effectiveLevel = dieselRecords[0][dgKey]?.level || 0;
+    // Baseline Level (Sticky) - Uses the first VALID record
+    let effectiveLevel = cleanRecords[0][dgKey]?.level || 0;
 
-    for (let i = 0; i < dieselRecords.length; i++) {
-        const record = dieselRecords[i];
+    for (let i = 0; i < cleanRecords.length; i++) {
+        const record = cleanRecords[i];
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
 
         // 🔍 STEP 1: CROSS-REFERENCE ELECTRICAL DATA
-        // We look for the raw electrical reading from MongoDB for this moment
         const electricalData = findClosestReading(electricalRecords, timestamp);
         
         // Determine if DG was ACTUALLY generating power
-        // We check Active Power (kW) or Current (Amps)
         let isPowerOn = false;
         let electricalDebug = "No Data";
 
         if (electricalData) {
-            // Check if ANY phase has current OR active power is generated
-            const hasCurrent = (electricalData.currentR > 0 || electricalData.currentY > 0 || electricalData.currentB > 0);
+            // Check if Voltage > 100 (More reliable than Power/Amps for Idle detection)
+            // Or check Active Power > 0
+            const hasVoltage = (electricalData.voltageR > 100);
             const hasPower = (electricalData.activePower > 0);
             
-            if (hasCurrent || hasPower) {
+            if (hasVoltage || hasPower) {
                 isPowerOn = true;
                 electricalDebug = `ON (${electricalData.activePower}kW)`;
             } else {
-                electricalDebug = "OFF (0kW)";
+                electricalDebug = "OFF (0V)";
             }
         } else {
-            // Fallback: If no electrical data exists, we assume OFF (Strict Verification)
-            // Or check the 'isRunning' flag from the diesel record itself as backup
+            // Fallback: If no electrical data exists, check flags
             if (dgKey === 'total') {
-                 // For total, we can't easily verify electrical without complex logic, 
-                 // so we trust the flag or sum.
                  isPowerOn = record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning;
             } else {
                  isPowerOn = record[dgKey]?.isRunning || false;
@@ -120,8 +121,6 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
                 effectiveLevel = currentLevel;
             } else {
                 // ❌ FALSE ALARM: Power was OFF.
-                // Even though fuel dropped, the electrical sensor says 0 Amps/0 kW.
-                // We IGNORE this drop.
                 note = "Noise Ignored (Gen OFF)";
                 consumption = 0;
                 // We DO NOT update effectiveLevel, effectively 'bridging' the gap
@@ -135,8 +134,17 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
             // Update baseline to new higher level
             effectiveLevel = currentLevel;
         }
+        else if (diff < 0) {
+             // Case C: Small Rise (Slosh/Recovery)
+             // If engine is OFF, allow level to float back up (Recovery)
+             if (!isPowerOn) {
+                 effectiveLevel = currentLevel;
+                 note = "Recovery (Gen OFF)";
+             }
+             // If engine is ON, ignore rise (keep effectiveLevel low)
+        }
         else {
-            // Case C: Tiny Change (Noise < 1L or < 25L rise)
+            // Case D: Tiny Change (Noise < 1L)
             consumption = 0;
             // Keep effectiveLevel same (Sticky)
         }
@@ -187,7 +195,7 @@ router.get('/consumption', async (req, res) => {
                 dg: dgKey,
                 timestamp: { $gte: start, $lte: end }
             })
-            .select('timestamp activePower currentR currentY currentB') // Only fetch what we need
+            .select('timestamp activePower currentR currentY currentB voltageR') // Added voltageR
             .sort({ timestamp: 1 })
             .lean();
         }
@@ -199,12 +207,11 @@ router.get('/consumption', async (req, res) => {
             if (liveData && liveData.lastUpdate) {
                 dieselRecords.push({
                     timestamp: new Date(), date: todayStr,
-                    dg1: { level: liveData.dg1, isRunning: false }, // flags irrelevant here, we use electrical
+                    dg1: { level: liveData.dg1, isRunning: false }, 
                     dg2: { level: liveData.dg2, isRunning: false },
                     dg3: { level: liveData.dg3, isRunning: false },
                     total: { level: liveData.total }
                 });
-                // Note: We don't append live electrical here, simpler to just rely on DB for historical
             }
         }
 
