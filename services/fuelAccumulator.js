@@ -9,7 +9,7 @@ const { DieselConsumption } = require('../models/schemas');
 // --- CONFIGURATION ---
 const COMMIT_THRESHOLD = 2.0;  // Liters: Save to DB only when we have this much
 const REFILL_THRESHOLD = 25.0; // Liters: Rise > 25L is a refill
-const NOISE_FILTER = 0.1;      // Liters: Ignore drops smaller than this
+const NOISE_FILTER = 2.0;      // Liters: Ignore drops smaller than this
 
 // --- STATE MEMORY ---
 // Keeps track of the "Stable Level" and "Hidden Buffer" for each DG
