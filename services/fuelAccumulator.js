@@ -1,18 +1,17 @@
 /**
- * FUEL ACCUMULATOR SERVICE
- * Implements "Ratchet & Bucket" Logic for Industrial Fuel Monitoring.
- * Prevents sensor noise from creating false consumption.
+ * FUEL ACCUMULATOR SERVICE - IRON RATCHET VERSION
+ * FIXED: Prevents "Vibration Looping" on DG1
+ * UPDATED: Refill Threshold set to 50 Liters
  */
 
 const { DieselConsumption } = require('../models/schemas');
 
 // --- CONFIGURATION ---
-const COMMIT_THRESHOLD = 2.0;  // Liters: Save to DB only when we have this much
-const REFILL_THRESHOLD = 50.0; // Liters: Rise > 50L is a refill
-const NOISE_FILTER = 2.0;      // Liters: Ignore drops smaller than this
+const COMMIT_THRESHOLD = 2.0;  // Only save to DB if we have > 2 Liters accumulated
+const REFILL_THRESHOLD = 50.0; // ✅ UPDATED: Only reset if level rises by > 50 Liters
+const NOISE_FILTER = 2.0;      // IGNORE any drop smaller than 2.0 Liters
 
 // --- STATE MEMORY ---
-// Keeps track of the "Stable Level" and "Hidden Buffer" for each DG
 let state = {
     dg1: { buffer: 0, lastLevel: null },
     dg2: { buffer: 0, lastLevel: null },
@@ -20,13 +19,6 @@ let state = {
     dg4: { buffer: 0, lastLevel: null }
 };
 
-/**
- * Main Processing Function
- * Call this every second with new data.
- * @param {string} dgKey - 'dg1', 'dg2', 'dg3', 'dg4'
- * @param {number} currentLevel - Raw sensor liters
- * @param {boolean} isEngineRunning - True if Voltage > 100V
- */
 async function processReading(dgKey, currentLevel, isEngineRunning) {
     let s = state[dgKey];
 
@@ -39,50 +31,43 @@ async function processReading(dgKey, currentLevel, isEngineRunning) {
     // 2. Calculate Change
     const diff = s.lastLevel - currentLevel; // Positive = Drop, Negative = Rise
 
-    // =========================================================
-    // 🧠 THE LOGIC
-    // =========================================================
-
     // CASE 1: DROP DETECTED (Consumption?)
     if (diff > NOISE_FILTER) {
         if (isEngineRunning) {
             // ✅ Engine ON: Real Consumption.
-            // 1. Add to "Hidden Bucket"
+            // We count the drop AND lock the level down.
             s.buffer += diff;
-            // 2. Ratchet Down (Lock new lower level)
             s.lastLevel = currentLevel; 
-            
-            // Console log for debugging (Optional)
-            // console.log(`[${dgKey}] Burned: ${diff.toFixed(2)}L | Buffer: ${s.buffer.toFixed(2)}L`);
         } else {
             // ❌ Engine OFF: Noise/Cooling.
-            // 1. Do NOT add to buffer.
-            // 2. Follow sensor down (so we don't drift away from reality)
+            // We follow the sensor but DO NOT count consumption.
             s.lastLevel = currentLevel; 
         }
     } 
     
-    // CASE 2: REFILL DETECTED (Huge Rise)
+    // CASE 2: REFILL DETECTED (Huge Rise > 50L)
     else if (diff < -REFILL_THRESHOLD) {
         console.log(`[${dgKey}] REFILL DETECTED: +${Math.abs(diff).toFixed(1)}L`);
-        s.lastLevel = currentLevel; // Reset ratchet to high level
-        s.buffer = 0; // Clear buffer (don't count refill as consumption)
+        s.lastLevel = currentLevel; // Reset ratchet to new high level
+        s.buffer = 0; // Clear buffer
     }
 
-    // CASE 3: SMALL RISE (Sloshing / Recovery)
+    // CASE 3: SMALL RISE (Sloshing / Vibration)
     else if (diff < 0) {
         if (!isEngineRunning) {
             // ✅ Engine OFF: Allow Recovery.
-            // Since we didn't bill any fuel, let the level float back up.
+            // Fuel expands when hot/stopped, so we let it rise.
             s.lastLevel = currentLevel; 
         } else {
-            // 🔒 Engine ON: Block the Rise.
-            // Ignore sloshing. Keep s.lastLevel at the lowest point.
+            // 🔒 Engine ON: THE IRON RATCHET.
+            // WE DO NOTHING. We strictly ignore the rise.
+            // We keep s.lastLevel at the LOWEST point.
+            // This prevents the "Looping" bug (18L error).
         }
     }
 
     // =========================================================
-    // 💾 SAVE TO DB (Check Bucket)
+    // 💾 SAVE TO DB
     // =========================================================
     if (s.buffer >= COMMIT_THRESHOLD) {
         await commitBufferToDB(dgKey, s.buffer);
@@ -90,16 +75,11 @@ async function processReading(dgKey, currentLevel, isEngineRunning) {
     }
 }
 
-/**
- * Saves accumulated fuel to MongoDB
- */
 async function commitBufferToDB(dgKey, amount) {
     try {
         console.log(`[${dgKey}] 💾 COMMITTING: ${amount.toFixed(2)} Liters`);
-        
         const today = new Date().toISOString().split('T')[0];
         
-        // Note: Ensure your Schema has fields for dg4 if you use it
         await DieselConsumption.updateOne(
             { date: today },
             { 
@@ -114,9 +94,6 @@ async function commitBufferToDB(dgKey, amount) {
     }
 }
 
-/**
- * Returns the stable "Ratchet" level for display on the Dashboard
- */
 function getDisplayLevel(dgKey) {
     return state[dgKey].lastLevel || 0;
 }
