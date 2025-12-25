@@ -19,6 +19,7 @@
 const ModbusRTU = require('modbus-serial');
 const { sendDieselAlert, sendStartupAlert } = require('./emailService');
 const fuelAccumulator = require('./fuelAccumulator'); // <--- NEW IMPORT
+const ModbusRTU = require('modbus-serial'); // (Your existing imports)
 // --- CONFIGURATION ---
 const port = process.env.PLC_PORT || '/dev/ttyUSB0';
 const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
@@ -28,6 +29,9 @@ const MAX_ERRORS = 20;
 const DG_RUNNING_THRESHOLD = 5; // 5 kW (Used for Alerts)
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 Minutes Safety Timeout
+
+const { processDg1Data } = require('./dgMonitor'); // Import our new logic
+const Log = require('../models/Log'); // Ensure you have your Log model imported
 
 const plcSettings = {
 
@@ -654,24 +658,14 @@ function checkDieselLevels(data) {
 
 }
 
-
-
 function connectToPLC() {
-
   console.log(`Attempting to connect to PLC on ${port}...`);
-
   client.connectRTU(port, plcSettings)
-
     .then(() => {
-
       client.setID(plcSlaveID);
-
       client.setTimeout(5000);
-
       isPlcConnected = true;
-
       errorCount = 0;
-
       console.log('✓ PLC connected successfully');
 
       setTimeout(() => {

@@ -10,27 +10,32 @@ const DieselConsumptionSchema = new mongoose.Schema({
 });
 const DieselConsumption = mongoose.model('DieselConsumption', DieselConsumptionSchema);
 
-async function clean() {
+async function cleanToday() {
+  console.log("🚀 Starting Cleanup...");
   try {
     await mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 10000 });
     console.log("✅ DB Connected");
 
     const today = new Date();
-    const start = new Date(today.setHours(0, 0, 0, 0));
-    const end = new Date(today.setHours(23, 59, 59, 999));
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-    // DELETE any record where level dropped below 10L (Aggressive Clean)
-    const res = await DieselConsumption.deleteMany({
-      timestamp: { $gte: start, $lte: end },
-      $or: [
-        { "dg1.level": { $lt: 10 } },
-        { "dg2.level": { $lt: 10 } },
-        { "dg3.level": { $lt: 10 } }
-      ]
+    console.log(`📅 Deleting ALL records for today: ${startOfDay.toISOString().split('T')[0]}`);
+
+    // DELETE EVERYTHING FROM TODAY (Resets stats to 0)
+    const result = await DieselConsumption.deleteMany({
+      timestamp: { $gte: startOfDay, $lte: endOfDay }
     });
 
-    console.log(`🗑️ DELETED ${res.deletedCount} BAD RECORDS.`);
-  } catch (e) { console.error(e); } 
-  finally { mongoose.disconnect(); }
+    console.log(`🗑️ DELETED ${result.deletedCount} records.`);
+    console.log("✨ Dashboard Stats (Consumption/Refill) should now be 0.");
+
+  } catch (err) {
+    console.error("❌ ERROR:", err.message);
+  } finally {
+    await mongoose.connection.close();
+    process.exit(0);
+  }
 }
-clean();
+
+cleanToday();
