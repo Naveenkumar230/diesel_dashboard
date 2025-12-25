@@ -1,48 +1,77 @@
-// /home/pi/diesel_dashboard/services/dgMonitor.js
+/**
+ * services/dgMonitor.js
+ * STRICT MODE for DG1
+ */
 
-// 1. GLOBAL STATE (Private to this file)
+// 1. GLOBAL STATE (Must be outside the function to persist)
 let dg1State = {
     wasRunning: false,
-    startLevel: 0
+    lockedStartLevel: 0,  // This variable holds the TRUE start level
+    accumulatedConsumption: 0
 };
 
-// 2. THE LOGIC FUNCTION
 function processDg1Data(currentRpm, currentFuelLiters) {
+    // Threshold to decide if engine is ON (e.g. RPM > 300)
     const isNowOn = (currentRpm > 300);
 
-    // --- SCENARIO 1: ENGINE STARTED ---
+    // =========================================================
+    // SCENARIO 1: ENGINE JUST STARTED (LATCH TRIGGER)
+    // =========================================================
     if (isNowOn && !dg1State.wasRunning) {
-        dg1State.startLevel = currentFuelLiters;
+        // 🔒 LOCK ACTION: Capture the level NOW and save it to 'lockedStartLevel'
+        dg1State.lockedStartLevel = currentFuelLiters;
+        
         dg1State.wasRunning = true;
-        console.log(`[DG1] STARTED. Start Level Locked: ${dg1State.startLevel} L`);
+        dg1State.accumulatedConsumption = 0; // Reset counter
+        
+        console.log(`🔒 DG1 LOCKED. Start Level: ${dg1State.lockedStartLevel} L`);
+        return null; // Nothing to save yet
     }
 
-    // --- SCENARIO 2: ENGINE STOPPED ---
+    // =========================================================
+    // SCENARIO 2: ENGINE IS RUNNING (IGNORE START LEVEL)
+    // =========================================================
+    else if (isNowOn && dg1State.wasRunning) {
+        // ⚠️ CRITICAL: DO NOT TOUCH 'lockedStartLevel' HERE!
+        // We only track live consumption drops if you want real-time updates
+        
+        // Simple logic: If level dropped, add to consumption
+        let drop = dg1State.lockedStartLevel - currentFuelLiters;
+        if (drop > 0) dg1State.accumulatedConsumption = drop;
+        
+        return null;
+    }
+
+    // =========================================================
+    // SCENARIO 3: ENGINE JUST STOPPED (FINAL CALCULATION)
+    // =========================================================
     else if (!isNowOn && dg1State.wasRunning) {
         const endLevel = currentFuelLiters;
-        let consumption = dg1State.startLevel - endLevel;
-        
-        // Safety: No negative consumption
-        if (consumption < 0) consumption = 0;
 
-        console.log(`[DG1] STOPPED. Consumed: ${consumption.toFixed(2)} L`);
+        // FINAL MATH: Use the LOCKED start level, not the current one.
+        let totalConsumed = dg1State.lockedStartLevel - endLevel;
 
-        // RESET STATE
+        // Safety: If sensor noise caused negative result
+        if (totalConsumed < 0) totalConsumed = 0;
+
+        console.log(`🛑 DG1 STOPPED.`);
+        console.log(`   Start (Locked): ${dg1State.lockedStartLevel}`);
+        console.log(`   End (Current):  ${endLevel}`);
+        console.log(`   Consumption:    ${totalConsumed}`);
+
+        // Reset State
         dg1State.wasRunning = false;
         
-        // RETURN THE RESULT OBJECT (To be saved to DB)
+        // RETURN DATA TO SAVE TO MONGODB
         return {
-            event: "STOPPED",
-            timestamp: new Date(),
-            consumption: consumption,
-            startLevel: dg1State.startLevel,
-            endLevel: endLevel
+            event: "DG_STOPPED",
+            startLevel: dg1State.lockedStartLevel, // ✅ Saves the correct 128L (example)
+            endLevel: endLevel,                    // ✅ Saves 121L
+            consumption: totalConsumed             // ✅ Saves 7L
         };
     }
-    
-    // Return null if nothing interesting happened
+
     return null;
 }
 
-// 3. EXPORT THE FUNCTION
 module.exports = { processDg1Data };
