@@ -1,41 +1,50 @@
 const mongoose = require('mongoose');
-const mongoURI = 'mongodb+srv://dieselconsumption7_db_user:NSSZ9Y9X2sLJCUHX@cluster0.ortzv0q.mongodb.net/dieselDB?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true';
 
-const DieselConsumptionSchema = new mongoose.Schema({
-  timestamp: Date,
-  dg1: { level: Number, consumption: Number },
-  dg2: { level: Number, consumption: Number },
-  dg3: { level: Number, consumption: Number },
-  date: String
+// YOUR CLOUD DATABASE ADDRESS
+const MONGO_URI = "mongodb+srv://dieselconsumption7_db_user:NSSZ9Y9X2sLJCUHX@cluster0.ortzv0q.mongodb.net/dieselDB?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true";
+
+const LogSchema = new mongoose.Schema({
+    timestamp: Date,
+    event: String,
+    startLevel: Number,
+    endLevel: Number,
+    consumption: Number
 });
-const DieselConsumption = mongoose.model('DieselConsumption', DieselConsumptionSchema);
+const Log = mongoose.model('Log', LogSchema);
 
-async function cleanToday() {
-  console.log("🚀 Starting Cleanup...");
-  try {
-    await mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 10000 });
-    console.log("✅ DB Connected");
+async function resetToday() {
+    try {
+        console.log(`🔌 Connecting to Cloud Database...`);
+        await mongoose.connect(MONGO_URI);
+        console.log("✅ Connected.");
 
-    const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+        // 1. DEFINE "TODAY" (From Midnight until now)
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
 
-    console.log(`📅 Deleting ALL records for today: ${startOfDay.toISOString().split('T')[0]}`);
+        // 2. FIND & DELETE BAD RECORDS
+        // We delete logs from TODAY where consumption is greater than 0
+        const result = await Log.deleteMany({ 
+            timestamp: { $gte: startOfDay, $lte: endOfDay },
+            consumption: { $gt: 0 }
+        });
 
-    // DELETE EVERYTHING FROM TODAY (Resets stats to 0)
-    const result = await DieselConsumption.deleteMany({
-      timestamp: { $gte: startOfDay, $lte: endOfDay }
-    });
+        if (result.deletedCount > 0) {
+            console.log(`\n🎉 SUCCESS! Deleted ${result.deletedCount} records from TODAY.`);
+            console.log("The '7 Liters' should now be gone from your dashboard.\n");
+        } else {
+            console.log("\n⚠️ No records found with consumption > 0 for today.");
+        }
 
-    console.log(`🗑️ DELETED ${result.deletedCount} records.`);
-    console.log("✨ Dashboard Stats (Consumption/Refill) should now be 0.");
-
-  } catch (err) {
-    console.error("❌ ERROR:", err.message);
-  } finally {
-    await mongoose.connection.close();
-    process.exit(0);
-  }
+    } catch (err) {
+        console.error("❌ Error:", err.message);
+    } finally {
+        await mongoose.disconnect();
+        console.log("👋 Connection Closed.");
+    }
 }
 
-cleanToday();
+resetToday();
