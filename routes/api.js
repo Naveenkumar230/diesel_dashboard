@@ -37,7 +37,7 @@ function findClosestReading(electricalRecords, targetTime) {
 }
 
 // ============================================================
-// CORE LOGIC: MERGE & VERIFY (IRON RATCHET + STACKED NOISE FIX)
+// CORE LOGIC: MERGE & VERIFY (PERMANENT "TOTAL" FIX)
 // ============================================================
 function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     // 1. CLEAN DATA: Remove Dead Sensors (< 5 Liters)
@@ -61,7 +61,9 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     let effectiveLevel = startLevel;
     let totalRefilled = 0;
 
-    // 🛑 DYNAMIC FILTER: Total needs 6.0L to ignore stacked noise
+    // 🛑 DYNAMIC FILTER: 
+    // If 'total' -> Use 6.0L (Ignore stacked vibration of 3 tanks)
+    // If 'dg1/2/3' -> Use 2.0L (Standard vibration)
     const DYNAMIC_NOISE_FILTER = (dgKey === 'total') ? 6.0 : 2.0;
 
     // 2. PROCESS RECORDS
@@ -70,6 +72,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
 
+        // Check Electrical Status
         const electricalData = findClosestReading(electricalRecords, timestamp);
         let isPowerOn = false;
         let electricalDebug = "No Data";
@@ -78,6 +81,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
             isPowerOn = (electricalData.voltageR > 100);
             electricalDebug = isPowerOn ? `ON (${electricalData.activePower}kW)` : "OFF (0V)";
         } else {
+            // Fallback flags
             if (dgKey === 'total') isPowerOn = record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning;
             else isPowerOn = record[dgKey]?.isRunning || false;
             electricalDebug = isPowerOn ? "Flag ON" : "No Data";
@@ -96,7 +100,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
             effectiveLevel = currentLevel; 
         }
         
-        // CASE B: CONSUMPTION (Uses Dynamic Filter!)
+        // CASE B: CONSUMPTION (Uses DYNAMIC FILTER)
         else if (diff > DYNAMIC_NOISE_FILTER) {
             if (isPowerOn) {
                 consumption = diff;
@@ -129,12 +133,12 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         });
     }
 
-    // 3. FINAL MASS BALANCE (Strict Math for Dashboard Card)
+    // 3. FINAL MASS BALANCE (Strict Math)
     // Formula: Start - (End - Refills)
     const adjustedEndLevel = endLevel - totalRefilled;
     let finalConsumption = startLevel - adjustedEndLevel;
     
-    // Safety clamp to 0
+    // Safety clamp (Prevent -1 Liters)
     finalConsumption = Math.max(0, finalConsumption);
 
     return { 
@@ -143,6 +147,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         events 
     };
 }
+
 // ============================================================
 // 3. API ROUTES
 // ============================================================
