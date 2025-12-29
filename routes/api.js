@@ -40,9 +40,7 @@ function findClosestReading(electricalRecords, targetTime) {
 // CORE LOGIC: MERGE & VERIFY (IRON RATCHET + STACKED NOISE FIX)
 // ============================================================
 function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
-    // ---------------------------------------------------------
     // 1. CLEAN DATA: Remove Dead Sensors (< 5 Liters)
-    // ---------------------------------------------------------
     const cleanRecords = dieselRecords.filter(r => {
         const lvl = r[dgKey]?.level;
         return typeof lvl === 'number' && lvl > 5; 
@@ -63,9 +61,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     let effectiveLevel = startLevel;
     let totalRefilled = 0;
 
-    // 🛑 DYNAMIC FILTER
-    // Individual DG: 2.0L Filter (Ignores normal vibration)
-    // Total: 6.0L Filter (Ignores vibration from 3 tanks combined)
+    // 🛑 DYNAMIC FILTER: Total needs 6.0L to ignore stacked noise
     const DYNAMIC_NOISE_FILTER = (dgKey === 'total') ? 6.0 : 2.0;
 
     // 2. PROCESS RECORDS
@@ -74,7 +70,6 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
 
-        // Check Electrical Status
         const electricalData = findClosestReading(electricalRecords, timestamp);
         let isPowerOn = false;
         let electricalDebug = "No Data";
@@ -148,8 +143,6 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         events 
     };
 }
-
-
 // ============================================================
 // 3. API ROUTES
 // ============================================================
