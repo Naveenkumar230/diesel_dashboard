@@ -37,7 +37,7 @@ function findClosestReading(electricalRecords, targetTime) {
 }
 
 // ============================================================
-// 2. CORE LOGIC: MERGE & VERIFY (IRON RATCHET + MASS BALANCE)
+// CORE LOGIC: MERGE & VERIFY (IRON RATCHET + STACKED NOISE FIX)
 // ============================================================
 function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     // ---------------------------------------------------------
@@ -45,18 +45,16 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     // ---------------------------------------------------------
     const cleanRecords = dieselRecords.filter(r => {
         const lvl = r[dgKey]?.level;
-        return typeof lvl === 'number' && lvl > 5; // Strict filter: Must be > 5 Liters
+        return typeof lvl === 'number' && lvl > 5; 
     });
 
     if (!cleanRecords || cleanRecords.length === 0) {
         return { totalConsumption: 0, processedData: [], events: [] };
     }
 
-    // Sort both arrays by time
     cleanRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     if (electricalRecords) electricalRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-    // 2. CAPTURE START & END LEVELS FOR MASS BALANCE CALCULATION
     const startLevel = cleanRecords[0][dgKey]?.level || 0;
     const endLevel = cleanRecords[cleanRecords.length - 1][dgKey]?.level || 0;
 
@@ -65,13 +63,18 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     let effectiveLevel = startLevel;
     let totalRefilled = 0;
 
-    // 3. PROCESS RECORDS (IRON RATCHET LOGIC)
+    // 🛑 DYNAMIC FILTER
+    // Individual DG: 2.0L Filter (Ignores normal vibration)
+    // Total: 6.0L Filter (Ignores vibration from 3 tanks combined)
+    const DYNAMIC_NOISE_FILTER = (dgKey === 'total') ? 6.0 : 2.0;
+
+    // 2. PROCESS RECORDS
     for (let i = 0; i < cleanRecords.length; i++) {
         const record = cleanRecords[i];
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
 
-        // Find Electrical State
+        // Check Electrical Status
         const electricalData = findClosestReading(electricalRecords, timestamp);
         let isPowerOn = false;
         let electricalDebug = "No Data";
@@ -80,51 +83,42 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
             isPowerOn = (electricalData.voltageR > 100);
             electricalDebug = isPowerOn ? `ON (${electricalData.activePower}kW)` : "OFF (0V)";
         } else {
-            // Fallback flags
             if (dgKey === 'total') isPowerOn = record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning;
             else isPowerOn = record[dgKey]?.isRunning || false;
             electricalDebug = isPowerOn ? "Flag ON" : "No Data";
         }
 
-        // Calculate Diff from RATCHET (effectiveLevel)
         const diff = effectiveLevel - currentLevel;
         let consumption = 0;
         let note = "Stable";
 
-        // --- DECISION TREE ---
-
-        // CASE A: REFILL (> 50L Rise)
+        // CASE A: REFILL (> 50L)
         if (diff < -50.0) { 
             const refillAmount = Math.abs(diff);
             note = "Refill Detected";
             events.push({ type: 'refill', amount: refillAmount, time: timestamp });
             totalRefilled += refillAmount; 
-            effectiveLevel = currentLevel; // Reset Ratchet
+            effectiveLevel = currentLevel; 
         }
         
-        // CASE B: CONSUMPTION (Drop > 2L)
-        else if (diff > 2.0) {
+        // CASE B: CONSUMPTION (Uses Dynamic Filter!)
+        else if (diff > DYNAMIC_NOISE_FILTER) {
             if (isPowerOn) {
-                // Verified Consumption
                 consumption = diff;
                 note = "Consumption";
-                effectiveLevel = currentLevel; // Ratchet down
+                effectiveLevel = currentLevel; 
             } else {
-                // Noise / Cooling Drop (Ignore consumption, follow sensor)
                 note = "Noise (Gen OFF)";
                 effectiveLevel = currentLevel;
             }
         }
         
-        // CASE C: SMALL RISE (Slosh/Recovery)
+        // CASE C: SMALL RISE / VIBRATION
         else if (diff < 0) {
              if (!isPowerOn) {
-                 // Engine OFF: Allow recovery
                  effectiveLevel = currentLevel;
                  note = "Recovery (Gen OFF)";
              } else {
-                 // 🔒 IRON RATCHET: Engine ON
-                 // Ignore the rise. Keep effectiveLevel LOW.
                  note = "Vibration Ignored";
              }
         }
@@ -140,12 +134,12 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         });
     }
 
-    // 4. FINAL CALCULATION (Mass Balance Formula)
-    // Formula: Total Consumed = Start Level - (End Level - Total Refilled)
+    // 3. FINAL MASS BALANCE (Strict Math for Dashboard Card)
+    // Formula: Start - (End - Refills)
     const adjustedEndLevel = endLevel - totalRefilled;
     let finalConsumption = startLevel - adjustedEndLevel;
-
-    // Safety Clamp (Prevent negative numbers if sensor drift occurs)
+    
+    // Safety clamp to 0
     finalConsumption = Math.max(0, finalConsumption);
 
     return { 
