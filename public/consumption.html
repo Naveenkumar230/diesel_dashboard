@@ -220,9 +220,6 @@ function setupAutoRefresh() {
     }
 }
 
-// ============================================================
-// ✅ FIXED: loadData - Unpacks nested DG data for the Graph
-// ============================================================
 async function loadData(silent = false) {
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
@@ -234,31 +231,84 @@ async function loadData(silent = false) {
 
     try {
         const query = `startDate=${startDate}&endDate=${endDate}`;
-        const url = (dgType === 'total') ? `/api/consumption?dg=total&${query}` : `/api/consumption?dg=${dgType}&${query}`;
+        const url = `/api/consumption?dg=${dgType}&${query}`;
+        
+        console.log('Fetching:', url); // ✅ Debug log
         
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
+        
+        console.log('API Response:', result); // ✅ Debug log
 
+        // ✅ SPECIAL HANDLING FOR 'total'
+        if (dgType === 'total') {
+            // For total, the API returns stats directly (no detailed data)
+            if (result.success && result.stats) {
+                // Create a simple summary display
+                document.getElementById('start-level').textContent = '--';
+                document.getElementById('end-level').textContent = '--';
+                document.getElementById('total-consumption').textContent = formatNumber(result.stats.totalConsumption);
+                
+                // Show breakdown if available
+                if (result.stats.breakdown) {
+                    const breakdownText = `DG1: ${formatNumber(result.stats.breakdown.dg1)}L | DG2: ${formatNumber(result.stats.breakdown.dg2)}L | DG3: ${formatNumber(result.stats.breakdown.dg3)}L`;
+                    document.getElementById('date-range').textContent = breakdownText;
+                }
+                
+                // Hide running hours for total
+                document.getElementById('running-hours').textContent = '--';
+                document.getElementById('avg-consumption').textContent = '--';
+                document.getElementById('refill-prediction').textContent = '--';
+                
+                // Handle refill events
+                const totalRefilledEl = document.getElementById('total-refilled');
+                const refillDetailsEl = document.getElementById('refill-details');
+                
+                if (totalRefilledEl) {
+                    const totalRefilled = result.stats.refillEvents ? 
+                        result.stats.refillEvents.reduce((sum, e) => sum + (e.amount || 0), 0) : 0;
+                    totalRefilledEl.textContent = formatNumber(totalRefilled);
+                }
+                
+                if (refillDetailsEl && result.stats.refillEvents && result.stats.refillEvents.length > 0) {
+                    let detailsHTML = `<strong>📋 ${result.stats.refillEvents.length} Refill(s):</strong><br>`;
+                    result.stats.refillEvents.forEach(event => {
+                        const d = new Date(event.timestamp);
+                        const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                        detailsHTML += `<span style="color:#0052cc">⛽ ${event.dg || 'Unknown'} - ${time}</span>: +${formatNumber(event.amount)}L<br>`;
+                    });
+                    refillDetailsEl.innerHTML = detailsHTML;
+                } else if (refillDetailsEl) {
+                    refillDetailsEl.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;">No refills detected.</span>';
+                }
+                
+                // Clear charts since we don't have hourly data for total
+                if (consumptionChart) { consumptionChart.destroy(); consumptionChart = null; }
+                if (levelChart) { levelChart.destroy(); levelChart = null; }
+                
+                document.getElementById('empty-state').style.display = 'none';
+                
+            } else {
+                throw new Error('Invalid response for total consumption');
+            }
+            
+            setupAutoRefresh();
+            return;
+        }
+
+        // ✅ INDIVIDUAL DG PROCESSING (dg1, dg2, dg3)
         let displayData = [];
         
         if (result.data && result.data.length > 0) {
-            // ✅ CRITICAL FIX: Map the specific DG's data to the top level
             displayData = result.data.map(record => {
-                
-                // 1. Determine the correct level/consumption based on dgType
                 let mappedLevel = 0;
                 let mappedConsumption = 0;
 
-                // Check if data is already flat (smart API) or nested (raw DB)
                 if (record.cleanLevel !== undefined) {
                     mappedLevel = record.cleanLevel;
                     mappedConsumption = record.consumption || 0;
-                } else if (dgType === 'total') {
-                    mappedLevel = record.total?.level || 0;
-                    mappedConsumption = record.total?.consumption || 0;
                 } else {
-                    // Extract specific DG data (e.g., record.dg1.level)
                     mappedLevel = record[dgType]?.level || 0;
                     mappedConsumption = record[dgType]?.consumption || 0;
                 }
@@ -266,7 +316,6 @@ async function loadData(silent = false) {
                 return {
                     timestamp: record.timestamp,
                     date: record.date,
-                    // Pass these standardized values to processData
                     level: mappedLevel,
                     consumption: mappedConsumption,
                     rawLevel: record.rawLevel,
@@ -280,7 +329,6 @@ async function loadData(silent = false) {
             document.getElementById('empty-state').style.display = 'block';
             clearStats();
         } else {
-            // Now processData will receive correct 'level' and 'consumption' values
             processData(displayData, startDate, endDate); 
             document.getElementById('empty-state').style.display = 'none';
         }
@@ -289,6 +337,7 @@ async function loadData(silent = false) {
 
     } catch (err) {
         console.error('Error loading data:', err);
+        alert('Failed to load data: ' + err.message); // ✅ Show error to user
         document.getElementById('empty-state').style.display = 'block';
         clearStats();
     } finally {
