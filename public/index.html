@@ -300,7 +300,7 @@
     let dieselHistoryCache = { dg1: null, dg2: null, dg3: null };
     
     // Cooldown tracker
-    // let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
+    let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
     let dieselCooldown = { dg1: 0, dg2: 0, dg3: 0 };
 
     // Flag to prevent overlapping updates
@@ -370,16 +370,13 @@
        return 0;
     }
 
-    let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
+    async function fetchLastHistory(dg) {
+      if (dbCache[dg]) return dbCache[dg];
+      if (Date.now() - historyCooldown[dg] < 60000) return null; 
 
-async function fetchLastHistory(dg) {
-  if (dbCache[dg]) return dbCache[dg];
-  if (Date.now() - historyCooldown[dg] < 2000) return null;
-  
-  try {
-      const today = new Date().toISOString().split('T')[0];
-      let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
-      
+      try {
+          const today = new Date().toISOString().split('T')[0];
+          let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
           
           if (!response.ok) {
               historyCooldown[dg] = Date.now();
@@ -457,56 +454,61 @@ async function fetchLastHistory(dg) {
       }
     }
 
-async function updateElectricalParams(data) {
+  async function updateElectricalParams(data) {
   if (!data || !data.electrical) return;
 
   const dgList = ['dg1', 'dg2', 'dg3', 'dg4'];
+  const updates = [];
 
   for (const dg of dgList) {
     let liveData = data.electrical[dg] || {};
-    
-    // ✅ ZERO DELAY: Check if DG is running RIGHT NOW
     const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
-    const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
     
-    let displayData = liveData;
-    
-    // ✅ NEW LOGIC: Only use database fallback if DG is completely OFF
-    if (!hasVoltage && !isRunning) {
-        // DG is OFF - show last known good data
-        const historyData = await fetchLastHistory(dg);
-        if (historyData && Object.keys(historyData).length > 0) {
-            displayData = historyData;
-        }
+    let promise;
+    if (hasVoltage) {
+        dbCache[dg] = null; 
+        historyCooldown[dg] = 0; 
+        promise = Promise.resolve(liveData);
     } else {
-        // ✅ DG IS RUNNING - Clear cache and show LIVE data immediately
-        dbCache[dg] = null;
-        historyCooldown[dg] = 0;
-        displayData = liveData;
+        promise = fetchLastHistory(dg).then(hist => hist || liveData);
     }
+    updates.push({ dg, liveData, promise });
+  }
 
-    // Update Status Badge
+  const results = await Promise.all(updates.map(u => u.promise));
+
+  updates.forEach((item, index) => {
+    const dg = item.dg;
+    const displayData = results[index];
+    const liveData = item.liveData;
+
+    const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
     const statusEl = document.getElementById(`${dg}-status`);
     if (statusEl) {
       statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
       statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
     }
 
-    // ✅ INSTANT UPDATE: Display all parameters immediately
+    // Update Voltages
     ['r', 'y', 'b'].forEach(phase => {
-      const voltageEl = document.getElementById(`${dg}-voltage-${phase}`);
-      if (voltageEl) voltageEl.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
-      
-      const currentEl = document.getElementById(`${dg}-current-${phase}`);
-      if (currentEl) currentEl.textContent = formatNum(displayData[`current${phase.toUpperCase()}`]);
+      const el = document.getElementById(`${dg}-voltage-${phase}`);
+      if (el) el.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
+    });
+    
+    // Update Currents
+    ['r', 'y', 'b'].forEach(phase => {
+      const el = document.getElementById(`${dg}-current-${phase}`);
+      if (el) el.textContent = formatNum(displayData[`current${phase.toUpperCase()}`]);
     });
 
+    // Update Frequency
     const freqEl = document.getElementById(`${dg}-frequency`);
     if (freqEl) freqEl.textContent = formatNum(displayData.frequency);
 
+    // Update Active Power (kWh)
     const apEl = document.getElementById(`${dg}-active-power`);
     if (apEl) apEl.textContent = formatNum(displayData.activePower);
-  }
+  });
 }
 
     function updateTimestamp() {
@@ -517,29 +519,32 @@ async function updateElectricalParams(data) {
       }
     }
 
-   async function refresh() {
-  // ✅ REMOVED: No more blocking lock
-  
-  try {
-      const data = await fetchData();
-      const indicator = document.getElementById('server-status');
+    async function refresh() {
+      if (isUpdating) return;
+      isUpdating = true;
 
-      if (!data) {
-        if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
-        return; 
+      try {
+          const data = await fetchData();
+          const indicator = document.getElementById('server-status');
+
+          if (!data) {
+            if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
+            return; 
+          }
+
+          if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
+
+          await updateDieselLevels(data);
+          await updateElectricalParams(data); 
+          updateTimestamp();
+      } catch (e) {
+          console.error("Refresh error:", e);
+      } finally {
+          isUpdating = false;
       }
+    }
 
-      if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
-
-      await updateDieselLevels(data);
-      await updateElectricalParams(data); 
-      updateTimestamp();
-  } catch (e) {
-      console.error("Refresh error:", e);
-  }
-}
-
-setInterval(refresh, 100); 
+    setInterval(refresh, 500);
     refresh();
 </script>
 </body>
