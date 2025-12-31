@@ -163,14 +163,28 @@ router.get('/consumption', async (req, res) => {
         
         const start = new Date(startDate); start.setHours(0, 0, 0, 0);
         const end = new Date(endDate); end.setHours(23, 59, 59, 999);
-        const dgKey = dg || 'dg1';
 
         // 1. Fetch DIESEL Data
         let dieselRecords = await DieselConsumption.find({ 
             timestamp: { $gte: start, $lte: end } 
         }).sort({ timestamp: 1 }).lean();
 
-        // 2. Append Live Data (If viewing today)
+        // 2. Fetch ELECTRICAL Data (For Verification)
+        let electricalRecords = [];
+        const dgKey = dg || 'dg1';
+
+        if (dgKey !== 'total') {
+            // Only fetch relevant DG electrical data to save memory
+            electricalRecords = await ElectricalReading.find({
+                dg: dgKey,
+                timestamp: { $gte: start, $lte: end }
+            })
+            .select('timestamp activePower currentR currentY currentB voltageR') // Added voltageR
+            .sort({ timestamp: 1 })
+            .lean();
+        }
+
+        // 3. Append Live Data (If viewing today)
         const todayStr = new Date().toISOString().split('T')[0];
         if (endDate >= todayStr) {
             const liveData = getSystemData();
@@ -184,49 +198,6 @@ router.get('/consumption', async (req, res) => {
                 });
             }
         }
-
-        // 🔥 NEW: Special handling for 'total' - Calculate from individual DGs
-        if (dgKey === 'total') {
-            console.log('📊 Calculating TOTAL consumption from DG1+DG2+DG3...');
-            
-            // Calculate each DG separately (no electrical data needed for total)
-            const dg1Result = calculateVerifiedConsumption(dieselRecords, [], 'dg1');
-            const dg2Result = calculateVerifiedConsumption(dieselRecords, [], 'dg2');
-            const dg3Result = calculateVerifiedConsumption(dieselRecords, [], 'dg3');
-
-            const totalConsumption = dg1Result.totalConsumption + 
-                                    dg2Result.totalConsumption + 
-                                    dg3Result.totalConsumption;
-
-            const allEvents = [
-                ...dg1Result.events.map(e => ({...e, dg: 'DG1'})),
-                ...dg2Result.events.map(e => ({...e, dg: 'DG2'})),
-                ...dg3Result.events.map(e => ({...e, dg: 'DG3'}))
-            ];
-
-            return res.json({
-                success: true,
-                data: [], // No detailed records for total view
-                stats: {
-                    totalConsumption: Number(totalConsumption.toFixed(2)),
-                    refillEvents: allEvents,
-                    breakdown: {
-                        dg1: Number(dg1Result.totalConsumption.toFixed(2)),
-                        dg2: Number(dg2Result.totalConsumption.toFixed(2)),
-                        dg3: Number(dg3Result.totalConsumption.toFixed(2))
-                    }
-                }
-            });
-        }
-
-        // 3. For individual DGs: Fetch ELECTRICAL Data (For Verification)
-        let electricalRecords = await ElectricalReading.find({
-            dg: dgKey,
-            timestamp: { $gte: start, $lte: end }
-        })
-        .select('timestamp activePower currentR currentY currentB voltageR')
-        .sort({ timestamp: 1 })
-        .lean();
 
         // 4. Run Verification Logic
         const result = calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey);
@@ -289,81 +260,39 @@ router.get('/export/consumption', async (req, res) => {
         const { dg, startDate, endDate } = req.query;
         const start = new Date(startDate); start.setHours(0, 0, 0, 0);
         const end = new Date(endDate); end.setHours(23, 59, 59, 999);
+
+        // Fetch Both
+        const dieselRecords = await DieselConsumption.find({ timestamp: { $gte: start, $lte: end } }).sort({ timestamp: 1 }).lean();
         const dgKey = dg || 'dg1';
+        
+        let electricalRecords = [];
+        if (dgKey !== 'total') {
+            electricalRecords = await ElectricalReading.find({ dg: dgKey, timestamp: { $gte: start, $lte: end } }).lean();
+        }
 
-        // Fetch diesel records
-        const dieselRecords = await DieselConsumption.find({ 
-            timestamp: { $gte: start, $lte: end } 
-        }).sort({ timestamp: 1 }).lean();
-
+        const result = calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey);
+        
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Consumption');
         await setupExcelSheet(workbook, worksheet, `Aquarelle India - ${dg.toUpperCase()} Verified Report`);
 
-        // 🔥 NEW: Special export for 'total'
-        if (dgKey === 'total') {
-            // Calculate breakdown
-            const dg1Result = calculateVerifiedConsumption(dieselRecords, [], 'dg1');
-            const dg2Result = calculateVerifiedConsumption(dieselRecords, [], 'dg2');
-            const dg3Result = calculateVerifiedConsumption(dieselRecords, [], 'dg3');
+        worksheet.addRow(['Timestamp', 'Fuel Level (L)', 'Verified Consumption (L)', 'Electrical Status', 'Notes']);
+        
+        const headerRow = worksheet.lastRow;
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        headerRow.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } }; });
 
-            const totalConsumption = dg1Result.totalConsumption + 
-                                    dg2Result.totalConsumption + 
-                                    dg3Result.totalConsumption;
+        result.processedData.forEach(r => {
+            worksheet.addRow([
+                new Date(r.timestamp).toLocaleString('en-IN'),
+                r.cleanLevel, 
+                r.consumption > 0 ? r.consumption.toFixed(2) : '-',
+                r.electricalInfo || (r.isRunning ? 'ON' : 'OFF'),
+                r.note
+            ]);
+        });
 
-            // Create summary table
-            worksheet.addRow(['TOTAL CONSUMPTION BREAKDOWN']);
-            worksheet.addRow([]);
-            worksheet.addRow(['Generator', 'Consumption (Liters)']);
-            
-            const headerRow = worksheet.lastRow;
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.eachCell(cell => { 
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } }; 
-            });
-
-            worksheet.addRow(['DG-1', dg1Result.totalConsumption.toFixed(2)]);
-            worksheet.addRow(['DG-2', dg2Result.totalConsumption.toFixed(2)]);
-            worksheet.addRow(['DG-3', dg3Result.totalConsumption.toFixed(2)]);
-            worksheet.addRow([]);
-            
-            const totalRow = worksheet.addRow(['TOTAL', totalConsumption.toFixed(2)]);
-            totalRow.font = { bold: true, size: 12 };
-            totalRow.getCell(2).fill = { 
-                type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } 
-            };
-
-            worksheet.columns = [{ width: 20 }, { width: 25 }];
-
-        } else {
-            // Individual DG export (existing logic)
-            let electricalRecords = await ElectricalReading.find({ 
-                dg: dgKey, 
-                timestamp: { $gte: start, $lte: end } 
-            }).lean();
-
-            const result = calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey);
-
-            worksheet.addRow(['Timestamp', 'Fuel Level (L)', 'Verified Consumption (L)', 'Electrical Status', 'Notes']);
-            
-            const headerRow = worksheet.lastRow;
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.eachCell(cell => { 
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } }; 
-            });
-
-            result.processedData.forEach(r => {
-                worksheet.addRow([
-                    new Date(r.timestamp).toLocaleString('en-IN'),
-                    r.cleanLevel, 
-                    r.consumption > 0 ? r.consumption.toFixed(2) : '-',
-                    r.electricalInfo || (r.isRunning ? 'ON' : 'OFF'),
-                    r.note
-                ]);
-            });
-
-            worksheet.columns = [{ width: 25 }, { width: 15 }, { width: 25 }, { width: 20 }, { width: 25 }];
-        }
+        worksheet.columns = [{ width: 25 }, { width: 15 }, { width: 25 }, { width: 20 }, { width: 25 }];
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="Aquarelle_India_${dg}_Verified.xlsx"`);
