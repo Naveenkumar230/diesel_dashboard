@@ -680,31 +680,23 @@ function updateCharts(cleanData, startDate, endDate, refillEvents, temperatureEv
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const labelType = pointLabels[ctx.dataIndex];
-                                
-                                if (labelType === 'refill') {
-                                    return `⛽ Refill! Level: ${formatNumber(ctx.raw)}L`;
-                                } else if (labelType === 'temperature') {
-                                    // ✅ NEW: Show temperature expansion reason
-                                    const tempEvent = temperatureEvents.find(e => e.hour === ctx.dataIndex);
-                                    if (tempEvent) {
-                                        return [
-                                            `🌡️ Temperature Expansion`,
-                                            `Level: ${formatNumber(ctx.raw)}L`,
-                                            `Increased by: +${formatNumber(tempEvent.amount)}L`,
-                                            `(Below 10L refill threshold)`
-                                        ];
-                                    }
-                                }
-                                
-                                return `Level: ${formatNumber(ctx.raw)}L`;
-                            }
-                        }
-                    }
-                },
+    tooltip: {
+        callbacks: {
+            label: ctx => {
+                const labelType = pointLabels[ctx.dataIndex];
+                
+                if (labelType === 'refill') {
+                    return `⛽ Refill! Level: ${formatNumber(ctx.raw)}L`;
+                } else if (labelType === 'temperature') {
+                    // ✅ UPDATED: Just show "Sensor Noise" - simple and clear
+                    return `⚠️ Sensor Noise`;
+                }
+                
+                return `Level: ${formatNumber(ctx.raw)}L`;
+            }
+        }
+    }
+},
                 scales: {
                     y: {
                         beginAtZero: false,
