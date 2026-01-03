@@ -70,6 +70,7 @@ const dgRegisters = {
 
 const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
+// ✅ FIXED: Active Power scaling changed to 0.01 to fix "2535kW" bug
 const electricalCandidates = {
   // === DG-1 ===
   dg1: {
@@ -79,7 +80,7 @@ const electricalCandidates = {
     currentR:      [C(4704)],       // d608 → 608+4096=4704 ✅
     currentY:      [C(4706)],       // d610 → 610+4096=4706 ✅
     currentB:      [C(4708)],       // d612 → 612+4096=4708 ✅
-    activePower:   [C(4696)],       // d600 → 600+4096=4696 ✅
+    activePower:   [C(4696, 0.01)], // d600 → 600+4096=4696 ✅ (FIXED SCALING)
     frequency:     [C(4752, 0.01)], // d656 → 656+4096=4752 ✅
   },
   // === DG-2 ===
@@ -90,7 +91,7 @@ const electricalCandidates = {
     currentR:      [C(4710)],       // d614 → 614+4096=4710 ✅
     currentY:      [C(4712)],       // d616 → 616+4096=4712 ✅
     currentB:      [C(4714)],       // d618 → 618+4096=4714 ✅
-    activePower:   [C(4716)],       // d620 → 620+4096=4716 ✅
+    activePower:   [C(4716, 0.01)], // d620 → 620+4096=4716 ✅ (FIXED SCALING)
     frequency:     [C(4754, 0.01)], // d658 → 658+4096=4754 ✅
   },
   // === DG-3 ===
@@ -101,7 +102,7 @@ const electricalCandidates = {
     currentR:      [C(4716)],       // d620 → 620+4096=4716 ✅
     currentY:      [C(4718)],       // d622 → 622+4096=4718 ✅
     currentB:      [C(4720)],       // d624 → 624+4096=4720 ✅
-    activePower:   [C(4700)],       // d604 → 604+4096=4700 ✅
+    activePower:   [C(4700, 0.01)], // d604 → 604+4096=4700 ✅ (FIXED SCALING)
     frequency:     [C(4756, 0.01)], // d660 → 660+4096=4756 ✅
   },
   // === DG-4 ===
@@ -112,7 +113,7 @@ const electricalCandidates = {
     currentR:      [C(4722)],       // d626 → 626+4096=4722 ✅
     currentY:      [C(4724)],       // d628 → 628+4096=4724 ✅
     currentB:      [C(4726)],       // d630 → 630+4096=4726 ✅
-    activePower:   [C(4702)],       // d606 → 606+4096=4702 ✅
+    activePower:   [C(4702, 0.01)], // d606 → 606+4096=4702 ✅ (FIXED SCALING)
     frequency:     [C(4758, 0.01)], // d662 → 662+4096=4758 ✅
   }
 };
@@ -121,13 +122,13 @@ const electricalCandidates = {
 const toSignedInt16 = (v) => (v > 32767 ? v - 65536 : v);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ✅ UPDATED: Now rejects values less than 5 Liters (Ghost Zero protection)
+// ✅ FIXED: Lowered limit to 1 Liter to allow Sloshing (Was 5)
 function isValidDieselReading(value) {
   const s = toSignedInt16(value);
-  // Filter out Error codes (65535) AND values < 5 Liters
+  // Filter out Error codes (65535) AND values < 1 Liter
   if (value === 65535 || value === 65534 || s === -1) return false;
-  // NEW LOGIC: Must be at least 5 Liters to be valid
-  return s >= 5 && s <= 2000; 
+  // NEW LOGIC: Must be at least 1 Liter to be valid
+  return s >= 1 && s <= 2000; 
 }
 
 function isValidElectricalReading(value) {
@@ -146,7 +147,7 @@ async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
   }
 }
 
-// ✅ UPDATED: Handles the < 5L error by holding the previous level
+// ✅ UPDATED: Handles the < 1L error by holding the previous level
 async function readSingleRegister(registerConfig, dataKey) {
   const address = registerConfig.primary;
   
@@ -154,7 +155,7 @@ async function readSingleRegister(registerConfig, dataKey) {
     const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
     const rawValue = data?.data?.[0];
     
-    // 1. Check validity (Uses the new 5L check above)
+    // 1. Check validity (Uses the new 1L check above)
     if (rawValue === undefined || !isValidDieselReading(rawValue)) {
       throw new Error(`Invalid Reading (Raw: ${rawValue})`);
     }
@@ -169,7 +170,7 @@ async function readSingleRegister(registerConfig, dataKey) {
     return value;
 
   } catch (err) {
-    // 3. FAILURE OR LOW READING (< 5L)
+    // 3. FAILURE OR LOW READING (< 1L)
     systemData.dataQuality[dataKey + '_stale'] = true;
     
     const lastReadTime = systemData.dataQuality.lastSuccessfulRead 
@@ -184,10 +185,9 @@ async function readSingleRegister(registerConfig, dataKey) {
       return 0;
     } else {
       // 🛡️ GHOST PROTECTION:
-      // If sensor glitches to 0 (or < 5L), we return the LAST KNOWN STABLE LEVEL.
-      // This stops the accumulator from seeing a "drop to zero".
       const lastKnownLevel = fuelAccumulator.getDisplayLevel(dataKey);
-      console.warn(`⚠️ ${dataKey.toUpperCase()} invalid reading. Holding level at ${lastKnownLevel}L.`);
+      // ✅ IMPROVED LOGGING: Show exact error reason
+      console.warn(`⚠️ ${dataKey.toUpperCase()} invalid reading. Holding level at ${lastKnownLevel}L. Reason: ${err.message}`);
       return lastKnownLevel || 0;
     }
   }
