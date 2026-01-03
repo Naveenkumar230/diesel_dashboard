@@ -107,11 +107,11 @@
 
     <div class="chart-grid-split">
   <div class="chart-section">
-    <div class="chart-title">Voltage (V)</div>
+    <div class="chart-title">Voltage(R Y B)</div>
     <div class="chart-container-split"><canvas id="voltageChart"></canvas></div>
   </div>
   <div class="chart-section">
-    <div class="chart-title">Current (A)</div>
+    <div class="chart-title">Current(R Y B)</div>
     <div class="chart-container-split"><canvas id="currentChart"></canvas></div>
   </div>
   <div class="chart-section">
@@ -139,13 +139,6 @@
   </div>
 
 <script>
-// ============================================================
-// FIXED ELECTRICAL.HTML SCRIPT
-// ✅ Running Hours from Diesel Consumption
-// ✅ Total Energy = Sum of Voltages (V-R + V-Y + V-B)
-// ✅ Average Load = Average Current (C-R + C-Y + C-B) / 3
-// ✅ Combined Chart shows separate R, Y, B lines
-// ============================================================
 
 let voltageChart, currentChart, powerChart, freqPfChart, combinedChart;
 let dgType = 'dg1';

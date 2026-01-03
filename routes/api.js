@@ -37,7 +37,8 @@ function findClosestReading(electricalRecords, targetTime) {
 }
 
 // ============================================================
-// CORE LOGIC: MERGE & VERIFY (PERMANENT "TOTAL" FIX)
+// CORE LOGIC: MERGE & VERIFY (HIGH PERFORMANCE VERSION)
+// Fixed: Replaced O(N^2) search with O(N) Time-Sync
 // ============================================================
 function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     // 1. CLEAN DATA: Remove Dead Sensors (< 5 Liters)
@@ -50,6 +51,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         return { totalConsumption: 0, processedData: [], events: [] };
     }
 
+    // Ensure strictly sorted by time for the sync to work
     cleanRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     if (electricalRecords) electricalRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
@@ -61,19 +63,48 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     let effectiveLevel = startLevel;
     let totalRefilled = 0;
 
-    // 🛑 DYNAMIC FILTER: 
-    // If 'total' -> Use 6.0L (Ignore stacked vibration of 3 tanks)
-    // If 'dg1/2/3' -> Use 2.0L (Standard vibration)
+    // DYNAMIC FILTER
     const DYNAMIC_NOISE_FILTER = (dgKey === 'total') ? 6.0 : 2.0;
 
-    // 2. PROCESS RECORDS
+    // ---------------------------------------------------------
+    // 🚀 PERFORMANCE FIX: POINTER INDEX
+    // Instead of searching the whole array, we keep track of where we are.
+    // ---------------------------------------------------------
+    let eIdx = 0; 
+    const maxTimeDiff = 2 * 60 * 1000; // 2 Minutes window
+
     for (let i = 0; i < cleanRecords.length; i++) {
         const record = cleanRecords[i];
         const currentLevel = record[dgKey]?.level || 0;
         const timestamp = new Date(record.timestamp);
+        const recordTime = timestamp.getTime();
+
+        // --- FAST ELECTRICAL LOOKUP ---
+        let electricalData = null;
+        if (electricalRecords && electricalRecords.length > 0) {
+            
+            // 1. Forward the pointer: Skip records that are too old (> 2 mins ago)
+            while (eIdx < electricalRecords.length) {
+                const eTime = new Date(electricalRecords[eIdx].timestamp).getTime();
+                if (eTime < recordTime - maxTimeDiff) {
+                    eIdx++; // Move forward
+                } else {
+                    break; // Stopped at a potentially valid record
+                }
+            }
+
+            // 2. Check the current pointer: Is it within the future window?
+            if (eIdx < electricalRecords.length) {
+                const eTime = new Date(electricalRecords[eIdx].timestamp).getTime();
+                // If it's within +/- 2 minutes, IT'S A MATCH
+                if (Math.abs(eTime - recordTime) <= maxTimeDiff) {
+                    electricalData = electricalRecords[eIdx];
+                }
+            }
+        }
+        // ---------------------------------------------------------
 
         // Check Electrical Status
-        const electricalData = findClosestReading(electricalRecords, timestamp);
         let isPowerOn = false;
         let electricalDebug = "No Data";
 
@@ -100,7 +131,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
             effectiveLevel = currentLevel; 
         }
         
-        // CASE B: CONSUMPTION (Uses DYNAMIC FILTER)
+        // CASE B: CONSUMPTION
         else if (diff > DYNAMIC_NOISE_FILTER) {
             if (isPowerOn) {
                 consumption = diff;
@@ -134,11 +165,8 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     }
 
     // 3. FINAL MASS BALANCE (Strict Math)
-    // Formula: Start - (End - Refills)
     const adjustedEndLevel = endLevel - totalRefilled;
     let finalConsumption = startLevel - adjustedEndLevel;
-    
-    // Safety clamp (Prevent -1 Liters)
     finalConsumption = Math.max(0, finalConsumption);
 
     return { 
