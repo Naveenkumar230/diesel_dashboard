@@ -19,7 +19,7 @@ const { DieselConsumption, ElectricalReading } = require('../models/schemas');
 
 // --- CONSTANTS ---
 const CONSUMPTION_THRESHOLD = 1.0; // Liters: Ignore drops smaller than this
-const REFILL_THRESHOLD = 25.0;     // Liters: Ignore rises smaller than this
+const REFILL_THRESHOLD = 20;     // Liters: Ignore rises smaller than this
 const LOGO_PATH = path.join(__dirname, '../public/logo.png');
 
 // ============================================================

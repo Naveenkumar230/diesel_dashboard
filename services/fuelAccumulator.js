@@ -8,7 +8,7 @@ const { DieselConsumption } = require('../models/schemas');
 
 // --- CONFIGURATION ---
 const COMMIT_THRESHOLD = 2.0;  // Only save to DB if we have > 2 Liters accumulated
-const REFILL_THRESHOLD = 50.0; // ✅ UPDATED: Only reset if level rises by > 50 Liters
+const REFILL_THRESHOLD = 20; // ✅ UPDATED: Only reset if level rises by > 50 Liters
 const NOISE_FILTER = 2.0;      // IGNORE any drop smaller than 2.0 Liters
 
 // --- STATE MEMORY ---

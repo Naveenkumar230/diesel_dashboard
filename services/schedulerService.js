@@ -18,7 +18,7 @@ const { sendDailySummary } = require('./emailService');
 // ============================================================
 const DG_RUNNING_THRESHOLD = 5; // kW
 const NOISE_THRESHOLD = 2; // Changes < 2L might be noise
-const REFILL_THRESHOLD = 50; // Changes > 50L are refills
+const REFILL_THRESHOLD = 20; // Changes > 50L are refills
 const TRACKING_INTERVAL = 5; // Track every 5 minutes
 const STABILITY_REQUIRED = 3; // Readings needed to confirm change (15 minutes)
 const RECOVERY_THRESHOLD = 0.5; // Allow 0.5L recovery without invalidating consumption
