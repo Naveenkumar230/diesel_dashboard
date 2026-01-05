@@ -37,21 +37,62 @@ function findClosestReading(electricalRecords, targetTime) {
 }
 
 // ============================================================
-// CORE LOGIC: MERGE & VERIFY (HIGH PERFORMANCE VERSION)
-// Fixed: Replaced O(N^2) search with O(N) Time-Sync
+// CORE LOGIC: MERGE & VERIFY (TOTAL = SUM OF PARTS)
+// ✅ Fixed: Calculates DG1+DG2+DG3 separately to prevent errors
 // ============================================================
 function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
-    // 1. CLEAN DATA: Remove Dead Sensors (< 5 Liters)
+    
+    // --------------------------------------------------------
+    // CASE 1: HANDLE 'TOTAL' BY SUMMING INDIVIDUALS
+    // --------------------------------------------------------
+    if (dgKey === 'total') {
+        const r1 = calculateVerifiedConsumption(dieselRecords, electricalRecords, 'dg1');
+        const r2 = calculateVerifiedConsumption(dieselRecords, electricalRecords, 'dg2');
+        const r3 = calculateVerifiedConsumption(dieselRecords, electricalRecords, 'dg3');
+
+        // 1. Sum up the Consumption (9 + 0 + 5 = 14)
+        // This prevents DG2's +2L rise from cancelling DG1's consumption.
+        const finalTotalConsumption = r1.totalConsumption + r2.totalConsumption + r3.totalConsumption;
+
+        // 2. Merge Refill Events
+        const allEvents = [...r1.events, ...r2.events, ...r3.events].sort((a, b) => new Date(a.time) - new Date(b.time));
+
+        // 3. Merge Graph Data (Time-Sync)
+        const mergedData = r1.processedData.map((d1, i) => {
+            const d2 = r2.processedData[i] || {};
+            const d3 = r3.processedData[i] || {};
+            
+            return {
+                timestamp: d1.timestamp,
+                date: d1.date,
+                // Sum levels and consumptions
+                cleanLevel: (d1.cleanLevel || 0) + (d2.cleanLevel || 0) + (d3.cleanLevel || 0),
+                consumption: (d1.consumption || 0) + (d2.consumption || 0) + (d3.consumption || 0),
+                isRunning: d1.isRunning || d2.isRunning || d3.isRunning, 
+                note: "Aggregated",
+                electricalInfo: "Aggregated"
+            };
+        });
+
+        return {
+            totalConsumption: Number(finalTotalConsumption.toFixed(2)),
+            processedData: mergedData,
+            events: allEvents
+        };
+    }
+
+    // --------------------------------------------------------
+    // CASE 2: STANDARD LOGIC (For Single Tanks)
+    // --------------------------------------------------------
     const cleanRecords = dieselRecords.filter(r => {
         const lvl = r[dgKey]?.level;
-        return typeof lvl === 'number' && lvl > 5; 
+        return typeof lvl === 'number' && lvl > 1; 
     });
 
     if (!cleanRecords || cleanRecords.length === 0) {
         return { totalConsumption: 0, processedData: [], events: [] };
     }
 
-    // Ensure strictly sorted by time for the sync to work
     cleanRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     if (electricalRecords) electricalRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
@@ -62,16 +103,8 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
     let events = [];
     let effectiveLevel = startLevel;
     let totalRefilled = 0;
-
-    // DYNAMIC FILTER
-    const DYNAMIC_NOISE_FILTER = (dgKey === 'total') ? 6.0 : 2.0;
-
-    // ---------------------------------------------------------
-    // 🚀 PERFORMANCE FIX: POINTER INDEX
-    // Instead of searching the whole array, we keep track of where we are.
-    // ---------------------------------------------------------
     let eIdx = 0; 
-    const maxTimeDiff = 2 * 60 * 1000; // 2 Minutes window
+    const maxTimeDiff = 2 * 60 * 1000; 
 
     for (let i = 0; i < cleanRecords.length; i++) {
         const record = cleanRecords[i];
@@ -79,42 +112,27 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         const timestamp = new Date(record.timestamp);
         const recordTime = timestamp.getTime();
 
-        // --- FAST ELECTRICAL LOOKUP ---
+        // Electrical Lookup
         let electricalData = null;
         if (electricalRecords && electricalRecords.length > 0) {
-            
-            // 1. Forward the pointer: Skip records that are too old (> 2 mins ago)
             while (eIdx < electricalRecords.length) {
                 const eTime = new Date(electricalRecords[eIdx].timestamp).getTime();
-                if (eTime < recordTime - maxTimeDiff) {
-                    eIdx++; // Move forward
-                } else {
-                    break; // Stopped at a potentially valid record
-                }
+                if (eTime < recordTime - maxTimeDiff) eIdx++;
+                else break;
             }
-
-            // 2. Check the current pointer: Is it within the future window?
             if (eIdx < electricalRecords.length) {
                 const eTime = new Date(electricalRecords[eIdx].timestamp).getTime();
-                // If it's within +/- 2 minutes, IT'S A MATCH
-                if (Math.abs(eTime - recordTime) <= maxTimeDiff) {
-                    electricalData = electricalRecords[eIdx];
-                }
+                if (Math.abs(eTime - recordTime) <= maxTimeDiff) electricalData = electricalRecords[eIdx];
             }
         }
-        // ---------------------------------------------------------
 
-        // Check Electrical Status
         let isPowerOn = false;
         let electricalDebug = "No Data";
-
         if (electricalData) {
             isPowerOn = (electricalData.voltageR > 100);
             electricalDebug = isPowerOn ? `ON (${electricalData.activePower}kW)` : "OFF (0V)";
         } else {
-            // Fallback flags
-            if (dgKey === 'total') isPowerOn = record.dg1?.isRunning || record.dg2?.isRunning || record.dg3?.isRunning;
-            else isPowerOn = record[dgKey]?.isRunning || false;
+            isPowerOn = record[dgKey]?.isRunning || false;
             electricalDebug = isPowerOn ? "Flag ON" : "No Data";
         }
 
@@ -122,17 +140,16 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         let consumption = 0;
         let note = "Stable";
 
-        // CASE A: REFILL (> 50L)
-        if (diff < -50.0) { 
+        // REFILL (> 25L)
+        if (diff < -REFILL_THRESHOLD) { 
             const refillAmount = Math.abs(diff);
             note = "Refill Detected";
             events.push({ type: 'refill', amount: refillAmount, time: timestamp });
             totalRefilled += refillAmount; 
             effectiveLevel = currentLevel; 
         }
-        
-        // CASE B: CONSUMPTION
-        else if (diff > DYNAMIC_NOISE_FILTER) {
+        // CONSUMPTION (> 1L)
+        else if (diff > 1.0) {
             if (isPowerOn) {
                 consumption = diff;
                 note = "Consumption";
@@ -142,15 +159,9 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
                 effectiveLevel = currentLevel;
             }
         }
-        
-        // CASE C: SMALL RISE / VIBRATION
+        // RECOVERY
         else if (diff < 0) {
-             if (!isPowerOn) {
-                 effectiveLevel = currentLevel;
-                 note = "Recovery (Gen OFF)";
-             } else {
-                 note = "Vibration Ignored";
-             }
+             if (!isPowerOn) effectiveLevel = currentLevel;
         }
 
         processedData.push({
@@ -164,7 +175,7 @@ function calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey) {
         });
     }
 
-    // 3. FINAL MASS BALANCE (Strict Math)
+    // Mass Balance for Single Tank
     const adjustedEndLevel = endLevel - totalRefilled;
     let finalConsumption = startLevel - adjustedEndLevel;
     finalConsumption = Math.max(0, finalConsumption);
