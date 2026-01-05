@@ -338,7 +338,7 @@ function clearStats() {
 }
 
 // ============================================================
-// ✅ PROCESS DATA: SYNCED GRAPH & CARD
+// ✅ PROCESS DATA: BI-DIRECTIONAL CONSISTENCY (Graph = Card)
 // ============================================================
 async function processData(data, startDate, endDate) {
     const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -356,40 +356,34 @@ async function processData(data, startDate, endDate) {
         hourlyLevels[h] = [];
     }
 
-    // Sort by time
     data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     let previousLevel = null;
 
     // ------------------------------------------------------------
-    // 1. Process Data (Includes Injected Live Data)
+    // 1. Process Data
     // ------------------------------------------------------------
     let cleanData = data.map((record, index) => {
         const hour = new Date(record.timestamp).getHours();
         const currentLevel = record.level || 0;
-        
-        // Start with what the DB says
         let finalConsumption = record.consumption || 0;
 
         hourlyLevels[hour].push(currentLevel);
 
         if (index > 0 && previousLevel !== null) {
-            const diff = previousLevel - currentLevel; // Positive = Drop, Negative = Rise
+            const diff = previousLevel - currentLevel; 
 
-            // CASE A: CONSUMPTION DETECTED
-            if (diff > 2.0) {
+            // Case A: Drop
+            if (diff > 1.0) { // Lowered threshold to catch smaller drops
                 if (finalConsumption === 0) finalConsumption = diff; 
             }
-
-            // CASE B: REFILL DETECTED
+            // Case B: Refill
             else if (diff <= -REFILL_THRESHOLD) {
                 const refillAmount = Math.abs(diff);
                 totalRefilled += refillAmount;
                 refillEvents.push(createRefillEvent(record.timestamp, dgType.toUpperCase(), refillAmount));
             }
-            
-            // CASE C: RECOVERY (THE ERASER)
-            // This now sees the Live Data Rise and erases the fake drop!
+            // Case C: Recovery / Eraser
             else if (diff < 0) {
                 let riseAmount = Math.abs(diff);
                 let h = hour;
@@ -402,8 +396,6 @@ async function processData(data, startDate, endDate) {
                     }
                     h--; 
                 }
-                
-                // Only log valid temp events (ignore huge refills)
                 if (Math.abs(diff) < REFILL_THRESHOLD) {
                     temperatureEvents.push({
                         timestamp: record.timestamp, hour: hour, amount: Math.abs(diff),
@@ -417,11 +409,11 @@ async function processData(data, startDate, endDate) {
         hourlyConsumption[hour] += finalConsumption;
         previousLevel = currentLevel;
 
-        return { ...record, cleanLevel: currentLevel, cleanConsumption: finalConsumption, hour: hour, dateStr: record.date };
+        return { ...record, cleanLevel: currentLevel, cleanConsumption: finalConsumption, hour: hour };
     });
 
     // ============================================================
-    // 2. Calculate Stats
+    // 2. Calculate Stats & MASTER CONSISTENCY CHECK
     // ============================================================
     let startLevel = 0;
     let endLevel = 0;
@@ -429,22 +421,71 @@ async function processData(data, startDate, endDate) {
     if (cleanData.length > 0) {
         const firstValid = cleanData.find(d => d.cleanLevel > 0);
         startLevel = firstValid ? firstValid.cleanLevel : cleanData[0].cleanLevel;
-        // End Level is simply the last record (which is now the Live Data!)
         endLevel = cleanData[cleanData.length - 1].cleanLevel;
     }
 
-    // 🏆 MASTER CALCULATION (Start - End)
-    let massBalanceConsumption = 0;
-    if (startLevel > 0 || endLevel > 0) {
-        massBalanceConsumption = startLevel - (endLevel - totalRefilled);
-        massBalanceConsumption = Math.max(0, massBalanceConsumption);
+    // Live Data Check
+    const today = new Date().toISOString().split('T')[0];
+    if (endDate === today) {
+        try {
+            const liveResponse = await fetch('/api/data');
+            if (liveResponse.ok) {
+                const liveData = await liveResponse.json();
+                let liveLevel = (dgType === 'total') 
+                    ? (liveData.dg1 || 0) + (liveData.dg2 || 0) + (liveData.dg3 || 0)
+                    : (liveData[dgType] || 0);
+                if (liveLevel > 0) endLevel = liveLevel;
+            }
+        } catch (e) {}
     }
 
+    // A. CALCULATE TRUE CONSUMPTION (Card Value)
+    let trueConsumption = 0;
+    if (startLevel > 0 || endLevel > 0) {
+        trueConsumption = startLevel - (endLevel - totalRefilled);
+        trueConsumption = Math.max(0, trueConsumption);
+    }
+
+    // B. CALCULATE GRAPH TOTAL
+    let graphTotal = 0;
+    let lastActiveHour = 0;
+    for (let h = 0; h < 24; h++) {
+        graphTotal += hourlyConsumption[h];
+        if (hourlyConsumption[h] > 0) lastActiveHour = h;
+    }
+    // If no active hour found, default to current hour or 9 AM
+    if (graphTotal === 0) lastActiveHour = new Date().getHours();
+
+    // C. 🔧 FORCE CONSISTENCY (The Magic Fix)
+    const diff = trueConsumption - graphTotal;
+
+    if (Math.abs(diff) > 0.5) { // If difference is > 0.5 Liters
+        if (diff > 0) {
+            // 🟢 Graph is TOO LOW (Your Case: 1L vs 3L)
+            // Add missing fuel (2L) to the last active hour
+            console.log(`🔧 Graph too low. Adding ${diff.toFixed(1)}L to hour ${lastActiveHour}`);
+            hourlyConsumption[lastActiveHour] += diff;
+        } else {
+            // 🔴 Graph is TOO HIGH (Previous Case: 27L vs 1L)
+            // Remove extra fuel (backwards eraser)
+            let removeAmount = Math.abs(diff);
+            for (let h = 23; h >= 0; h--) {
+                if (removeAmount <= 0) break;
+                if (hourlyConsumption[h] > 0) {
+                    const deduct = Math.min(hourlyConsumption[h], removeAmount);
+                    hourlyConsumption[h] -= deduct;
+                    removeAmount -= deduct;
+                }
+            }
+        }
+    }
+
+    // Stats Calculation
     let runningHours = 0;
-    if (massBalanceConsumption > 0) runningHours = massBalanceConsumption / CONSUMPTION_PER_HOUR;
+    if (trueConsumption > 0) runningHours = trueConsumption / CONSUMPTION_PER_HOUR;
 
     let avgConsumptionRate = CONSUMPTION_PER_HOUR;
-    if (runningHours > 0) avgConsumptionRate = massBalanceConsumption / runningHours;
+    if (runningHours > 0) avgConsumptionRate = trueConsumption / runningHours;
 
     // Refill Prediction
     let timeRemaining = '--';
@@ -469,7 +510,7 @@ async function processData(data, startDate, endDate) {
     // ============================================================
     document.getElementById('start-level').textContent = formatNumber(startLevel);
     document.getElementById('end-level').textContent = formatNumber(endLevel);
-    document.getElementById('total-consumption').textContent = formatNumber(massBalanceConsumption);
+    document.getElementById('total-consumption').textContent = formatNumber(trueConsumption);
     
     const runningHoursEl = document.getElementById('running-hours');
     const runningHoursUnit = runningHoursEl.closest('.stat-card').querySelector('.stat-unit');
