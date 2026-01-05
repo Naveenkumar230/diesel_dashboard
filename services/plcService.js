@@ -7,6 +7,7 @@
  * 4. TEST SUPPORT.
  * 5. NEW: Fuel Accumulator Logic (Ratchet & Bucket).
  * 6. NEW: Start/Stop Consumption Logging (DG1).
+ * * UPDATED: Recursive Loop for Stability (No Crashes).
  */
 
 const ModbusRTU = require('modbus-serial');
@@ -18,12 +19,13 @@ const Log = require('../models/Log'); // Ensure you have your Log model imported
 // --- CONFIGURATION ---
 const port = process.env.PLC_PORT || '/dev/ttyUSB0';
 const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
-const READ_DELAY = 200;
-const RETRY_ATTEMPTS = 3;
+const READ_DELAY = 100; // Decreased slightly for recursive loop
+const RETRY_ATTEMPTS = 2; // Reduced retries to fail faster
 const MAX_ERRORS = 20;
 const DG_RUNNING_THRESHOLD = 5; // 5 kW (Used for Alerts)
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 Minutes Safety Timeout
+const LOOP_DELAY = 2000; // ✅ Wait 2 seconds between cycles (Prevents Overload)
 
 const plcSettings = {
   baudRate: parseInt(process.env.PLC_BAUD_RATE) || 9600,
@@ -35,6 +37,7 @@ const plcSettings = {
 const client = new ModbusRTU();
 let isPlcConnected = false;
 let errorCount = 0;
+let isLoopRunning = false; // ✅ Prevent double loops
 
 // --- STATE MANAGEMENT ---
 let systemData = {
@@ -272,17 +275,24 @@ async function readAllElectrical(dgKey) {
     return result;
 
   } catch (error) {
-    console.warn(`⚠️ Partial Read Fail for ${dgKey}:`, error.message);
+    // console.warn(`⚠️ Partial Read Fail for ${dgKey}:`, error.message);
     return lastGoodValues[dgKey] || result;
   }
 }
 
+// ✅ UPDATED: Added Anti-Spam Check (No Email if Uptime < 20s)
 function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   const activePower = newValues.activePower || 0;
   const isRunning = activePower > DG_RUNNING_THRESHOLD;
   const wasRunningBefore = (oldElectricalData[dgKey]?.activePower || 0) > DG_RUNNING_THRESHOLD;
 
   if (isRunning && !wasRunningBefore) {
+    // 🛡️ Safety: If uptime is < 20 seconds, don't send email (it's just a server restart)
+    if (process.uptime() < 20) {
+        console.log(`ℹ️ ${dgKey} is RUNNING (Server Restart - No Email)`);
+        return;
+    }
+
     const dgName = dgKey.toUpperCase().replace('DG', 'DG-');
     if (dgKey === 'dg1' || dgKey === 'dg2' || dgKey === 'dg4') {
       sendStartupAlert(dgName, allNewValues);
@@ -291,7 +301,7 @@ function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   }
 }
 
-// --- MAIN LOOP (THE IMPORTANT PART) ---
+// --- MAIN LOOP (RECURSIVE - NO CRASHES) ---
 async function readAllSystemData() {
   if (!isPlcConnected) return;
 
@@ -321,14 +331,10 @@ async function readAllSystemData() {
             // 6. NEW: DG1 CONSUMPTION LOGIC (Strict Latch)
             // ===============================================
             if (dgKey === 'dg1') {
-                // Calculate estimated RPM from Frequency (50Hz = 1500RPM)
-                // If Freq is 0, RPM is 0.
                 const estimatedRpm = electricalData.frequency * 30; 
                 
-                // Call the logic Service
                 const runResult = processDg1Data(estimatedRpm, rawLevel);
 
-                // If STOPPED, save to MongoDB
                 if (runResult) {
                     console.log("📝 DG1 Run Finished. Saving to DB...");
                     const newLog = new Log({
@@ -369,7 +375,13 @@ async function readAllSystemData() {
       isPlcConnected = false;
       client.close();
       setTimeout(connectToPLC, 5000);
+      return; // Stop the recursive loop
     }
+  }
+
+  // ✅ RECURSIVE CALL: Only start next loop when this one finishes
+  if (isPlcConnected) {
+      setTimeout(readAllSystemData, LOOP_DELAY);
   }
 }
 
@@ -383,22 +395,24 @@ function checkDieselLevels(data) {
 }
 
 function connectToPLC() {
+  if (isLoopRunning) return; // Prevent double connections
   console.log(`Attempting to connect to PLC on ${port}...`);
+  
   client.connectRTU(port, plcSettings)
     .then(() => {
       client.setID(plcSlaveID);
-      client.setTimeout(5000);
+      client.setTimeout(4000); // 4 Seconds timeout
       isPlcConnected = true;
+      isLoopRunning = true;
       errorCount = 0;
       console.log('✓ PLC connected successfully');
 
-      setTimeout(() => {
-        readAllSystemData();
-        setInterval(readAllSystemData, 1000); // 1-Second Loop
-      }, 2000);
+      // Start the Recursive Loop
+      readAllSystemData();
     })
     .catch((err) => {
       console.error('PLC connection error:', err.message);
+      isLoopRunning = false;
       setTimeout(connectToPLC, 10000);
     });
 }

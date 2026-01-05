@@ -221,7 +221,7 @@ function setupAutoRefresh() {
 }
 
 // ============================================================
-// ✅ FIXED: loadData - Unpacks nested DG data for the Graph
+// ✅ FIXED: Load Data & Inject Live Reading
 // ============================================================
 async function loadData(silent = false) {
     const startDate = document.getElementById('start-date').value;
@@ -233,24 +233,46 @@ async function loadData(silent = false) {
     }
 
     try {
+        // 1. Fetch Historical Data
         const query = `startDate=${startDate}&endDate=${endDate}`;
         const url = (dgType === 'total') ? `/api/consumption?dg=total&${query}` : `/api/consumption?dg=${dgType}&${query}`;
         
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const result = await response.json();
+        const [histResponse, liveResponse] = await Promise.all([
+            fetch(url),
+            fetch('/api/data') // Fetch live data in parallel
+        ]);
+
+        if (!histResponse.ok) throw new Error(`HTTP error! status: ${histResponse.status}`);
+        const result = await histResponse.json();
+
+        // 2. Prepare Live Data (if available)
+        let liveRecord = null;
+        const today = new Date().toISOString().split('T')[0];
+        if (endDate === today && liveResponse.ok) {
+            const liveJson = await liveResponse.json();
+            let liveLevel = 0;
+            if (dgType === 'total') {
+                liveLevel = (liveJson.dg1 || 0) + (liveJson.dg2 || 0) + (liveJson.dg3 || 0);
+            } else {
+                liveLevel = liveJson[dgType] || 0;
+            }
+            
+            if (liveLevel > 0) {
+                liveRecord = {
+                    timestamp: new Date().toISOString(),
+                    level: liveLevel,
+                    consumption: 0,
+                    note: "Live Update"
+                };
+            }
+        }
 
         let displayData = [];
-        
         if (result.data && result.data.length > 0) {
-            // ✅ CRITICAL FIX: Map the specific DG's data to the top level
             displayData = result.data.map(record => {
-                
-                // 1. Determine the correct level/consumption based on dgType
                 let mappedLevel = 0;
                 let mappedConsumption = 0;
 
-                // Check if data is already flat (smart API) or nested (raw DB)
                 if (record.cleanLevel !== undefined) {
                     mappedLevel = record.cleanLevel;
                     mappedConsumption = record.consumption || 0;
@@ -258,7 +280,6 @@ async function loadData(silent = false) {
                     mappedLevel = record.total?.level || 0;
                     mappedConsumption = record.total?.consumption || 0;
                 } else {
-                    // Extract specific DG data (e.g., record.dg1.level)
                     mappedLevel = record[dgType]?.level || 0;
                     mappedConsumption = record[dgType]?.consumption || 0;
                 }
@@ -266,7 +287,6 @@ async function loadData(silent = false) {
                 return {
                     timestamp: record.timestamp,
                     date: record.date,
-                    // Pass these standardized values to processData
                     level: mappedLevel,
                     consumption: mappedConsumption,
                     rawLevel: record.rawLevel,
@@ -276,11 +296,22 @@ async function loadData(silent = false) {
             });
         }
 
+        // 3. INJECT LIVE RECORD into the array (if it's newer)
+        if (liveRecord && displayData.length > 0) {
+            const lastTime = new Date(displayData[displayData.length - 1].timestamp).getTime();
+            const liveTime = new Date(liveRecord.timestamp).getTime();
+            // Only add if live data is actually newer
+            if (liveTime > lastTime) {
+                console.log("💉 Injecting Live Record for Graph:", liveRecord);
+                displayData.push(liveRecord);
+            }
+        }
+
         if (displayData.length === 0) {
             document.getElementById('empty-state').style.display = 'block';
             clearStats();
         } else {
-            // Now processData will receive correct 'level' and 'consumption' values
+            // Pass the merged data to processData
             processData(displayData, startDate, endDate); 
             document.getElementById('empty-state').style.display = 'none';
         }
@@ -307,7 +338,7 @@ function clearStats() {
 }
 
 // ============================================================
-// ✅ PROCESS DATA: FIXED GRAPH & CARD MATH
+// ✅ PROCESS DATA: SYNCED GRAPH & CARD
 // ============================================================
 async function processData(data, startDate, endDate) {
     const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -331,7 +362,7 @@ async function processData(data, startDate, endDate) {
     let previousLevel = null;
 
     // ------------------------------------------------------------
-    // 1. Process Data & Fix Graph Noise
+    // 1. Process Data (Includes Injected Live Data)
     // ------------------------------------------------------------
     let cleanData = data.map((record, index) => {
         const hour = new Date(record.timestamp).getHours();
@@ -345,104 +376,72 @@ async function processData(data, startDate, endDate) {
         if (index > 0 && previousLevel !== null) {
             const diff = previousLevel - currentLevel; // Positive = Drop, Negative = Rise
 
-            // CASE A: CONSUMPTION DETECTED (Drop > 2L)
+            // CASE A: CONSUMPTION DETECTED
             if (diff > 2.0) {
-                // If DB missed it (0), FORCE the drop onto the graph
-                if (finalConsumption === 0) {
-                    finalConsumption = diff; 
-                }
+                if (finalConsumption === 0) finalConsumption = diff; 
             }
 
-            // CASE B: REFILL DETECTED (Rise > 50L)
+            // CASE B: REFILL DETECTED
             else if (diff <= -REFILL_THRESHOLD) {
                 const refillAmount = Math.abs(diff);
                 totalRefilled += refillAmount;
-                refillEvents.push(createRefillEvent(
-                    record.timestamp, 
-                    dgType.toUpperCase(), 
-                    refillAmount
-                ));
+                refillEvents.push(createRefillEvent(record.timestamp, dgType.toUpperCase(), refillAmount));
             }
             
-            // CASE C: SMALL RISE (Noise Recovery or Temperature)
+            // CASE C: RECOVERY (THE ERASER)
+            // This now sees the Live Data Rise and erases the fake drop!
             else if (diff < 0) {
-                const riseAmount = Math.abs(diff);
-
-                // 🔧 CRITICAL FIX FOR GRAPH:
-                // If the level Rises, we must SUBTRACT it from the hourly total.
-                // This cancels out the "Fake Drop" (9L) caused by sloshing.
-                // Example: Drop 9L, then Rise 4L -> Net 5L.
-                if (hourlyConsumption[hour] > 0) {
-                     hourlyConsumption[hour] -= riseAmount;
-                     // Clamp to 0 to be safe
-                     if (hourlyConsumption[hour] < 0) hourlyConsumption[hour] = 0;
+                let riseAmount = Math.abs(diff);
+                let h = hour;
+                while (riseAmount > 0 && h >= 0) {
+                    if (hourlyConsumption[h] > 0) {
+                        const deduct = Math.min(hourlyConsumption[h], riseAmount);
+                        hourlyConsumption[h] -= deduct;
+                        riseAmount -= deduct;
+                        if (h === hour) finalConsumption -= deduct;
+                    }
+                    h--; 
                 }
-
-                // Log as event (optional visual)
-                temperatureEvents.push({
-                    timestamp: record.timestamp,
-                    hour: hour,
-                    amount: riseAmount,
-                    time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                });
+                
+                // Only log valid temp events (ignore huge refills)
+                if (Math.abs(diff) < REFILL_THRESHOLD) {
+                    temperatureEvents.push({
+                        timestamp: record.timestamp, hour: hour, amount: Math.abs(diff),
+                        time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                    });
+                }
             }
         }
 
-        // Add to Graph Buckets
+        if (finalConsumption < 0) finalConsumption = 0;
         hourlyConsumption[hour] += finalConsumption;
         previousLevel = currentLevel;
 
-        return {
-            ...record,
-            cleanLevel: currentLevel,
-            cleanConsumption: finalConsumption,
-            hour: hour,
-            dateStr: record.date || record.timestamp.split('T')[0]
-        };
+        return { ...record, cleanLevel: currentLevel, cleanConsumption: finalConsumption, hour: hour, dateStr: record.date };
     });
 
     // ============================================================
-    // 2. Calculate Stats (Mass Balance - The Truth)
+    // 2. Calculate Stats
     // ============================================================
     let startLevel = 0;
     let endLevel = 0;
 
     if (cleanData.length > 0) {
-        // Find first valid start level
         const firstValid = cleanData.find(d => d.cleanLevel > 0);
         startLevel = firstValid ? firstValid.cleanLevel : cleanData[0].cleanLevel;
+        // End Level is simply the last record (which is now the Live Data!)
         endLevel = cleanData[cleanData.length - 1].cleanLevel;
     }
 
-    // Live Data Check (if viewing today)
-    const today = new Date().toISOString().split('T')[0];
-    if (endDate === today) {
-        try {
-            const liveResponse = await fetch('/api/data');
-            if (liveResponse.ok) {
-                const liveData = await liveResponse.json();
-                let liveLevel = (dgType === 'total') 
-                    ? (liveData.dg1 || 0) + (liveData.dg2 || 0) + (liveData.dg3 || 0)
-                    : (liveData[dgType] || 0);
-                
-                if (liveLevel > 0) endLevel = liveLevel;
-            }
-        } catch (e) { console.error(e); }
-    }
-
-    // 🏆 THE MASTER CALCULATION (Start - End)
-    // This fixes DG3 showing 3L instead of 9L.
+    // 🏆 MASTER CALCULATION (Start - End)
     let massBalanceConsumption = 0;
     if (startLevel > 0 || endLevel > 0) {
         massBalanceConsumption = startLevel - (endLevel - totalRefilled);
         massBalanceConsumption = Math.max(0, massBalanceConsumption);
     }
 
-    // Recalculate Running Hours based on Real Consumption
     let runningHours = 0;
-    if (massBalanceConsumption > 0) {
-        runningHours = massBalanceConsumption / CONSUMPTION_PER_HOUR;
-    }
+    if (massBalanceConsumption > 0) runningHours = massBalanceConsumption / CONSUMPTION_PER_HOUR;
 
     let avgConsumptionRate = CONSUMPTION_PER_HOUR;
     if (runningHours > 0) avgConsumptionRate = massBalanceConsumption / runningHours;
@@ -451,18 +450,12 @@ async function processData(data, startDate, endDate) {
     let timeRemaining = '--';
     const predCard = document.getElementById('refill-prediction');
     const predCardContainer = document.getElementById('refill-card');
-
     if (endLevel > CRITICAL_LEVEL) {
         const usable = endLevel - CRITICAL_LEVEL;
         const rate = (avgConsumptionRate > 0) ? avgConsumptionRate : CONSUMPTION_PER_HOUR;
         timeRemaining = (usable / rate).toFixed(1);
-        
         const hrs = parseFloat(timeRemaining);
-        let color = 'var(--danger)';
-        if (hrs > 24) color = 'var(--success)';
-        else if (hrs > 12) color = '#0052cc';
-        else if (hrs > 6) color = 'var(--warning)';
-        
+        let color = hrs > 24 ? 'var(--success)' : (hrs > 12 ? '#0052cc' : (hrs > 6 ? 'var(--warning)' : 'var(--danger)'));
         predCard.style.color = color;
         predCardContainer.style.borderTopColor = color;
     } else {
@@ -476,13 +469,10 @@ async function processData(data, startDate, endDate) {
     // ============================================================
     document.getElementById('start-level').textContent = formatNumber(startLevel);
     document.getElementById('end-level').textContent = formatNumber(endLevel);
-    
-    // Display the Correct Mass Balance on the Card
     document.getElementById('total-consumption').textContent = formatNumber(massBalanceConsumption);
     
     const runningHoursEl = document.getElementById('running-hours');
     const runningHoursUnit = runningHoursEl.closest('.stat-card').querySelector('.stat-unit');
-
     if (runningHours < 1 && runningHours > 0) {
         runningHoursEl.textContent = formatNumber(runningHours * 60);
         runningHoursUnit.textContent = 'Minutes';
