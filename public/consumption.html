@@ -159,7 +159,7 @@ let levelChart = null;
 let autoRefreshInterval = null;
 
 const CRITICAL_LEVEL = 50;
-const REFILL_THRESHOLD = 20; 
+const REFILL_THRESHOLD = 25; 
 const CONSUMPTION_PER_HOUR = 18;
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -338,7 +338,7 @@ function clearStats() {
 }
 
 // ============================================================
-// ✅ PROCESS DATA: BI-DIRECTIONAL CONSISTENCY (Graph = Card)
+// ✅ PROCESS DATA: SMART REFILLS (Blocks "Dip & Recover" Bugs)
 // ============================================================
 async function processData(data, startDate, endDate) {
     const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -360,9 +360,6 @@ async function processData(data, startDate, endDate) {
 
     let previousLevel = null;
 
-    // ------------------------------------------------------------
-    // 1. Process Data
-    // ------------------------------------------------------------
     let cleanData = data.map((record, index) => {
         const hour = new Date(record.timestamp).getHours();
         const currentLevel = record.level || 0;
@@ -374,33 +371,54 @@ async function processData(data, startDate, endDate) {
             const diff = previousLevel - currentLevel; 
 
             // Case A: Drop
-            if (diff > 1.0) { // Lowered threshold to catch smaller drops
+            if (diff > 1.0) { 
                 if (finalConsumption === 0) finalConsumption = diff; 
             }
-            // Case B: Refill
-            else if (diff <= -REFILL_THRESHOLD) {
-                const refillAmount = Math.abs(diff);
-                totalRefilled += refillAmount;
-                refillEvents.push(createRefillEvent(record.timestamp, dgType.toUpperCase(), refillAmount));
-            }
-            // Case C: Recovery / Eraser
+            
+            // 🛑 CHANGED: Handle ALL Rises (Small or Big) here
             else if (diff < 0) {
                 let riseAmount = Math.abs(diff);
+                const isPotentialRefill = riseAmount >= REFILL_THRESHOLD; // > 25L
+
+                // 🕵️ SEARCH BACKWARDS: Did we just have a fake drop?
+                // We check if we can "erase" this rise from recent consumption.
                 let h = hour;
+                let erasedAmount = 0;
+                
+                // Try to erase previous drops using this rise
                 while (riseAmount > 0 && h >= 0) {
                     if (hourlyConsumption[h] > 0) {
                         const deduct = Math.min(hourlyConsumption[h], riseAmount);
                         hourlyConsumption[h] -= deduct;
                         riseAmount -= deduct;
+                        erasedAmount += deduct;
                         if (h === hour) finalConsumption -= deduct;
                     }
                     h--; 
                 }
-                if (Math.abs(diff) < REFILL_THRESHOLD) {
-                    temperatureEvents.push({
-                        timestamp: record.timestamp, hour: hour, amount: Math.abs(diff),
-                        time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                    });
+
+                // 🧠 SMART DECISION:
+                // If we erased a huge amount (e.g., 29L), it means the previous drop was FAKE.
+                // So this "Refill" is just a RECOVERY. Do NOT count it as a refill.
+                
+                if (isPotentialRefill) {
+                    // Only count as Refill if we COULD NOT erase it.
+                    // (Meaning the tank level is actually higher than before the drop)
+                    if (riseAmount > 5.0) { // If > 5L remains AFTER erasing, it's a real refill
+                        const actualRefill = riseAmount;
+                        totalRefilled += actualRefill;
+                        refillEvents.push(createRefillEvent(record.timestamp, dgType.toUpperCase(), actualRefill));
+                    } else {
+                        console.log(`🛡️ Blocked Fake Refill at ${hour}:00. It was just a sensor recovery.`);
+                    }
+                } else {
+                    // Small rise (Temperature)
+                    if (erasedAmount === 0) { // Only log if it didn't fix a drop
+                         temperatureEvents.push({
+                            timestamp: record.timestamp, hour: hour, amount: Math.abs(diff),
+                            time: new Date(record.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                        });
+                    }
                 }
             }
         }
@@ -413,7 +431,7 @@ async function processData(data, startDate, endDate) {
     });
 
     // ============================================================
-    // 2. Calculate Stats & MASTER CONSISTENCY CHECK
+    // 2. Calculate Stats & Consistency
     // ============================================================
     let startLevel = 0;
     let endLevel = 0;
@@ -424,7 +442,6 @@ async function processData(data, startDate, endDate) {
         endLevel = cleanData[cleanData.length - 1].cleanLevel;
     }
 
-    // Live Data Check
     const today = new Date().toISOString().split('T')[0];
     if (endDate === today) {
         try {
@@ -439,35 +456,26 @@ async function processData(data, startDate, endDate) {
         } catch (e) {}
     }
 
-    // A. CALCULATE TRUE CONSUMPTION (Card Value)
     let trueConsumption = 0;
     if (startLevel > 0 || endLevel > 0) {
         trueConsumption = startLevel - (endLevel - totalRefilled);
         trueConsumption = Math.max(0, trueConsumption);
     }
 
-    // B. CALCULATE GRAPH TOTAL
     let graphTotal = 0;
     let lastActiveHour = 0;
     for (let h = 0; h < 24; h++) {
         graphTotal += hourlyConsumption[h];
         if (hourlyConsumption[h] > 0) lastActiveHour = h;
     }
-    // If no active hour found, default to current hour or 9 AM
     if (graphTotal === 0) lastActiveHour = new Date().getHours();
 
-    // C. 🔧 FORCE CONSISTENCY (The Magic Fix)
+    // 🔧 FORCE CONSISTENCY
     const diff = trueConsumption - graphTotal;
-
-    if (Math.abs(diff) > 0.5) { // If difference is > 0.5 Liters
+    if (Math.abs(diff) > 0.5) { 
         if (diff > 0) {
-            // 🟢 Graph is TOO LOW (Your Case: 1L vs 3L)
-            // Add missing fuel (2L) to the last active hour
-            console.log(`🔧 Graph too low. Adding ${diff.toFixed(1)}L to hour ${lastActiveHour}`);
             hourlyConsumption[lastActiveHour] += diff;
         } else {
-            // 🔴 Graph is TOO HIGH (Previous Case: 27L vs 1L)
-            // Remove extra fuel (backwards eraser)
             let removeAmount = Math.abs(diff);
             for (let h = 23; h >= 0; h--) {
                 if (removeAmount <= 0) break;
@@ -480,14 +488,13 @@ async function processData(data, startDate, endDate) {
         }
     }
 
-    // Stats Calculation
+    // Stats
     let runningHours = 0;
     if (trueConsumption > 0) runningHours = trueConsumption / CONSUMPTION_PER_HOUR;
 
     let avgConsumptionRate = CONSUMPTION_PER_HOUR;
     if (runningHours > 0) avgConsumptionRate = trueConsumption / runningHours;
 
-    // Refill Prediction
     let timeRemaining = '--';
     const predCard = document.getElementById('refill-prediction');
     const predCardContainer = document.getElementById('refill-card');
@@ -505,9 +512,7 @@ async function processData(data, startDate, endDate) {
         predCardContainer.style.borderTopColor = 'var(--danger)';
     }
 
-    // ============================================================
-    // 3. Update UI
-    // ============================================================
+    // UI Updates
     document.getElementById('start-level').textContent = formatNumber(startLevel);
     document.getElementById('end-level').textContent = formatNumber(endLevel);
     document.getElementById('total-consumption').textContent = formatNumber(trueConsumption);
