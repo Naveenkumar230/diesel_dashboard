@@ -60,6 +60,30 @@
     -webkit-text-fill-color: transparent;
     line-height: 1.2;
   }
+  /* Add/Check this in your CSS */
+@media (max-width: 900px) {
+  .header {
+    flex-direction: column;
+    text-align: center;
+    gap: 15px;
+  }
+  
+  h1 {
+    margin: 0 !important; /* Resets the margin we added for laptop view */
+    font-size: 1.5rem;
+  }
+  
+  .header > div {
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    align-items: center !important;
+  }
+  
+  .status-line {
+    text-align: center !important;
+  }
+}
   
   .status-line {
     text-align: right;
@@ -149,25 +173,29 @@
 </style>
 </head>
 <body>
-  <div class="container">
-    
   <div class="header">
   <img src="/logo.png" alt="Aquarelle Logo" class="header-logo">
   
-  <h1>DG Monitoring System Dashboard</h1>
+  <h1 style="margin-left: 320px; margin-right: auto;">DG Monitoring System Dashboard</h1>
   
-  <div class="status-line">
-    <span class="status-indicator status-online" id="server-status"></span>
-    Last Updated: <span id="last-update">--</span>
-  </div>
-  <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-    <a href="/analytics.html" class="btn btn-primary" style="text-decoration: none; padding: 10px 20px; background: #0052cc; color: white; border-radius: 8px; font-weight: 600;">
+  <div style="display: flex; align-items: center; gap: 25px;">
+    
+    <div class="status-line" style="text-align: right;">
+      <div style="display: flex; align-items: center; gap: 5px; justify-content: flex-end;">
+        <span class="status-indicator status-online" id="server-status"></span>
+        <span style="font-weight: 600; font-size: 0.9rem;">Server Online</span>
+      </div>
+      <div style="font-size: 0.85rem; color: var(--text-muted);">
+        Last Updated: <span id="last-update">--</span>
+      </div>
+    </div>
+
+    <a href="/analytics.html" class="btn btn-primary" style="text-decoration: none; padding: 10px 25px; background: #0052cc; color: white; border-radius: 8px; font-weight: 600; white-space: nowrap;">
       📊 Analytics
     </a>
+    
   </div>
 </div>
-
-
     <div id="alert-container"></div>
 
         <div class="diesel-section">
