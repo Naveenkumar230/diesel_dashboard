@@ -125,7 +125,7 @@ const electricalCandidates = {
     activePower:   [C(4702, 0.01)], // d606 → 606+4096=4702 ✅ (FIXED SCALING)
     frequency:     [C(4758, 0.01)], // d662 → 662+4096=4758 ✅
     powerFactor:   [C(4766, 0.01)], // d670 → 670+4096=4766 ✅ NEW
-    runningHours:  [C(4512, 1)],    // d416 → 416+4096=4512 ✅ NEW (Same as DG3)
+    runningHours:  [C(4514, 1)],    // d416 → 416+4096=4512 ✅ NEW (Same as DG3)
   }
 };
 
