@@ -65,6 +65,14 @@ app.get('/electrical.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'electrical.html'));
 });
 
+app.get('/analytics.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'analytics.html'));
+});
+
+app.get('/analytics', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'analytics.html'));
+});
+
 // -------------------- Graceful Shutdown --------------------
 async function gracefulShutdown() {
   console.log('\nShutting down gracefully...');
