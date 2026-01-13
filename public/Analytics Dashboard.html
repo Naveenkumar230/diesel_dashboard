@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DG Analytics Dashboard</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<style>
+  :root {
+    --primary: #0052cc; 
+    --success: #00875a; 
+    --warning: #ffab00; 
+    --danger: #de350b; 
+    --bg-primary: #ffffff; 
+    --bg-secondary: #f4f5f7; 
+    --bg-tertiary: #ffffff; 
+    --text-primary: #172b4d; 
+    --text-secondary: #42526e; 
+    --text-muted: #6b778c; 
+    --border: #dfe1e6; 
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    background: linear-gradient(135deg, #f4f5f7 0%, #e8ebed 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  
+  .container { max-width: 1600px; margin: 0 auto; }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    margin-bottom: 30px;
+    border: 2px solid var(--border);
+  }
+  
+  h1 {
+    font-size: 2rem;
+    background: linear-gradient(90deg, #0052cc, #0065ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .back-btn {
+    padding: 12px 24px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s;
+  }
+  
+  .back-btn:hover {
+    background: #0041a3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 82, 204, 0.3);
+  }
+  
+  .filters-section {
+    background: white;
+    padding: 25px;
+    border-radius: 16px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid var(--border);
+  }
+  
+  .filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    align-items: end;
+  }
+  
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  
+  input, select {
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    transition: all 0.3s;
+  }
+  
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: white;
+  }
+  
+  .btn {
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: all 0.3s;
+  }
+  
+  .btn-primary {
+    background: var(--primary);
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background: #0041a3;
+    transform: translateY(-2px);
+  }
+  
+  .btn-danger {
+    background: var(--danger);
+    color: white;
+  }
+  
+  .btn-danger:hover {
+    background: #c42d0b;
+    transform: translateY(-2px);
+  }
+  
+  .analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 25px;
+    margin-bottom: 30px;
+  }
+  
+  .dg-analytics-card {
+    background: white;
+    border-radius: 16px;
+    padding: 25px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 2px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .dg-analytics-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, var(--primary), #0065ff);
+  }
+  
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  
+  .dg-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  
+  .status-badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  
+  .status-running {
+    background: var(--success);
+    color: white;
+  }
+  
+  .status-off {
+    background: var(--danger);
+    color: white;
+  }
+  
+  .metrics-grid {
+    display: grid;
+    gap: 15px;
+  }
+  
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    border-left: 4px solid var(--primary);
+  }
+  
+  .metric-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  
+  .metric-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--text-primary);
+  }
+  
+  .metric-unit {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-left: 5px;
+  }
+  
+  .comparison-section {
+    margin-top: 20px;
+    padding: 15px;
+    background: linear-gradient(135deg, #fff5e6 0%, #ffe6cc 100%);
+    border-radius: 10px;
+    border-left: 4px solid var(--warning);
+  }
+  
+  .comparison-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+  }
+  
+  .comparison-value {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--warning);
+  }
+  
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+  }
+  
+  .modal-content {
+    background: white;
+    margin: 15% auto;
+    padding: 30px;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    animation: slideDown 0.3s ease;
+  }
+  
+  @keyframes slideDown {
+    from { transform: translateY(-50px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  
+  .modal-header {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--danger);
+  }
+  
+  .modal-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 40px;
+    font-size: 1.2rem;
+    color: var(--text-muted);
+  }
+  
+  @media (max-width: 768px) {
+    .analytics-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 DG Analytics Dashboard</h1>
+      <a href="/" class="back-btn">← Back to Main</a>
+    </div>
+
+    <div class="filters-section">
+      <div class="filters-grid">
+        <div class="filter-group">
+          <label>Time Period</label>
+          <select id="time-period">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="custom">Custom Range</option>
+          </select>
+        </div>
+        <div class="filter-group" id="start-date-group" style="display: none;">
+          <label>From Date</label>
+          <input type="date" id="start-date" />
+        </div>
+        <div class="filter-group" id="end-date-group" style="display: none;">
+          <label>To Date</label>
+          <input type="date" id="end-date" />
+        </div>
+        <div class="filter-group">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" onclick="loadAnalytics()">📈 Load Analytics</button>
+        </div>
+        <div class="filter-group">
+          <label>&nbsp;</label>
+          <button class="btn btn-danger" onclick="showResetModal()">🔄 Reset Data</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="analytics-container" class="analytics-grid"></div>
+    <div id="loading" class="loading" style="display:none;">⏳ Loading analytics...</div>
+  </div>
+
+  <!-- Password Modal -->
+  <div id="reset-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">🔐 Reset Data</div>
+      <p style="margin-bottom: 15px; color: var(--text-secondary);">
+        This will reset all runtime data. Enter password to proceed:
+      </p>
+      <input type="password" id="reset-password" placeholder="Enter password" 
+        style="width: 100%; margin-bottom: 15px;" />
+      <div class="modal-buttons">
+        <button class="btn btn-danger" onclick="confirmReset()">Reset</button>
+        <button class="btn" style="background: var(--bg-secondary); color: var(--text-primary);" 
+          onclick="closeResetModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DG_LIST = ['dg1', 'dg2', 'dg3', 'dg4'];
+    const RESET_PASSWORD = 'dgsystem';
+
+    // Initialize
+    document.getElementById('time-period').addEventListener('change', function() {
+      const isCustom = this.value === 'custom';
+      document.getElementById('start-date-group').style.display = isCustom ? 'block' : 'none';
+      document.getElementById('end-date-group').style.display = isCustom ? 'block' : 'none';
+      
+      if (!isCustom) {
+        loadAnalytics();
+      }
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('start-date').value = today;
+    document.getElementById('end-date').value = today;
+
+    function getDateRange() {
+      const period = document.getElementById('time-period').value;
+      const today = new Date();
+      let startDate, endDate;
+
+      if (period === 'today') {
+        startDate = endDate = new Date();
+      } else if (period === 'yesterday') {
+        startDate = endDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      } else {
+        startDate = new Date(document.getElementById('start-date').value);
+        endDate = new Date(document.getElementById('end-date').value);
+      }
+
+      return {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      };
+    }
+
+    async function loadAnalytics() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('analytics-container').innerHTML = '';
+
+      const { startDate, endDate } = getDateRange();
+
+      try {
+        const analyticsData = await Promise.all(
+          DG_LIST.map(async (dg) => {
+            // Fetch Diesel Data
+            const dieselResponse = await fetch(`/api/consumption?dg=${dg}&startDate=${startDate}&endDate=${endDate}`);
+            const dieselResult = await dieselResponse.json();
+
+            // Fetch Electrical Data
+            const electricalResponse = await fetch(`/api/electrical/${dg}?startDate=${startDate}&endDate=${endDate}`);
+            const electricalResult = await electricalResponse.json();
+
+            return {
+              dg,
+              dieselData: dieselResult.data || [],
+              electricalData: electricalResult.data || []
+            };
+          })
+        );
+
+        renderAnalytics(analyticsData);
+      } catch (err) {
+        console.error('Error loading analytics:', err);
+        document.getElementById('analytics-container').innerHTML = 
+          '<p style="text-align: center; color: var(--danger);">Failed to load analytics</p>';
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function calculateRuntimeFromDiesel(dieselData) {
+      if (!dieselData || dieselData.length === 0) return 0;
+
+      const runningRecords = dieselData.filter(r => r.isRunning === true);
+      if (runningRecords.length === 0) return 0;
+
+      runningRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      let totalMs = 0;
+      for (let i = 0; i < runningRecords.length - 1; i++) {
+        const current = new Date(runningRecords[i].timestamp);
+        const next = new Date(runningRecords[i + 1].timestamp);
+        const diff = next - current;
+
+        if (diff < 15 * 60 * 1000) {
+          totalMs += diff;
+        }
+      }
+
+      if (runningRecords.length > 0) totalMs += 60000;
+
+      return totalMs / (1000 * 60 * 60);
+    }
+
+    function getPLCRuntimeHours(electricalData) {
+      if (!electricalData || electricalData.length === 0) return 0;
+      
+      // Get the latest runtime reading
+      const latestRecord = electricalData[electricalData.length - 1];
+      return latestRecord.runningHours || 0;
+    }
+
+    function renderAnalytics(analyticsData) {
+      const container = document.getElementById('analytics-container');
+      container.innerHTML = '';
+
+      analyticsData.forEach(({ dg, dieselData, electricalData }) => {
+        const dieselRuntime = calculateRuntimeFromDiesel(dieselData);
+        const plcRuntime = getPLCRuntimeHours(electricalData);
+        const difference = Math.abs(plcRuntime - dieselRuntime);
+        const isRunning = dieselData.length > 0 && dieselData[dieselData.length - 1].isRunning;
+
+        const card = document.createElement('div');
+        card.className = 'dg-analytics-card';
+        card.innerHTML = `
+          <div class="card-header">
+            <div class="dg-title">${dg.toUpperCase().replace('DG', 'DG-')}</div>
+            <div class="status-badge ${isRunning ? 'status-running' : 'status-off'}">
+              ${isRunning ? 'RUNNING' : 'OFF'}
+            </div>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric-row" style="border-left-color: #20bf6b;">
+              <div class="metric-label">🔌 PLC Runtime Hours</div>
+              <div>
+                <span class="metric-value">${plcRuntime.toFixed(2)}</span>
+                <span class="metric-unit">Hrs</span>
+              </div>
+            </div>
+
+            <div class="metric-row" style="border-left-color: #0052cc;">
+              <div class="metric-label">⛽ Diesel Calculated Runtime</div>
+              <div>
+                <span class="metric-value">${dieselRuntime.toFixed(2)}</span>
+                <span class="metric-unit">Hrs</span>
+              </div>
+            </div>
+
+            <div class="comparison-section">
+              <div class="comparison-title">⚖️ Difference</div>
+              <div class="comparison-value">${difference.toFixed(2)} Hours</div>
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px;">
+                ${difference > 1 ? '⚠️ Significant variance detected' : '✅ Values match closely'}
+              </div>
+            </div>
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+    }
+
+    function showResetModal() {
+      document.getElementById('reset-modal').style.display = 'block';
+      document.getElementById('reset-password').value = '';
+    }
+
+    function closeResetModal() {
+      document.getElementById('reset-modal').style.display = 'none';
+    }
+
+    function confirmReset() {
+      const password = document.getElementById('reset-password').value;
+
+      if (password !== RESET_PASSWORD) {
+        alert('❌ Incorrect password!');
+        return;
+      }
+
+      // Reset UI only (not database)
+      document.getElementById('analytics-container').innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; background: white; border-radius: 16px;">
+          <h2 style="color: var(--success);">✅ Data Reset Successfully</h2>
+          <p style="color: var(--text-muted); margin-top: 10px;">UI data has been cleared. Reload to fetch fresh data from database.</p>
+          <button class="btn btn-primary" onclick="loadAnalytics()" style="margin-top: 20px;">📥 Reload Data</button>
+        </div>
+      `;
+
+      closeResetModal();
+    }
+
+    // Close modal on outside click
+    window.onclick = function(event) {
+      const modal = document.getElementById('reset-modal');
+      if (event.target === modal) {
+        closeResetModal();
+      }
+    };
+
+    // Load initial data
+    loadAnalytics();
+  </script>
+</body>
+</html>
