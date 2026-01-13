@@ -98,14 +98,15 @@
       </div>
     </div>
 
-    <div class="stats-grid">
-      <div class="stat-card" style="border-top-color: var(--success);"><div class="stat-label">Total Running Hours</div><div class="stat-value" id="total-hours">--</div><div class="stat-unit">Hours</div></div>
-      <div class="stat-card" style="border-top-color: var(--primary);"><div class="stat-label">Total Energy (kWh)</div><div class="stat-value" id="total-kwh">--</div><div class="stat-unit">kWh</div></div>
-      <div class="stat-card" style="border-top-color: var(--warning);"><div class="stat-label">Average Load %</div><div class="stat-value" id="avg-load">--</div><div class="stat-unit">Percent</div></div>
-      <div class="stat-card" style="border-top-color: var(--danger);"><div class="stat-label">Peak Active Power</div><div class="stat-value" id="peak-kw">--</div><div class="stat-unit">kW</div></div>
-    </div>
+  <div class="stats-grid">
+  <div class="stat-card" style="border-top-color: #20bf6b;"><div class="stat-label">Runtime Hours</div><div class="stat-value" id="plc-runtime">--</div><div class="stat-unit">Hours</div></div>
+  <div class="stat-card" style="border-top-color: var(--primary);"><div class="stat-label">Total Energy (kWh)</div><div class="stat-value" id="total-kwh">--</div><div class="stat-unit">kWh</div></div>
+  <div class="stat-card" style="border-top-color: var(--warning);"><div class="stat-label">Average Load %</div><div class="stat-value" id="avg-load">--</div><div class="stat-unit">Percent</div></div>
+  <div class="stat-card" style="border-top-color: var(--danger);"><div class="stat-label">Peak Active Power</div><div class="stat-value" id="peak-kw">--</div><div class="stat-unit">kW</div></div>
+  <div class="stat-card" style="border-top-color: #8854d0;"><div class="stat-label">Avg Power Factor</div><div class="stat-value" id="avg-pf">--</div><div class="stat-unit">PF</div></div>
+</div>
 
-    <div class="chart-grid-split">
+<div class="chart-grid-split">
   <div class="chart-section">
     <div class="chart-title">Voltage(R Y B)</div>
     <div class="chart-container-split"><canvas id="voltageChart"></canvas></div>
@@ -115,12 +116,20 @@
     <div class="chart-container-split"><canvas id="currentChart"></canvas></div>
   </div>
   <div class="chart-section">
-    <div class="chart-title">Power (kWh)</div>
+    <div class="chart-title">Power (kW)</div>
     <div class="chart-container-split"><canvas id="powerChart"></canvas></div>
   </div>
   <div class="chart-section">
     <div class="chart-title">Frequency (Hz)</div>
     <div class="chart-container-split"><canvas id="freqChart"></canvas></div>
+  </div>
+  <div class="chart-section">
+    <div class="chart-title">Power Factor</div>
+    <div class="chart-container-split"><canvas id="powerFactorChart"></canvas></div>
+  </div>
+  <div class="chart-section">
+    <div class="chart-title">Runtime Hours</div>
+    <div class="chart-container-split"><canvas id="runtimeChart"></canvas></div>
   </div>
 </div>
 
@@ -140,13 +149,12 @@
 
 <script>
 
-let voltageChart, currentChart, powerChart, freqPfChart, combinedChart;
+let voltageChart, currentChart, powerChart, freqChart, powerFactorChart, runtimeChart, combinedChart;
 let dgType = 'dg1';
 const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
 
-// ✅ LOAD STICKY VALUES
 let stickyValues = JSON.parse(localStorage.getItem('dgStickyStats_' + dgType)) || {
-  totalHours: '--', totalKwh: '--', avgLoad: '--', peakKw: '--'
+  totalKwh: '--', avgLoad: '--', peakKw: '--', avgPF: '--', plcRuntime: '--'
 };
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -299,84 +307,55 @@ function clearCharts() {
   if (voltageChart) voltageChart.destroy();
   if (currentChart) currentChart.destroy();
   if (powerChart) powerChart.destroy();
-  if (freqPfChart) freqPfChart.destroy();
+  if (freqChart) freqChart.destroy();
+  if (powerFactorChart) powerFactorChart.destroy();
+  if (runtimeChart) runtimeChart.destroy();
   if (combinedChart) combinedChart.destroy();
 }
 
-function updateStickyStats(totalHours, totalKwh, avgLoad, peakKw) {
+function updateStickyStats(totalKwh, avgLoad, peakKw, avgPF, plcRuntime) {
   stickyValues = {
-    totalHours: totalHours.toFixed(1),
     totalKwh: totalKwh.toFixed(0),
     avgLoad: avgLoad.toFixed(1),
-    peakKw: peakKw.toFixed(1)
+    peakKw: peakKw.toFixed(1),
+    avgPF: avgPF.toFixed(2),
+    plcRuntime: plcRuntime.toFixed(1)
   };
   localStorage.setItem('dgStickyStats_' + dgType, JSON.stringify(stickyValues));
   renderStickyStats();
 }
 
 function renderStickyStats() {
-  if(stickyValues.totalHours !== '--') {
-      document.getElementById('total-hours').textContent = stickyValues.totalHours;
+  if(stickyValues.totalKwh !== '--') {
       document.getElementById('total-kwh').textContent = stickyValues.totalKwh;
       document.getElementById('avg-load').textContent = stickyValues.avgLoad;
       document.getElementById('peak-kw').textContent = stickyValues.peakKw;
+      document.getElementById('avg-pf').textContent = stickyValues.avgPF || '--';
+      document.getElementById('plc-runtime').textContent = stickyValues.plcRuntime || '--';
   }
 }
 
-// ============================================================
-// ✅ FIXED processData - Calculates Hours STRICTLY based on Voltage
-// ============================================================
 function processData(data, startDate, endDate) {
   const startStr = new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
   document.getElementById('date-range').textContent = startStr;
 
-  // 1️⃣ FILTER: CREATE THE "RUNNING" DATASET
-  // We only care about records where Voltage R is > 200V.
-  // This is the single source of truth for "Running".
   const runningData = data.filter(r => r.voltageR > 200);
 
-  // Initialize Stats
-  let totalRunningHours = 0;
   let totalKwh = 0;
   let avgLoad = 0;
   let peakKw = 0;
+  let avgPowerFactor = 0;
+  let plcRuntimeHours = 0;
 
   if (runningData.length > 0) {
-      // 2️⃣ STAT 1: CALCULATE TIME FROM VOLTAGE RECORDS
-      // Sort data by time to be safe
-      runningData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-      let totalMs = 0;
-      
-      // Edge case: If we have only 1 record of voltage, assume 1 minute
-      if (runningData.length === 1) {
-          totalMs = 60000;
-      } else {
-          for (let i = 0; i < runningData.length - 1; i++) {
-              const current = new Date(runningData[i].timestamp);
-              const next = new Date(runningData[i+1].timestamp);
-              const diff = next - current;
-
-              // GAP CHECK: If the gap is less than 15 minutes, assume continuous running.
-              // If the gap is > 15 mins, assume the DG stopped and started again.
-              if (diff < 15 * 60 * 1000) { 
-                  totalMs += diff;
-              }
-          }
-          // Add 1 minute buffer for the duration of the final record
-          totalMs += 60000; 
-      }
-      
-      totalRunningHours = totalMs / (1000 * 60 * 60);
-
-      // 3️⃣ STAT 2: Total Energy (Sum of Voltages as per your logic)
+      // Total Energy (Sum of Voltages as per your logic)
       let totalVoltageSum = 0;
       runningData.forEach(r => {
           totalVoltageSum += (r.voltageR + r.voltageY + r.voltageB);
       });
       totalKwh = totalVoltageSum; 
 
-      // 4️⃣ STAT 3: Average Load
+      // Average Load
       let totalCurrentSum = 0;
       runningData.forEach(r => {
           const avgCurrent = (r.currentR + r.currentY + r.currentB) / 3;
@@ -384,29 +363,37 @@ function processData(data, startDate, endDate) {
       });
       avgLoad = totalCurrentSum / runningData.length;
 
-      // 5️⃣ STAT 4: Peak kW
+      // Peak kW
       runningData.forEach(r => {
         if (r.activePower > peakKw) peakKw = r.activePower;
       });
+
+      // Average Power Factor
+      let totalPF = 0;
+      runningData.forEach(r => {
+          totalPF += (r.powerFactor || 0);
+      });
+      avgPowerFactor = totalPF / runningData.length;
+      
+      // Get latest runtime from PLC (last record)
+      plcRuntimeHours = data[data.length - 1]?.runningHours || 0;
   }
 
-  // Update UI
-  document.getElementById('total-hours').textContent = totalRunningHours.toFixed(2);
+  // Update UI (REMOVED total-hours)
   document.getElementById('total-kwh').textContent = totalKwh.toFixed(0);
   document.getElementById('avg-load').textContent = avgLoad.toFixed(1);
   document.getElementById('peak-kw').textContent = peakKw.toFixed(1);
+  document.getElementById('avg-pf').textContent = avgPowerFactor.toFixed(2);
+  document.getElementById('plc-runtime').textContent = plcRuntimeHours.toFixed(1);
 
-  // Update Sticky Values
-  updateStickyStats(totalRunningHours, totalKwh, avgLoad, peakKw);
+  // Update Sticky Values (REMOVED totalHours)
+  updateStickyStats(totalKwh, avgLoad, peakKw, avgPowerFactor, plcRuntimeHours);
 
-  // Update Charts (Show ALL data, even 0s, so the user sees when it stopped)
+  // Update Charts
   updateSplitCharts(data); 
   updateCombinedChart(data);
 }
 
-// ============================================================
-// SPLIT CHARTS (Unchanged - already correct)
-// ============================================================
 function updateSplitCharts(data) {
   if (data.length === 0) return;
   const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
@@ -457,15 +444,15 @@ function updateSplitCharts(data) {
     data: { 
       labels, 
       datasets: [
-        { label: 'kWh', data: data.map(r => r.activePower), borderColor: '#20bf6b', ...lineOpts, borderWidth: 3 }
+        { label: 'kW', data: data.map(r => r.activePower), borderColor: '#20bf6b', ...lineOpts, borderWidth: 3 }
       ]
     }, 
     options: commonOptions
   });
 
   // Frequency Chart
-  if (freqPfChart) freqPfChart.destroy();
-  freqPfChart = new Chart(document.getElementById('freqChart'), {
+  if (freqChart) freqChart.destroy();
+  freqChart = new Chart(document.getElementById('freqChart'), {
     type: 'line', 
     data: { 
       labels, 
@@ -475,11 +462,40 @@ function updateSplitCharts(data) {
     }, 
     options: commonOptions
   });
+
+  // ✅ NEW: Power Factor Chart
+  if (powerFactorChart) powerFactorChart.destroy();
+  powerFactorChart = new Chart(document.getElementById('powerFactorChart'), {
+    type: 'line', 
+    data: { 
+      labels, 
+      datasets: [
+        { label: 'Power Factor', data: data.map(r => r.powerFactor || 0), borderColor: '#fd79a8', ...lineOpts, borderWidth: 3 }
+      ]
+    }, 
+    options: {
+      ...commonOptions,
+      scales: {
+        x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } },
+        y: { beginAtZero: true, max: 1 }
+      }
+    }
+  });
+
+  // ✅ NEW: Runtime Chart
+  if (runtimeChart) runtimeChart.destroy();
+  runtimeChart = new Chart(document.getElementById('runtimeChart'), {
+    type: 'line', 
+    data: { 
+      labels, 
+      datasets: [
+        { label: 'Runtime (Hrs)', data: data.map(r => r.runningHours || 0), borderColor: '#00b894', ...lineOpts, borderWidth: 3 }
+      ]
+    }, 
+    options: commonOptions
+  });
 }
 
-// ============================================================
-// ✅ FIXED COMBINED CHART - Show R, Y, B lines for Voltage AND Current
-// ============================================================
 function updateCombinedChart(data) {
   if (data.length === 0) return;
   const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
@@ -543,7 +559,7 @@ function updateCombinedChart(data) {
                 ...lineOpts 
             },
             
-            // ✅ POWER (Keep as is)
+            // ✅ POWER
             { 
                 label: 'Power (kW)', 
                 data: data.map(r => r.activePower), 
@@ -554,7 +570,7 @@ function updateCombinedChart(data) {
                 borderWidth: 3 
             },
             
-            // ✅ FREQUENCY (Keep as is)
+            // ✅ FREQUENCY
             { 
                 label: 'Freq (Hz)', 
                 data: data.map(r => r.frequency), 
@@ -564,13 +580,23 @@ function updateCombinedChart(data) {
                 ...lineOpts 
             },
             
-            // ✅ POWER FACTOR (Keep as is)
+            // ✅ POWER FACTOR (UPDATED COLOR)
             { 
                 label: 'Power Factor', 
-                data: data.map(r => r.powerFactor), 
-                borderColor: '#172b4d', 
-                backgroundColor: 'rgba(23, 43, 77, 0.1)',
+                data: data.map(r => r.powerFactor || 0), 
+                borderColor: '#fd79a8', 
+                backgroundColor: 'rgba(253, 121, 168, 0.1)',
                 yAxisID: 'yPF', 
+                ...lineOpts 
+            },
+            
+            // ✅ NEW: RUNTIME HOURS
+            { 
+                label: 'Runtime (Hrs)', 
+                data: data.map(r => r.runningHours || 0), 
+                borderColor: '#00b894', 
+                backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                yAxisID: 'yRT', 
                 ...lineOpts 
             }
         ]
@@ -638,12 +664,19 @@ function updateCombinedChart(data) {
             },
             yPF: { 
                 position: 'right', 
-                title: { display: true, text: 'Power Factor', color: '#172b4d' }, 
+                title: { display: true, text: 'Power Factor', color: '#fd79a8' }, 
                 min: 0, 
                 max: 1, 
                 grid: { drawOnChartArea: false }, 
                 offset: true,
-                ticks: { color: '#172b4d' }
+                ticks: { color: '#fd79a8' }
+            },
+            yRT: { 
+                position: 'left', 
+                title: { display: true, text: 'Runtime (Hrs)', color: '#00b894' }, 
+                grid: { drawOnChartArea: false }, 
+                offset: true,
+                ticks: { color: '#00b894' }
             }
         }
     }

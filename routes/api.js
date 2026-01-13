@@ -344,7 +344,6 @@ router.get('/export/consumption', async (req, res) => {
     }
 });
 
-// Standard Electrical Export (Unchanged)
 router.get('/export/electrical/:dg', async (req, res) => {
     try {
         const { dg } = req.params;
@@ -358,9 +357,17 @@ router.get('/export/electrical/:dg', async (req, res) => {
         const worksheet = workbook.addWorksheet('Electrical');
         await setupExcelSheet(workbook, worksheet, `Electrical Data - ${dg.toUpperCase()}`);
 
-        worksheet.addRow(['Timestamp', 'Voltage R', 'Current R', 'Power (kW)', 'Freq (Hz)', 'Energy (kWh)']);
+        worksheet.addRow(['Timestamp', 'Voltage R', 'Current R', 'Power (kW)', 'Freq (Hz)', 'PF', 'Runtime (Hrs)']);
         records.forEach(r => {
-            worksheet.addRow([ new Date(r.timestamp).toLocaleString('en-IN'), r.voltageR, r.currentR, r.activePower, r.frequency, r.energyMeter ]);
+            worksheet.addRow([ 
+                new Date(r.timestamp).toLocaleString('en-IN'), 
+                r.voltageR, 
+                r.currentR, 
+                r.activePower, 
+                r.frequency, 
+                r.powerFactor || 0,
+                r.runningHours || 0
+            ]);
         });
         
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

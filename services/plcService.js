@@ -85,6 +85,8 @@ const electricalCandidates = {
     currentB:      [C(4708)],       // d612 → 612+4096=4708 ✅
     activePower:   [C(4696, 0.01)], // d600 → 600+4096=4696 ✅ (FIXED SCALING)
     frequency:     [C(4752, 0.01)], // d656 → 656+4096=4752 ✅
+    powerFactor:   [C(4760, 0.01)], // d664 → 664+4096=4760 ✅ NEW
+    runningHours:  [C(4518, 1)],    // d422 → 422+4096=4518 ✅ NEW
   },
   // === DG-2 ===
   dg2: {
@@ -96,6 +98,8 @@ const electricalCandidates = {
     currentB:      [C(4714)],       // d618 → 618+4096=4714 ✅
     activePower:   [C(4716, 0.01)], // d620 → 620+4096=4716 ✅ (FIXED SCALING)
     frequency:     [C(4754, 0.01)], // d658 → 658+4096=4754 ✅
+    powerFactor:   [C(4762, 0.01)], // d666 → 666+4096=4762 ✅ NEW
+    runningHours:  [C(4516, 1)],    // d420 → 420+4096=4516 ✅ NEW
   },
   // === DG-3 ===
   dg3: {
@@ -107,6 +111,8 @@ const electricalCandidates = {
     currentB:      [C(4720)],       // d624 → 624+4096=4720 ✅
     activePower:   [C(4700, 0.01)], // d604 → 604+4096=4700 ✅ (FIXED SCALING)
     frequency:     [C(4756, 0.01)], // d660 → 660+4096=4756 ✅
+    powerFactor:   [C(4764, 0.01)], // d668 → 668+4096=4764 ✅ NEW
+    runningHours:  [C(4512, 1)],    // d416 → 416+4096=4512 ✅ NEW
   },
   // === DG-4 ===
   dg4: {
@@ -118,6 +124,8 @@ const electricalCandidates = {
     currentB:      [C(4726)],       // d630 → 630+4096=4726 ✅
     activePower:   [C(4702, 0.01)], // d606 → 606+4096=4702 ✅ (FIXED SCALING)
     frequency:     [C(4758, 0.01)], // d662 → 662+4096=4758 ✅
+    powerFactor:   [C(4766, 0.01)], // d670 → 670+4096=4766 ✅ NEW
+    runningHours:  [C(4512, 1)],    // d416 → 416+4096=4512 ✅ NEW (Same as DG3)
   }
 };
 
@@ -242,17 +250,19 @@ function getZeroElectricalValues() {
   return {
     voltageR: 0, voltageY: 0, voltageB: 0,
     currentR: 0, currentY: 0, currentB: 0,
-    frequency: 0, activePower: 0
+    frequency: 0, activePower: 0,
+    powerFactor: 0, runningHours: 0  // ✅ NEW
   };
 }
 
-// --- UPDATED: ALWAYS READ ALL PARAMETERS (No Skipping) ---
 async function readAllElectrical(dgKey) {
   const result = {
     activePower: 0,
     voltageR: 0, voltageY: 0, voltageB: 0,
     currentR: 0, currentY: 0, currentB: 0,
-    frequency: 0
+    frequency: 0,
+    powerFactor: 0,    // ✅ NEW
+    runningHours: 0    // ✅ NEW
   };
 
   try {
@@ -269,7 +279,10 @@ async function readAllElectrical(dgKey) {
     result.currentY = await readParam(dgKey, 'currentY');
     await wait(20);
     result.currentB = await readParam(dgKey, 'currentB');
+    
     result.frequency = await readParam(dgKey, 'frequency');
+    result.powerFactor = await readParam(dgKey, 'powerFactor');      // ✅ NEW
+    result.runningHours = await readParam(dgKey, 'runningHours');    // ✅ NEW
 
     lastGoodValues[dgKey] = { ...result };
     return result;
