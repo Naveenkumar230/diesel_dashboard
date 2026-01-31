@@ -7,25 +7,30 @@
  * 4. TEST SUPPORT.
  * 5. NEW: Fuel Accumulator Logic (Ratchet & Bucket).
  * 6. NEW: Start/Stop Consumption Logging (DG1).
+ * 7. NEW: Calculated Cost & Fuel Rate (Server Side).
  * * UPDATED: Recursive Loop for Stability (No Crashes).
  */
 
 const ModbusRTU = require('modbus-serial');
 const { sendDieselAlert, sendStartupAlert } = require('./emailService');
 const fuelAccumulator = require('./fuelAccumulator'); 
-const { processDg1Data } = require('./dgMonitor'); // Import our new logic
-const Log = require('../models/Log'); // Ensure you have your Log model imported
+const { processDg1Data } = require('./dgMonitor'); 
+const Log = require('../models/Log'); 
 
 // --- CONFIGURATION ---
 const port = process.env.PLC_PORT || '/dev/ttyUSB0';
 const plcSlaveID = parseInt(process.env.PLC_SLAVE_ID) || 1;
-const READ_DELAY = 100; // Decreased slightly for recursive loop
-const RETRY_ATTEMPTS = 2; // Reduced retries to fail faster
+const READ_DELAY = 100; 
+const RETRY_ATTEMPTS = 2; 
 const MAX_ERRORS = 20;
-const DG_RUNNING_THRESHOLD = 5; // 5 kW (Used for Alerts)
+const DG_RUNNING_THRESHOLD = 5; 
 const CRITICAL_LEVEL = parseInt(process.env.CRITICAL_DIESEL_LEVEL) || 50;
-const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 Minutes Safety Timeout
-const LOOP_DELAY = 2000; // ✅ Wait 2 seconds between cycles (Prevents Overload)
+const STALE_THRESHOLD_MS = 5 * 60 * 1000; 
+const LOOP_DELAY = 2000; 
+
+// ✅ ANALYTICS CONSTANTS
+const DIESEL_PRICE = 97.00; 
+const MAX_AMPS_125KVA = 175;
 
 const plcSettings = {
   baudRate: parseInt(process.env.PLC_BAUD_RATE) || 9600,
@@ -37,25 +42,19 @@ const plcSettings = {
 const client = new ModbusRTU();
 let isPlcConnected = false;
 let errorCount = 0;
-let isLoopRunning = false; // ✅ Prevent double loops
+let isLoopRunning = false; 
 
 // --- STATE MANAGEMENT ---
 let systemData = {
-  dg1: 0,
-  dg2: 0,
-  dg3: 0,
-  total: 0,
+  dg1: 0, dg2: 0, dg3: 0, total: 0,
   lastUpdate: null,
   electrical: { dg1: {}, dg2: {}, dg3: {}, dg4: {} },
   dataQuality: {
-    dg1_stale: false,
-    dg2_stale: false,
-    dg3_stale: false,
-    lastSuccessfulRead: null
+    dg1_stale: false, dg2_stale: false, dg3_stale: false, lastSuccessfulRead: null
   }
 };
 
-// Initialize Last Good Values (To make them sticky)
+// Initialize Sticky Values
 let lastGoodRegister = { dg1: {}, dg2: {}, dg3: {}, dg4: {} };
 let lastGoodValues = {
     dg1: getZeroElectricalValues(),
@@ -73,72 +72,60 @@ const dgRegisters = {
 
 const C = (addr, scaling = 0.1) => ({ addr, scaling });
 
-// ✅ FIXED: Active Power scaling changed to 0.01 to fix "2535kW" bug
 const electricalCandidates = {
-  // === DG-1 ===
   dg1: {
-    voltageR:      [C(4728)],       // d632 → 632+4096=4728 ✅
-    voltageY:      [C(4730)],       // d634 → 634+4096=4730 ✅
-    voltageB:      [C(4732)],       // d636 → 636+4096=4732 ✅
-    currentR:      [C(4704)],       // d608 → 608+4096=4704 ✅
-    currentY:      [C(4706)],       // d610 → 610+4096=4706 ✅
-    currentB:      [C(4708)],       // d612 → 612+4096=4708 ✅
-    activePower:   [C(4696, 0.01)], // d600 → 600+4096=4696 ✅ (FIXED SCALING)
-    frequency:     [C(4752, 0.01)], // d656 → 656+4096=4752 ✅
-    powerFactor:   [C(4760, 0.01)], // d664 → 664+4096=4760 ✅ NEW
-    runningHours:  [C(4518, 1)],    // d422 → 422+4096=4518 ✅ NEW
+    voltageR: [C(4728)], voltageY: [C(4730)], voltageB: [C(4732)],
+    currentR: [C(4704)], currentY: [C(4706)], currentB: [C(4708)],
+    activePower: [C(4696, 0.01)], frequency: [C(4752, 0.01)],
+    powerFactor: [C(4760, 0.01)], runningHours: [C(4518, 1)],
   },
-  // === DG-2 ===
   dg2: {
-    voltageR:      [C(4734)],       // d638 → 638+4096=4734 ✅
-    voltageY:      [C(4736)],       // d640 → 640+4096=4736 ✅
-    voltageB:      [C(4738)],       // d642 → 642+4096=4738 ✅
-    currentR:      [C(4710)],       // d614 → 614+4096=4710 ✅
-    currentY:      [C(4712)],       // d616 → 616+4096=4712 ✅
-    currentB:      [C(4714)],       // d618 → 618+4096=4714 ✅
-    activePower:   [C(4716, 0.01)], // d620 → 620+4096=4716 ✅ (FIXED SCALING)
-    frequency:     [C(4754, 0.01)], // d658 → 658+4096=4754 ✅
-    powerFactor:   [C(4762, 0.01)], // d666 → 666+4096=4762 ✅ NEW
-    runningHours:  [C(4516, 1)],    // d420 → 420+4096=4516 ✅ NEW
+    voltageR: [C(4734)], voltageY: [C(4736)], voltageB: [C(4738)],
+    currentR: [C(4710)], currentY: [C(4712)], currentB: [C(4714)],
+    activePower: [C(4716, 0.01)], frequency: [C(4754, 0.01)],
+    powerFactor: [C(4762, 0.01)], runningHours: [C(4516, 1)],
   },
-  // === DG-3 ===
   dg3: {
-    voltageR:      [C(4740)],       // d644 → 644+4096=4740 ✅
-    voltageY:      [C(4742)],       // d646 → 646+4096=4742 ✅
-    voltageB:      [C(4744)],       // d648 → 648+4096=4744 ✅
-    currentR:      [C(4716)],       // d620 → 620+4096=4716 ✅
-    currentY:      [C(4718)],       // d622 → 622+4096=4718 ✅
-    currentB:      [C(4720)],       // d624 → 624+4096=4720 ✅
-    activePower:   [C(4700, 0.01)], // d604 → 604+4096=4700 ✅ (FIXED SCALING)
-    frequency:     [C(4756, 0.01)], // d660 → 660+4096=4756 ✅
-    powerFactor:   [C(4764, 0.01)], // d668 → 668+4096=4764 ✅ NEW
-    runningHours:  [C(4512, 1)],    // d416 → 416+4096=4512 ✅ NEW
+    voltageR: [C(4740)], voltageY: [C(4742)], voltageB: [C(4744)],
+    currentR: [C(4716)], currentY: [C(4718)], currentB: [C(4720)],
+    activePower: [C(4700, 0.01)], frequency: [C(4756, 0.01)],
+    powerFactor: [C(4764, 0.01)], runningHours: [C(4512, 1)],
   },
-  // === DG-4 ===
   dg4: {
-    voltageR:      [C(4746)],       // d650 → 650+4096=4746 ✅
-    voltageY:      [C(4748)],       // d652 → 652+4096=4748 ✅
-    voltageB:      [C(4750)],       // d654 → 654+4096=4750 ✅
-    currentR:      [C(4722)],       // d626 → 626+4096=4722 ✅
-    currentY:      [C(4724)],       // d628 → 628+4096=4724 ✅
-    currentB:      [C(4726)],       // d630 → 630+4096=4726 ✅
-    activePower:   [C(4702, 0.01)], // d606 → 606+4096=4702 ✅ (FIXED SCALING)
-    frequency:     [C(4758, 0.01)], // d662 → 662+4096=4758 ✅
-    powerFactor:   [C(4766, 0.01)], // d670 → 670+4096=4766 ✅ NEW
-    runningHours:  [C(4514, 1)],    // d416 → 416+4096=4512 ✅ NEW (Same as DG3)
+    voltageR: [C(4746)], voltageY: [C(4748)], voltageB: [C(4750)],
+    currentR: [C(4722)], currentY: [C(4724)], currentB: [C(4726)],
+    activePower: [C(4702, 0.01)], frequency: [C(4758, 0.01)],
+    powerFactor: [C(4766, 0.01)], runningHours: [C(4514, 1)],
   }
 };
 
-// --- UTILITIES ---
 const toSignedInt16 = (v) => (v > 32767 ? v - 65536 : v);
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ✅ FIXED: Lowered limit to 1 Liter to allow Sloshing (Was 5)
+// ✅ NEW: ANALYTICS CALCULATOR
+function calculateAnalytics(currentR, currentY, currentB) {
+    const avgAmps = (currentR + currentY + currentB) / 3 || 0;
+    
+    if (avgAmps < 5) {
+        return { fuelRate: 0, estCost: 0, loadPct: 0 };
+    }
+
+    let loadPct = avgAmps / MAX_AMPS_125KVA;
+    if (loadPct > 1) loadPct = 1;
+
+    const fuelRate = 4.5 + ((18 - 4.5) * loadPct);
+    const estCost = fuelRate * DIESEL_PRICE;
+
+    return {
+        fuelRate: parseFloat(fuelRate.toFixed(2)),
+        estCost: Math.round(estCost),
+        loadPct: Math.round(loadPct * 100)
+    };
+}
+
 function isValidDieselReading(value) {
   const s = toSignedInt16(value);
-  // Filter out Error codes (65535) AND values < 1 Liter
   if (value === 65535 || value === 65534 || s === -1) return false;
-  // NEW LOGIC: Must be at least 1 Liter to be valid
   return s >= 1 && s <= 2000; 
 }
 
@@ -149,100 +136,51 @@ function isValidElectricalReading(value) {
 
 async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
   for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await wait(READ_DELAY);
-    }
+    try { return await fn(); } 
+    catch (e) { if (i === retries - 1) throw e; await wait(READ_DELAY); }
   }
 }
 
-// ✅ UPDATED: Handles the < 1L error by holding the previous level
 async function readSingleRegister(registerConfig, dataKey) {
   const address = registerConfig.primary;
-  
   try {
     const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
     const rawValue = data?.data?.[0];
-    
-    // 1. Check validity (Uses the new 1L check above)
-    if (rawValue === undefined || !isValidDieselReading(rawValue)) {
-      throw new Error(`Invalid Reading (Raw: ${rawValue})`);
-    }
-    
-    // 2. SUCCESS: Update Value
+    if (rawValue === undefined || !isValidDieselReading(rawValue)) throw new Error(`Invalid Reading`);
     const value = Math.max(0, toSignedInt16(rawValue));
-    
-    // Update Quality Flags
     systemData.dataQuality[dataKey + '_stale'] = false;
     systemData.dataQuality.lastSuccessfulRead = new Date().toISOString();
-    
     return value;
-
   } catch (err) {
-    // 3. FAILURE OR LOW READING (< 1L)
     systemData.dataQuality[dataKey + '_stale'] = true;
-    
-    const lastReadTime = systemData.dataQuality.lastSuccessfulRead 
-      ? new Date(systemData.dataQuality.lastSuccessfulRead).getTime() 
-      : 0;
-      
-    const timeSinceLastGoodRead = Date.now() - lastReadTime;
-
-    if (timeSinceLastGoodRead > STALE_THRESHOLD_MS) {
-      // ⚠️ CRITICAL: Dead sensor (> 5 mins) -> RESET TO 0
-      console.error(`🚨 ${dataKey.toUpperCase()} sensor dead > 5 mins. Resetting to 0.`);
-      return 0;
-    } else {
-      // 🛡️ GHOST PROTECTION:
-      const lastKnownLevel = fuelAccumulator.getDisplayLevel(dataKey);
-      // ✅ IMPROVED LOGGING: Show exact error reason
-      console.warn(`⚠️ ${dataKey.toUpperCase()} invalid reading. Holding level at ${lastKnownLevel}L. Reason: ${err.message}`);
-      return lastKnownLevel || 0;
-    }
+    const lastReadTime = systemData.dataQuality.lastSuccessfulRead ? new Date(systemData.dataQuality.lastSuccessfulRead).getTime() : 0;
+    if (Date.now() - lastReadTime > STALE_THRESHOLD_MS) return 0;
+    return fuelAccumulator.getDisplayLevel(dataKey) || 0;
   }
 }
 
 async function readParam(dgKey, param) {
   const candidates = electricalCandidates[dgKey][param];
   if (!candidates || candidates.length === 0) return 0;
-
   const tried = new Set();
   const order = [];
-
   const last = lastGoodRegister[dgKey][param];
-  if (last) {
-    order.push(last);
-    tried.add(last.addr);
-  }
-
-  for (const c of candidates) {
-    if (!tried.has(c.addr)) order.push(c);
-  }
+  if (last) { order.push(last); tried.add(last.addr); }
+  for (const c of candidates) { if (!tried.has(c.addr)) order.push(c); }
 
   for (let i = 0; i < order.length; i++) {
     const { addr, scaling } = order[i];
     try {
       const data = await readWithRetry(() => client.readHoldingRegisters(addr, 1));
       const raw = data?.data?.[0];
-      
-      if (raw === undefined || !isValidElectricalReading(raw)) {
-        continue;
-      }
-
+      if (raw === undefined || !isValidElectricalReading(raw)) continue;
       const scaled = Math.round(raw * (scaling ?? 0.1) * 10000) / 10000;
       lastGoodRegister[dgKey][param] = { addr, scaling };
-      
       if (!lastGoodValues[dgKey]) lastGoodValues[dgKey] = {};
       lastGoodValues[dgKey][param] = scaled;
-
       return scaled;
-    } catch (err) {
-       // Silent fail
-    }
+    } catch (err) {}
   }
-  
   return lastGoodValues[dgKey]?.[param] || 0;
 }
 
@@ -250,8 +188,7 @@ function getZeroElectricalValues() {
   return {
     voltageR: 0, voltageY: 0, voltageB: 0,
     currentR: 0, currentY: 0, currentB: 0,
-    frequency: 0, activePower: 0,
-    powerFactor: 0, runningHours: 0  // ✅ NEW
+    frequency: 0, activePower: 0, powerFactor: 0, runningHours: 0
   };
 }
 
@@ -260,61 +197,41 @@ async function readAllElectrical(dgKey) {
     activePower: 0,
     voltageR: 0, voltageY: 0, voltageB: 0,
     currentR: 0, currentY: 0, currentB: 0,
-    frequency: 0,
-    powerFactor: 0,    // ✅ NEW
-    runningHours: 0    // ✅ NEW
+    frequency: 0, powerFactor: 0, runningHours: 0
   };
 
   try {
     result.activePower = await readParam(dgKey, 'activePower');
-    
-    result.voltageR = await readParam(dgKey, 'voltageR');
-    await wait(20);
-    result.voltageY = await readParam(dgKey, 'voltageY');
-    await wait(20);
+    result.voltageR = await readParam(dgKey, 'voltageR'); await wait(20);
+    result.voltageY = await readParam(dgKey, 'voltageY'); await wait(20);
     result.voltageB = await readParam(dgKey, 'voltageB');
-
-    result.currentR = await readParam(dgKey, 'currentR');
-    await wait(20);
-    result.currentY = await readParam(dgKey, 'currentY');
-    await wait(20);
+    result.currentR = await readParam(dgKey, 'currentR'); await wait(20);
+    result.currentY = await readParam(dgKey, 'currentY'); await wait(20);
     result.currentB = await readParam(dgKey, 'currentB');
-    
     result.frequency = await readParam(dgKey, 'frequency');
-    result.powerFactor = await readParam(dgKey, 'powerFactor');      // ✅ NEW
-    result.runningHours = await readParam(dgKey, 'runningHours');    // ✅ NEW
-
+    result.powerFactor = await readParam(dgKey, 'powerFactor');
+    result.runningHours = await readParam(dgKey, 'runningHours');
     lastGoodValues[dgKey] = { ...result };
     return result;
-
   } catch (error) {
-    // console.warn(`⚠️ Partial Read Fail for ${dgKey}:`, error.message);
     return lastGoodValues[dgKey] || result;
   }
 }
 
-// ✅ UPDATED: Added Anti-Spam Check (No Email if Uptime < 20s)
 function checkStartup(dgKey, newValues, oldElectricalData, allNewValues) {
   const activePower = newValues.activePower || 0;
   const isRunning = activePower > DG_RUNNING_THRESHOLD;
   const wasRunningBefore = (oldElectricalData[dgKey]?.activePower || 0) > DG_RUNNING_THRESHOLD;
-
   if (isRunning && !wasRunningBefore) {
-    // 🛡️ Safety: If uptime is < 20 seconds, don't send email (it's just a server restart)
-    if (process.uptime() < 20) {
-        console.log(`ℹ️ ${dgKey} is RUNNING (Server Restart - No Email)`);
-        return;
-    }
-
+    if (process.uptime() < 20) return;
     const dgName = dgKey.toUpperCase().replace('DG', 'DG-');
     if (dgKey === 'dg1' || dgKey === 'dg2' || dgKey === 'dg4') {
       sendStartupAlert(dgName, allNewValues);
-      console.log(`✅ Startup detected for ${dgName} (Email Sent)`);
     }
   }
 }
 
-// --- MAIN LOOP (RECURSIVE - NO CRASHES) ---
+// --- MAIN LOOP ---
 async function readAllSystemData() {
   if (!isPlcConnected) return;
 
@@ -323,33 +240,30 @@ async function readAllSystemData() {
     const dgList = ['dg1', 'dg2', 'dg3', 'dg4'];
 
     for (const dgKey of dgList) {
-        // 1. Read Electrical Data (Full Params)
+        // 1. Read Raw Electrical Data
         const electricalData = await readAllElectrical(dgKey);
+
+        // ✅ 2. CALCULATE ANALYTICS (Cost, Fuel, Load%)
+        const analytics = calculateAnalytics(electricalData.currentR, electricalData.currentY, electricalData.currentB);
+        
+        // Merge analytics into the electrical object
+        // This ensures that when schedulerService saves this object, 
+        // it saves the cost/fuel too!
+        Object.assign(electricalData, analytics); 
+
         allNewValues[dgKey] = electricalData;
 
-        // 2. CHECK VOLTAGE > 100V to determine if Running
+        // 3. Logic for Diesel Level & Running Status
         const isRunning = (electricalData.voltageR > 100);
-
-        // 3. Read Raw Fuel Level (Only if configured)
         if (dgRegisters[dgKey]) {
             const rawLevel = await readSingleRegister(dgRegisters[dgKey], dgKey);
-
-            // 4. FEED TO ACCUMULATOR
             await fuelAccumulator.processReading(dgKey, rawLevel, isRunning);
-
-            // 5. UPDATE SYSTEM DATA FOR DISPLAY
             systemData[dgKey] = fuelAccumulator.getDisplayLevel(dgKey);
 
-            // ===============================================
-            // 6. NEW: DG1 CONSUMPTION LOGIC (Strict Latch)
-            // ===============================================
             if (dgKey === 'dg1') {
                 const estimatedRpm = electricalData.frequency * 30; 
-                
                 const runResult = processDg1Data(estimatedRpm, rawLevel);
-
                 if (runResult) {
-                    console.log("📝 DG1 Run Finished. Saving to DB...");
                     const newLog = new Log({
                         timestamp: new Date(),
                         event: "DG_STOPPED",
@@ -358,41 +272,33 @@ async function readAllSystemData() {
                         consumption: runResult.consumption,
                         duration: 0 
                     });
-                    newLog.save().then(() => console.log("✅ Fuel Log Saved to MongoDB"));
+                    newLog.save();
                 }
             }
-            // ===============================================
         }
     }
 
-    // Update Totals
     systemData.total = (systemData.dg1 || 0) + (systemData.dg2 || 0) + (systemData.dg3 || 0);
-    
     const oldElectricalData = { ...systemData.electrical };
     systemData.electrical = allNewValues;
     systemData.lastUpdate = new Date().toISOString();
 
-    // Check Startups (Email Alerts)
     for (const dgKey of dgList) {
       checkStartup(dgKey, allNewValues[dgKey], oldElectricalData, allNewValues);
     }
-
-    // Check Low Fuel (Email Alerts)
     checkDieselLevels(systemData);
     errorCount = 0;
 
   } catch (err) {
     errorCount++;
-    console.error(`Error reading system data (${errorCount}/${MAX_ERRORS}):`, err.message);
     if (errorCount >= MAX_ERRORS) {
       isPlcConnected = false;
       client.close();
       setTimeout(connectToPLC, 5000);
-      return; // Stop the recursive loop
+      return;
     }
   }
 
-  // ✅ RECURSIVE CALL: Only start next loop when this one finishes
   if (isPlcConnected) {
       setTimeout(readAllSystemData, LOOP_DELAY);
   }
@@ -402,42 +308,30 @@ function checkDieselLevels(data) {
   const criticalDGs = [];
   if (data.dg1 <= CRITICAL_LEVEL) criticalDGs.push('DG-1');
   if (data.dg2 <= CRITICAL_LEVEL) criticalDGs.push('DG-2');
-  if (criticalDGs.length > 0) {
-    sendDieselAlert(data, criticalDGs);
-  }
+  if (criticalDGs.length > 0) sendDieselAlert(data, criticalDGs);
 }
 
 function connectToPLC() {
-  if (isLoopRunning) return; // Prevent double connections
+  if (isLoopRunning) return; 
   console.log(`Attempting to connect to PLC on ${port}...`);
-  
   client.connectRTU(port, plcSettings)
     .then(() => {
       client.setID(plcSlaveID);
-      client.setTimeout(4000); // 4 Seconds timeout
+      client.setTimeout(4000); 
       isPlcConnected = true;
       isLoopRunning = true;
       errorCount = 0;
       console.log('✓ PLC connected successfully');
-
-      // Start the Recursive Loop
       readAllSystemData();
     })
     .catch((err) => {
-      console.error('PLC connection error:', err.message);
       isLoopRunning = false;
       setTimeout(connectToPLC, 10000);
     });
 }
 
-function closePLC() {
-  try { client.close(); } catch (_) {}
-}
-
-function getSystemData() {
-  return { ...systemData };
-}
-
+function closePLC() { try { client.close(); } catch (_) {} }
+function getSystemData() { return { ...systemData }; }
 function isConnected() { return isPlcConnected; }
 
 module.exports = {
@@ -447,6 +341,5 @@ module.exports = {
   getSystemData,
   isConnected,
   isValidDieselReading,
-  _test_systemData: systemData,
-  _test_setConnectionState: (state) => { isPlcConnected = state; }
+  _test_systemData: systemData
 };
