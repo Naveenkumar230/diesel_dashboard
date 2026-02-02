@@ -237,9 +237,9 @@
       </div>
     </div>
 
-    <a href="/analytics.html" class="btn btn-primary" style="text-decoration: none; padding: 10px 25px; background: #0052cc; color: white; border-radius: 8px; font-weight: 600; white-space: nowrap;">
+    <!-- <a href="/analytics.html" class="btn btn-primary" style="text-decoration: none; padding: 10px 25px; background: #0052cc; color: white; border-radius: 8px; font-weight: 600; white-space: nowrap;">
       📊 Analytics
-    </a>
+    </a> -->
     
   </div>
 </div>
@@ -296,7 +296,7 @@
   <div class="param-card"><div class="param-label">kWh</div><div class="param-value" id="dg1-active-power">--</div><div class="param-unit">kWh</div></div>
   <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg1-frequency">--</div><div class="param-unit">Hz</div></div>
   <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg1-power-factor">--</div><div class="param-unit">PF</div></div>
-  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg1-runtime">--</div><div class="param-unit">Hrs</div></div>
+  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg1-runtime">--</div><div class="param-unit">Minutes</div></div>
   </div> 
 
 <div class="analytics-grid">
@@ -353,38 +353,33 @@
           <div class="param-card"><div class="param-label">kWh</div><div class="param-value" id="dg2-active-power">--</div><div class="param-unit">kWh</div></div>
           <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg2-frequency">--</div><div class="param-unit">Hz</div></div>
           <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg2-power-factor">--</div><div class="param-unit">PF</div></div>
-  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg2-runtime">--</div><div class="param-unit">Hrs</div></div>
+  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg2-runtime">--</div><div class="param-unit">Minutes</div></div>
   </div> 
 
 <div class="analytics-grid">
-    
     <div class="analytics-card">
         <div class="analytics-label">⏱️ Session Time</div>
-        <div class="analytics-value val-time" id="dg1-calc-time">0</div>
+        <div class="analytics-value val-time" id="dg2-calc-time">0</div>
         <div class="analytics-unit">Minutes</div>
     </div>
-
     <div class="analytics-card">
         <div class="analytics-label">⛽ Fuel Used</div>
-        <div class="analytics-value val-fuel" id="dg1-calc-fuel">0.0</div>
+        <div class="analytics-value val-fuel" id="dg2-calc-fuel">0.0</div>
         <div class="analytics-unit">Liters</div>
     </div>
-
     <div class="analytics-card" style="border-bottom: 3px solid #f59e0b;">
         <div class="analytics-label">💰 Est. Cost</div>
         <div class="analytics-value val-cost">
             <span style="font-size:0.9rem">₹</span>
-            <span id="dg1-calc-cost">0</span>
+            <span id="dg2-calc-cost">0</span>
         </div>
         <div class="analytics-unit">Indian Rupees</div>
     </div>
-
     <div class="analytics-card">
         <div class="analytics-label">⚙️ Efficiency</div>
         <div class="analytics-value val-load" id="dg2-load-pct">0%</div>
         <div class="analytics-unit" id="dg2-load-status">Idle</div>
     </div>
-
 </div>
         </div>
       </div>
@@ -408,40 +403,35 @@
           <div class="param-card"><div class="param-label">Current B</div><div class="param-value" id="dg3-current-b">--</div><div class="param-unit">A</div></div>
           <div class="param-card"><div class="param-label">kWh</div><div class="param-value" id="dg3-active-power">--</div><div class="param-unit">kWh</div></div>
           <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg3-frequency">--</div><div class="param-unit">Hz</div></div>
-          <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg4-power-factor">--</div><div class="param-unit">PF</div></div>
-  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg4-runtime">--</div><div class="param-unit">Hrs</div></div>
+          <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg3-power-factor">--</div><div class="param-unit">PF</div></div>
+  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg3-runtime">--</div><div class="param-unit">Minutes</div></div>
 
   </div> 
 
 <div class="analytics-grid">
-    
     <div class="analytics-card">
         <div class="analytics-label">⏱️ Session Time</div>
-        <div class="analytics-value val-time" id="dg1-calc-time">0</div>
+        <div class="analytics-value val-time" id="dg3-calc-time">0</div>
         <div class="analytics-unit">Minutes</div>
     </div>
-
     <div class="analytics-card">
         <div class="analytics-label">⛽ Fuel Used</div>
-        <div class="analytics-value val-fuel" id="dg1-calc-fuel">0.0</div>
+        <div class="analytics-value val-fuel" id="dg3-calc-fuel">0.0</div>
         <div class="analytics-unit">Liters</div>
     </div>
-
     <div class="analytics-card" style="border-bottom: 3px solid #f59e0b;">
         <div class="analytics-label">💰 Est. Cost</div>
         <div class="analytics-value val-cost">
             <span style="font-size:0.9rem">₹</span>
-            <span id="dg1-calc-cost">0</span>
+            <span id="dg3-calc-cost">0</span>
         </div>
         <div class="analytics-unit">Indian Rupees</div>
     </div>
-
     <div class="analytics-card">
         <div class="analytics-label">⚙️ Efficiency</div>
         <div class="analytics-value val-load" id="dg3-load-pct">0%</div>
         <div class="analytics-unit" id="dg3-load-status">Idle</div>
     </div>
-
 </div>
         </div>
       </div>
@@ -466,471 +456,376 @@
           <div class="param-card"><div class="param-label">kWh</div><div class="param-value" id="dg4-active-power">--</div><div class="param-unit">kWh</div></div>
           <div class="param-card"><div class="param-label">Frequency</div><div class="param-value" id="dg4-frequency">--</div><div class="param-unit">Hz</div></div>
           <div class="param-card"><div class="param-label">Power Factor</div><div class="param-value" id="dg4-power-factor">--</div><div class="param-unit">PF</div></div>
-  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg4-runtime">--</div><div class="param-unit">Hrs</div></div>
+  <div class="param-card"><div class="param-label">Runtime</div><div class="param-value" id="dg4-runtime">--</div><div class="param-unit">Minutes</div></div>
   </div> 
 
 <div class="analytics-grid">
-    
     <div class="analytics-card">
         <div class="analytics-label">⏱️ Session Time</div>
-        <div class="analytics-value val-time" id="dg1-calc-time">0</div>
+        <div class="analytics-value val-time" id="dg4-calc-time">0</div>
         <div class="analytics-unit">Minutes</div>
     </div>
-
     <div class="analytics-card">
         <div class="analytics-label">⛽ Fuel Used</div>
-        <div class="analytics-value val-fuel" id="dg1-calc-fuel">0.0</div>
+        <div class="analytics-value val-fuel" id="dg4-calc-fuel">0.0</div>
         <div class="analytics-unit">Liters</div>
     </div>
-
     <div class="analytics-card" style="border-bottom: 3px solid #f59e0b;">
         <div class="analytics-label">💰 Est. Cost</div>
         <div class="analytics-value val-cost">
             <span style="font-size:0.9rem">₹</span>
-            <span id="dg1-calc-cost">0</span>
+            <span id="dg4-calc-cost">0</span>
         </div>
         <div class="analytics-unit">Indian Rupees</div>
     </div>
-
     <div class="analytics-card">
         <div class="analytics-label">⚙️ Efficiency</div>
         <div class="analytics-value val-load" id="dg4-load-pct">0%</div>
         <div class="analytics-unit" id="dg4-load-status">Idle</div>
     </div>
-
 </div>
         </div>
       </div>
     </div>
 
   </div>
-
 <script>
-    // index.html - SMART DB FALLBACK VERSION
+    // --- CONFIGURATION ---
+    const CONFIG = {
+        CRITICAL_LEVEL: 50,
+        WARNING_LEVEL: 70,
+        RUNNING_AMPS: 5,       // Threshold to decide "Is Running"
+        MAX_AMPS: 175,         // For Efficiency Calc (125 kVA)
+        DIESEL_PRICE: 97.00,
+        // Noise Filters (Ignore values outside these ranges)
+        MAX_VOLTAGE: 600,
+        MAX_FREQ: 70
+    };
 
-    const CRITICAL_LEVEL = 50;
-    const WARNING_LEVEL = 70;
-    const DG_RUNNING_THRESHOLD = 4; 
-    const VOLTAGE_THRESHOLD = 200;  
-
-    const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
-
-    // Cache DB history to reduce API calls
-    let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
-    let dieselHistoryCache = { dg1: null, dg2: null, dg3: null };
-    
-    // Cooldown tracker
-    let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
-    let dieselCooldown = { dg1: 0, dg2: 0, dg3: 0 };
-
-    // Flag to prevent overlapping updates
+    // --- STATE MANAGEMENT ---
     let isUpdating = false;
-    const DIESEL_PRICE = 97.00;
-    const MAX_AMPS_125KVA = 175;
+    let dailyStats = { dg1: {}, dg2: {}, dg3: {}, dg4: {} };
+    // Store the last "Good" running data to show when DG stops
+    let lastRunningData = { dg1: null, dg2: null, dg3: null, dg4: null };
 
+    // --- UI EXPANSION LOGIC ---
     document.querySelectorAll('.expand-icon').forEach(icon => {
-      icon.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation(); 
-        const contentId = icon.getAttribute('data-target');
-        const content = document.getElementById(contentId);
-        const section = content.closest('.dg-electrical-section');
-        section.classList.toggle('expanded');
-        content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
-      });
+        icon.addEventListener('click', (e) => {
+            e.preventDefault(); 
+            e.stopPropagation();
+            
+            const contentId = icon.getAttribute('data-target');
+            const content = document.getElementById(contentId);
+            const section = content.closest('.dg-electrical-section');
+            section.classList.toggle('expanded');
+            content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
+        });
     });
 
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.dg-content').forEach(content => {
             const section = content.closest('.dg-electrical-section');
-            if (section.classList.contains('expanded')) { content.style.maxHeight = '2000px'; } 
-            else { content.style.maxHeight = '0'; }
+            if (section.classList.contains('expanded')) { 
+                content.style.maxHeight = '2000px'; 
+            } else { 
+                content.style.maxHeight = '0'; 
+            }
         });
+        // Initial Fetch
+        fetchDailyAnalytics();
+        refresh();
     });
 
-    async function fetchData() {
-      try {
-        const response = await fetch('/api/data');
-        if (!response.ok) return null;
-        return await response.json();
-      } catch (err) {
-        console.warn('Network glitch (fetchData), skipping update.');
-        return null;
-      }
-    }
-
-    // ✅ NEW: Fetch Diesel History if Live Data is 0
-    async function fetchLastDieselHistory(dg) {
-       if (dieselHistoryCache[dg]) return dieselHistoryCache[dg];
-       if (Date.now() - dieselCooldown[dg] < 60000) return 0; // 1 min cooldown
-
-       try {
-           const today = new Date().toISOString().split('T')[0];
-           // Fetch today's consumption to get last level
-           let response = await fetch(`/api/consumption?dg=${dg}&startDate=${today}&endDate=${today}`);
-           let result = await response.json();
-           
-           if (!result.data || result.data.length === 0) {
-                // If empty today, try yesterday
-                const yest = new Date();
-                yest.setDate(yest.getDate() - 1);
-                const yestStr = yest.toISOString().split('T')[0];
-                response = await fetch(`/api/consumption?dg=${dg}&startDate=${yestStr}&endDate=${yestStr}`);
-                result = await response.json();
-           }
-           
-           if (result.data && result.data.length > 0) {
-               const lastRecord = result.data[result.data.length - 1];
-               const level = lastRecord.level || 0;
-               if (level > 0) {
-                   dieselHistoryCache[dg] = level;
-                   return level;
-               }
-           }
-       } catch(e) { console.error("History fetch error:", e); }
-       
-       dieselCooldown[dg] = Date.now();
-       return 0;
-    }
-
-    async function fetchLastHistory(dg) {
-      if (dbCache[dg]) return dbCache[dg];
-      if (Date.now() - historyCooldown[dg] < 60000) return null; 
-
-      try {
-          const today = new Date().toISOString().split('T')[0];
-          let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
-          
-          if (!response.ok) {
-              historyCooldown[dg] = Date.now();
-              return null;
-          }
-          
-          let result = await response.json();
-
-          if (!result.data || result.data.length === 0) {
-               const yest = new Date();
-               yest.setDate(yest.getDate() - 1);
-               const yestStr = yest.toISOString().split('T')[0];
-               response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
-               if (!response.ok) {
-                   historyCooldown[dg] = Date.now(); 
-                   return null;
-               }
-               result = await response.json();
-          }
-
-          if (result.data && result.data.length > 0) {
-              const lastRecord = result.data[result.data.length - 1];
-              dbCache[dg] = lastRecord;
-              return lastRecord;
-          } else {
-              historyCooldown[dg] = Date.now();
-          }
-      } catch (e) { 
-          historyCooldown[dg] = Date.now();
-          return null; 
-      }
-      return {}; 
-    }
-
+    // --- UTILITY FUNCTION ---
     function formatNum(num, decimals = 1) {
-      if (num === undefined || num === null || isNaN(num)) return '--';
-      if (num === 0) return decimals > 0 ? '0.0' : '0';
-      return num.toFixed(decimals);
+        if (num === undefined || num === null || isNaN(num)) return '--';
+        if (num === 0) return decimals > 0 ? '0.0' : '0';
+        return num.toFixed(decimals);
     }
 
-    // REPLACE your existing 'updateDieselLevels' function with this one:
+    // --- API CALLS ---
+    async function fetchData() {
+        try {
+            const response = await fetch('/api/data');
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (err) { 
+            console.error('❌ fetchData error:', err);
+            return null; 
+        }
+    }
 
-    // Global variable to remember the last valid level
-    let lastKnownFuel = { dg1: 0, dg2: 0, dg3: 0 };
+    // ✅ FETCH HISTORY & FIND LAST GOOD RECORD (Fixes "0" when OFF)
+    async function fetchDailyAnalytics() {
+        const today = new Date().toISOString().split('T')[0];
+        const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
 
-   // REPLACE your existing 'updateDieselLevels' function with this:
+        for (const dg of dgs) {
+            try {
+                const res = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
+                const json = await res.json();
+                
+                // A. Update Analytics (Blue Boxes)
+                if (json.analytics) {
+                    dailyStats[dg] = {
+                        time: json.analytics.totalMinutes || 0,
+                        fuel: json.analytics.totalFuel || 0,
+                        cost: json.analytics.totalCost || 0
+                    };
+                }
+
+                // B. Find Last Running Record (Smart Hold)
+                // We look backwards from the end of the data to find the last time Amps > 5
+                if (json.data && json.data.length > 0) {
+                    for (let i = json.data.length - 1; i >= 0; i--) {
+                        const row = json.data[i];
+                        const avgAmps = ((row.currentR || 0) + (row.currentY || 0) + (row.currentB || 0)) / 3;
+                        // Check if valid run data (No Noise)
+                        if (avgAmps > CONFIG.RUNNING_AMPS && row.frequency < CONFIG.MAX_FREQ) {
+                            lastRunningData[dg] = row; // Save this as the "Last Known Good State"
+                            console.log(`✅ Cached last running data for ${dg}:`, row);
+                            break;
+                        }
+                    }
+                }
+            } catch (e) { 
+                console.error(`❌ Error fetching analytics for ${dg}:`, e); 
+            }
+        }
+        updateAnalyticsUI();
+    }
+
+    // --- UI UPDATERS ---
+    
+    function updateAnalyticsUI() {
+        const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
+        dgs.forEach(dg => {
+            const stats = dailyStats[dg] || {};
+            const set = (id, val) => { 
+                const el = document.getElementById(id); 
+                if(el) el.textContent = val; 
+            };
+            
+            // Update Blue Boxes with Database Values
+            set(`${dg}-calc-time`, Math.round(stats.time || 0));
+            set(`${dg}-calc-fuel`, (stats.fuel || 0).toFixed(2));
+            set(`${dg}-calc-cost`, Math.round(stats.cost || 0));
+        });
+    }
 
     async function updateDieselLevels(data) {
-      if(!data) return;
+        if(!data) return;
+        
+        const levels = { 
+            dg1: data.dg1 || 0, 
+            dg2: data.dg2 || 0, 
+            dg3: data.dg3 || 0 
+        };
+        const total = levels.dg1 + levels.dg2 + levels.dg3;
 
-      // 1. Check if DGs are running (to identify glitches)
-      const isRunning = {
-        dg1: (data.electrical?.dg1?.activePower > 5 || data.electrical?.dg1?.currentR > 2),
-        dg2: (data.electrical?.dg2?.activePower > 5 || data.electrical?.dg2?.currentR > 2),
-        dg3: (data.electrical?.dg3?.activePower > 5 || data.electrical?.dg3?.currentR > 2)
-      };
-
-      // 2. Get Live Values
-      let levels = { 
-        dg1: data.dg1 || 0, 
-        dg2: data.dg2 || 0, 
-        dg3: data.dg3 || 0 
-      };
-      
-      const dgKeys = ['dg1', 'dg2', 'dg3'];
-
-      for (const dg of dgKeys) {
-          // --- SMART MEMORY LOGIC ---
-
-          // Step A: If we have a VALID live value (> 0), save it to memory
-          if (levels[dg] > 0) {
-              localStorage.setItem(`lastGoodFuel_${dg}`, levels[dg]);
-          }
-
-          // Step B: If live value is 0 (Glitch), try to recover it
-          if (levels[dg] === 0) {
-              
-              // 1. Try Browser Memory first (Fastest)
-              const savedVal = localStorage.getItem(`lastGoodFuel_${dg}`);
-              if (savedVal && parseFloat(savedVal) > 0) {
-                  levels[dg] = parseFloat(savedVal);
-                  console.log(`Using saved memory for ${dg}: ${levels[dg]}`);
-              } 
-              // 2. If memory is empty, try fetching from Database (Slower fallback)
-              else {
-                  const dbLevel = await fetchLastDieselHistory(dg);
-                  if (dbLevel > 0) {
-                      levels[dg] = dbLevel;
-                      localStorage.setItem(`lastGoodFuel_${dg}`, dbLevel); // Save for next time
-                  }
-              }
-          }
-          
-          // --- UI UPDATES ---
-          const card = document.getElementById(`${dg}-diesel-card`);
-          const valueEl = document.getElementById(`${dg}-diesel`);
-          
-          if (valueEl) {
-              // If we managed to find a number, show it. Otherwise keep "--"
-              valueEl.textContent = (levels[dg] > 0) ? formatNum(levels[dg], 0) : "--";
-          }
-
-          if (card) {
-             card.className = 'diesel-card'; 
-             // Only show red/orange if we are SURE it's not a 0 glitch
-             if (levels[dg] > 0 && levels[dg] <= CRITICAL_LEVEL) card.classList.add('critical');
-             else if (levels[dg] > 0 && levels[dg] <= WARNING_LEVEL) card.classList.add('warning');
-             else card.classList.add('normal');
-          }
-      }
-      
-      // Update Total
-      const total = levels.dg1 + levels.dg2 + levels.dg3;
-      document.getElementById('total-diesel').textContent = (total > 0) ? formatNum(total, 0) : "--";
-
-      // Update Alert Banner
-      // Only trigger alert if we have a REAL value that is low
-      const criticalDGs = Object.entries(levels)
-          .filter(([key, value]) => value > 0 && value <= CRITICAL_LEVEL)
-          .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
-      
-      const container = document.getElementById('alert-container');
-      container.innerHTML = '';
-      if (criticalDGs.length > 0) {
-        container.innerHTML = `<div class="alert-banner show">⚠️ CRITICAL: Low diesel levels in ${criticalDGs.join(', ')}! Refuel immediately.</div>`;
-      }
-    }
-
-    let dgSession = {
-        dg1: { startTime: null, totalFuel: 0, active: false },
-        dg2: { startTime: null, totalFuel: 0, active: false },
-        dg3: { startTime: null, totalFuel: 0, active: false },
-        dg4: { startTime: null, totalFuel: 0, active: false }
-    };
-
-    // --- HELPER: FUEL CONSUMPTION RATE (Liters/Hr) ---
-    function getFuelRate(amps) {
-        if (amps < 5) return 0;
-        // Formula: 4.5L (Idle) to 18L (Full)
-        let loadPct = amps / MAX_AMPS_125KVA;
-        if(loadPct > 1) loadPct = 1;
-        return 4.5 + ((18 - 4.5) * loadPct);
-    }
-
-    // --- REPLACE YOUR EXISTING 'updateElectricalParams' WITH THIS ---
-    async function updateElectricalParams(data) {
-      if (!data || !data.electrical) return;
-      const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
-
-      // Loop through each DG
-      for (const dg of dgs) {
-        const electrical = data.electrical[dg] || {};
-        const amps = electrical.currentAvg || electrical.currentR || 0;
-        const isRunning = amps > 5; // Threshold to say "It is ON"
-
-        // --- 1. SESSION TRACKING LOGIC ---
-        if (isRunning) {
-            // A. If just started, mark the time
-            if (!dgSession[dg].active) {
-                dgSession[dg].startTime = Date.now();
-                dgSession[dg].active = true;
-                dgSession[dg].totalFuel = 0; // Reset session counter
+        ['dg1', 'dg2', 'dg3'].forEach(dg => {
+            const val = levels[dg];
+            const el = document.getElementById(`${dg}-diesel`);
+            const card = document.getElementById(`${dg}-diesel-card`);
+            
+            if(el) el.textContent = val > 0 ? val : "--";
+            
+            if(card && val > 0) {
+                card.className = 'diesel-card';
+                if (val <= CONFIG.CRITICAL_LEVEL) card.classList.add('critical');
+                else if (val <= CONFIG.WARNING_LEVEL) card.classList.add('warning');
+                else card.classList.add('normal');
             }
-
-            // B. Calculate Duration (Minutes)
-            const diffMs = Date.now() - dgSession[dg].startTime;
-            const mins = Math.floor(diffMs / 60000); // Convert ms to minutes
-            
-            // C. Calculate REAL Consumption for this specific moment
-            // (We add a tiny bit of fuel every second based on current load)
-            const currentRateL_Hr = getFuelRate(amps); 
-            const fuelPerSecond = currentRateL_Hr / 3600; 
-            
-            // Note: Since this function runs every ~1 sec (refresh rate), 
-            // we just add the per-second fuel. 
-            // (For perfect accuracy, we'd use time deltas, but this is close enough for UI)
-            dgSession[dg].totalFuel += (fuelPerSecond * 0.5); // Assuming 500ms refresh
-            
-            // --- D. UPDATE UI (ANALYTICS) ---
-            
-            // Time
-            document.getElementById(`${dg}-calc-time`).textContent = mins;
-            
-            // Fuel Used (Session)
-            document.getElementById(`${dg}-calc-fuel`).textContent = dgSession[dg].totalFuel.toFixed(2);
-            
-            // Cost (Session)
-            const cost = dgSession[dg].totalFuel * DIESEL_PRICE;
-            document.getElementById(`${dg}-calc-cost`).textContent = Math.round(cost);
-
-            // Load Efficiency
-            const loadPct = Math.round((amps / MAX_AMPS_125KVA) * 100);
-            const loadEl = document.getElementById(`${dg}-load-pct`);
-            const statusEl = document.getElementById(`${dg}-load-status`);
-            
-            loadEl.textContent = loadPct + "%";
-            
-            if (loadPct > 90) { 
-                statusEl.textContent = "Overload ⚠️"; statusEl.style.color = "red";
-            } else if (loadPct > 40) { 
-                statusEl.textContent = "Efficient ✅"; statusEl.style.color = "green";
-            } else { 
-                statusEl.textContent = "Underloaded ⚠️"; statusEl.style.color = "orange";
-            }
-
-        } else {
-            // DG IS OFF
-            dgSession[dg].active = false;
-            // Optional: Reset display or keep last known run stats?
-            // Let's keep the last stats visible so you can see "Prev Run"
-        }
-
-        // --- 2. STANDARD ELECTRICAL DISPLAY (Keep your existing code here) ---
-        // (Voltages, Currents, etc. - Copy your existing update logic here)
-        ['r', 'y', 'b'].forEach(phase => {
-            const elV = document.getElementById(`${dg}-voltage-${phase}`);
-            if(elV) elV.textContent = (electrical[`voltage${phase.toUpperCase()}`] || 0).toFixed(0);
-            
-            const elC = document.getElementById(`${dg}-current-${phase}`);
-            if(elC) elC.textContent = (electrical[`current${phase.toUpperCase()}`] || 0).toFixed(0);
         });
+        
+        const totalEl = document.getElementById('total-diesel');
+        if(totalEl) totalEl.textContent = total > 0 ? total : "--";
 
-        const activePowerEl = document.getElementById(`${dg}-active-power`);
-        if(activePowerEl) activePowerEl.textContent = (electrical.activePower || 0).toFixed(1);
-
-        // Update the PLC Runtime (Hours) as backup
-        const runtimeEl = document.getElementById(`${dg}-runtime`);
-        if(runtimeEl) runtimeEl.textContent = (electrical.runningHours || 0).toFixed(1);
-      }
+        // Update Alert Banner
+        const criticalDGs = Object.entries(levels)
+            .filter(([key, value]) => value > 0 && value <= CONFIG.CRITICAL_LEVEL)
+            .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
+        
+        const container = document.getElementById('alert-container');
+        if(container) {
+            container.innerHTML = '';
+            if (criticalDGs.length > 0) {
+                container.innerHTML = `<div class="alert-banner show">⚠️ CRITICAL: Low diesel levels in ${criticalDGs.join(', ')}! Refuel immediately.</div>`;
+            }
+        }
     }
 
-async function updateElectricalParams(data) {
-  if (!data || !data.electrical) return;
+    // ✅ COMPLETE FIXED FUNCTION - SMART DISPLAY LOGIC
+    function updateElectricalParams(data) {
+        if (!data || !data.electrical) {
+            console.warn("⚠️ No electrical data received");
+            return;
+        }
+        
+        const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
 
-  const dgList = ['dg1', 'dg2', 'dg3', 'dg4'];
-  const updates = [];
+        dgs.forEach(dg => {
+            let d = data.electrical[dg];
+            
+            // ✅ FIX 1: Added safety check
+            if (!d) {
+                console.warn(`⚠️ No data for ${dg}`);
+                return;
+            }
 
-  for (const dg of dgList) {
-    let liveData = data.electrical[dg] || {};
-    const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
-    
-    let promise;
-    if (hasVoltage) {
-        dbCache[dg] = null; 
-        historyCooldown[dg] = 0; 
-        promise = Promise.resolve(liveData);
-    } else {
-        promise = fetchLastHistory(dg).then(hist => hist || liveData);
+            // ✅ FIX 2: Handle undefined/null values properly
+            const avgAmps = ((d.currentR || 0) + (d.currentY || 0) + (d.currentB || 0)) / 3;
+            
+            // Check for Noise (Voltage too high or Freq too high)
+            const isNoise = (d.voltageR > CONFIG.MAX_VOLTAGE) || (d.frequency > CONFIG.MAX_FREQ);
+            const isLiveRunning = (avgAmps > CONFIG.RUNNING_AMPS) && !isNoise;
+
+            // 2. Decide Source: Live or Last Known?
+            // If it's NOT running (0 Amps) or Noisy, show the "Last Running Data" from history
+            if (!isLiveRunning && lastRunningData[dg]) {
+                d = lastRunningData[dg]; // Use history when OFF
+                console.log(`📋 Using cached data for ${dg}`);
+            } else if (isLiveRunning) {
+                lastRunningData[dg] = { ...d }; // ✅ FIX 3: Save copy of good data
+                console.log(`✅ ${dg} is running - saving current data`);
+            }
+
+            // 3. Update Status Badge (Always based on Real Live Status)
+            const statusEl = document.getElementById(`${dg}-status`);
+            if(statusEl) {
+                if (isLiveRunning) {
+                    statusEl.textContent = "RUNNING";
+                    statusEl.className = "status-badge status-running";
+                } else {
+                    statusEl.textContent = "OFF";
+                    statusEl.className = "status-badge status-off";
+                }
+            }
+
+            // 4. ✅ FIX 4: CRITICAL FIX - Update Cards with Proper Display Logic
+            ['r', 'y', 'b'].forEach(phase => {
+                const P = phase.toUpperCase();
+                
+                // Voltage Update
+                const vEl = document.getElementById(`${dg}-voltage-${phase}`);
+                if(vEl) {
+                    const voltage = d[`voltage${P}`];
+                    if (voltage !== undefined && voltage !== null && !isNaN(voltage)) {
+                        vEl.textContent = Math.round(voltage);
+                    } else {
+                        vEl.textContent = '--';
+                    }
+                }
+                
+                // ⭐ Current Update - THE MAIN FIX
+                const cEl = document.getElementById(`${dg}-current-${phase}`);
+                if(cEl) {
+                    const current = d[`current${P}`];
+                    
+                    // Explicit null/undefined check
+                    if (current !== undefined && current !== null && !isNaN(current)) {
+                        // Show the value even if it's 0
+                        cEl.textContent = Math.round(current);
+                        // Debug log (comment out in production)
+                        // console.log(`✅ ${dg} Current ${P}: ${current}A`);
+                    } else {
+                        cEl.textContent = '--';
+                        console.warn(`⚠️ ${dg} Current ${P}: MISSING DATA`);
+                    }
+                } else {
+                    console.error(`❌ Element not found: ${dg}-current-${phase}`);
+                }
+            });
+
+            // 5. Update other electrical parameters
+            const freqEl = document.getElementById(`${dg}-frequency`);
+            if(freqEl) freqEl.textContent = formatNum(d.frequency, 1);
+            
+            const apEl = document.getElementById(`${dg}-active-power`);
+            if(apEl) apEl.textContent = formatNum(d.activePower, 1);
+            
+            const pfEl = document.getElementById(`${dg}-power-factor`);
+            if(pfEl) pfEl.textContent = formatNum(d.powerFactor, 2);
+            
+            const rtEl = document.getElementById(`${dg}-runtime`);
+            if(rtEl) rtEl.textContent = formatNum(d.runningHours, 0);
+
+            // 6. Efficiency (Recalculate based on displayed data)
+            const dispAmps = ((d.currentR || 0) + (d.currentY || 0) + (d.currentB || 0)) / 3;
+            const loadPct = Math.round((dispAmps / CONFIG.MAX_AMPS) * 100);
+            
+            const loadEl = document.getElementById(`${dg}-load-pct`);
+            const statusTextEl = document.getElementById(`${dg}-load-status`);
+
+            if (loadEl) loadEl.textContent = loadPct + "%";
+            if (statusTextEl) {
+                if (loadPct > 90) { 
+                    statusTextEl.textContent = "Overload ⚠️"; 
+                    statusTextEl.style.color = "red"; 
+                }
+                else if (loadPct > 40) { 
+                    statusTextEl.textContent = "Efficient ✅"; 
+                    statusTextEl.style.color = "green"; 
+                }
+                else { 
+                    statusTextEl.textContent = "Idle"; 
+                    statusTextEl.style.color = "orange"; 
+                }
+            }
+        });
     }
-    updates.push({ dg, liveData, promise });
-  }
-
-  const results = await Promise.all(updates.map(u => u.promise));
-
-  updates.forEach((item, index) => {
-    const dg = item.dg;
-    const displayData = results[index];
-    const liveData = item.liveData;
-
-    const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
-    const statusEl = document.getElementById(`${dg}-status`);
-    if (statusEl) {
-      statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
-      statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
-    }
-
-    // Update Voltages
-    ['r', 'y', 'b'].forEach(phase => {
-      const el = document.getElementById(`${dg}-voltage-${phase}`);
-      if (el) el.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`]);
-    });
-    
-    // Update Currents
-    ['r', 'y', 'b'].forEach(phase => {
-      const el = document.getElementById(`${dg}-current-${phase}`);
-      if (el) el.textContent = formatNum(displayData[`current${phase.toUpperCase()}`]);
-    });
-
-    // Update Frequency
-    const freqEl = document.getElementById(`${dg}-frequency`);
-    if (freqEl) freqEl.textContent = formatNum(displayData.frequency);
-
-    // Update Active Power (kWh)
-    const apEl = document.getElementById(`${dg}-active-power`);
-    if (apEl) apEl.textContent = formatNum(displayData.activePower);
-
-    // ✅ NEW: Update Power Factor
-    const pfEl = document.getElementById(`${dg}-power-factor`);
-    if (pfEl) pfEl.textContent = formatNum(displayData.powerFactor || 0, 2);
-
-    // ✅ NEW: Update Runtime Hours
-    const rtEl = document.getElementById(`${dg}-runtime`);
-    if (rtEl) rtEl.textContent = formatNum(displayData.runningHours || 0, 1);
-  });
-}
-
 
     function updateTimestamp() {
-      const now = new Date();
-      const timestampEl = document.getElementById('last-update');
-      if (timestampEl) {
-        timestampEl.textContent = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' });
-      }
+        const now = new Date();
+        const el = document.getElementById('last-update');
+        if (el) {
+            el.textContent = now.toLocaleString('en-IN', { 
+                timeZone: 'Asia/Kolkata',
+                timeStyle: 'medium', 
+                dateStyle: 'short' 
+            });
+        }
     }
 
+    // --- MAIN REFRESH FUNCTION ---
     async function refresh() {
-      if (isUpdating) return;
-      isUpdating = true;
-
-      try {
-          const data = await fetchData();
-          const indicator = document.getElementById('server-status');
-
-          if (!data) {
-            if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
-            return; 
-          }
-
-          if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
-
-          await updateDieselLevels(data);
-          await updateElectricalParams(data); 
-          updateTimestamp();
-      } catch (e) {
-          console.error("Refresh error:", e);
-      } finally {
-          isUpdating = false;
-      }
+        if (isUpdating) return;
+        isUpdating = true;
+        
+        try {
+            const data = await fetchData();
+            const indicator = document.getElementById('server-status');
+            
+            // 🔍 OPTIONAL DEBUG - Uncomment to see raw data
+            // if(data && data.electrical && data.electrical.dg1) {
+            //     console.log("📊 DG1 Raw Data:", data.electrical.dg1);
+            // }
+            
+            if (data) {
+                if(indicator) { 
+                    indicator.classList.remove('status-offline'); 
+                    indicator.classList.add('status-online'); 
+                }
+                
+                await updateDieselLevels(data);
+                updateElectricalParams(data);
+                updateTimestamp();
+            } else {
+                if(indicator) { 
+                    indicator.classList.remove('status-online'); 
+                    indicator.classList.add('status-offline'); 
+                }
+            }
+        } catch (e) { 
+            console.error('❌ Refresh error:', e); 
+        } finally {
+            isUpdating = false;
+        }
     }
 
-    setInterval(refresh, 500);
-    refresh();
+    // --- AUTO-REFRESH TIMERS ---
+    setInterval(refresh, 1000);           // Refresh live data every 1 second
+    setInterval(fetchDailyAnalytics, 30000); // Refresh analytics every 30 seconds
 </script>
 </body>
 </html>
