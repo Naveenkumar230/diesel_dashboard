@@ -1,0 +1,521 @@
+<script>
+    // index.html - SMART DB FALLBACK VERSION
+
+    const CRITICAL_LEVEL = 50;
+    const WARNING_LEVEL = 70;
+    const DG_RUNNING_THRESHOLD = 4; 
+    const VOLTAGE_THRESHOLD = 200;  
+
+    const DG_MAX_KW = { dg1: 500, dg2: 500, dg3: 380, dg4: 380 };
+
+    // Cache DB history to reduce API calls
+    let dbCache = { dg1: null, dg2: null, dg3: null, dg4: null };
+    let dieselHistoryCache = { dg1: null, dg2: null, dg3: null };
+    
+    // Cooldown tracker
+    let historyCooldown = { dg1: 0, dg2: 0, dg3: 0, dg4: 0 };
+    let dieselCooldown = { dg1: 0, dg2: 0, dg3: 0 };
+
+    // Flag to prevent overlapping updates
+    let isUpdating = false;
+    const DIESEL_PRICE = 97.00;
+    const MAX_AMPS_125KVA = 175;
+
+    document.querySelectorAll('.expand-icon').forEach(icon => {
+      icon.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation(); 
+        const contentId = icon.getAttribute('data-target');
+        const content = document.getElementById(contentId);
+        const section = content.closest('.dg-electrical-section');
+        section.classList.toggle('expanded');
+        content.style.maxHeight = section.classList.contains('expanded') ? '2000px' : '0';
+      });
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.dg-content').forEach(content => {
+            const section = content.closest('.dg-electrical-section');
+            if (section.classList.contains('expanded')) { content.style.maxHeight = '2000px'; } 
+            else { content.style.maxHeight = '0'; }
+        });
+    });
+
+    async function fetchData() {
+      try {
+        const response = await fetch('/api/data');
+        if (!response.ok) return null;
+        return await response.json();
+      } catch (err) {
+        console.warn('Network glitch (fetchData), skipping update.');
+        return null;
+      }
+    }
+
+    // ✅ NEW: Fetch Diesel History if Live Data is 0
+    async function fetchLastDieselHistory(dg) {
+       if (dieselHistoryCache[dg]) return dieselHistoryCache[dg];
+       if (Date.now() - dieselCooldown[dg] < 60000) return 0; // 1 min cooldown
+
+       try {
+           const today = new Date().toISOString().split('T')[0];
+           // Fetch today's consumption to get last level
+           let response = await fetch(`/api/consumption?dg=${dg}&startDate=${today}&endDate=${today}`);
+           let result = await response.json();
+           
+           if (!result.data || result.data.length === 0) {
+                // If empty today, try yesterday
+                const yest = new Date();
+                yest.setDate(yest.getDate() - 1);
+                const yestStr = yest.toISOString().split('T')[0];
+                response = await fetch(`/api/consumption?dg=${dg}&startDate=${yestStr}&endDate=${yestStr}`);
+                result = await response.json();
+           }
+           
+           if (result.data && result.data.length > 0) {
+               const lastRecord = result.data[result.data.length - 1];
+               const level = lastRecord.level || 0;
+               if (level > 0) {
+                   dieselHistoryCache[dg] = level;
+                   return level;
+               }
+           }
+       } catch(e) { console.error("History fetch error:", e); }
+       
+       dieselCooldown[dg] = Date.now();
+       return 0;
+    }
+
+    async function fetchLastHistory(dg) {
+      if (dbCache[dg]) return dbCache[dg];
+      if (Date.now() - historyCooldown[dg] < 60000) return null; 
+
+      try {
+          const today = new Date().toISOString().split('T')[0];
+          let response = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
+          
+          if (!response.ok) {
+              historyCooldown[dg] = Date.now();
+              return null;
+          }
+          
+          let result = await response.json();
+
+          if (!result.data || result.data.length === 0) {
+               const yest = new Date();
+               yest.setDate(yest.getDate() - 1);
+               const yestStr = yest.toISOString().split('T')[0];
+               response = await fetch(`/api/electrical/${dg}?startDate=${yestStr}&endDate=${yestStr}`);
+               if (!response.ok) {
+                   historyCooldown[dg] = Date.now(); 
+                   return null;
+               }
+               result = await response.json();
+          }
+
+          if (result.data && result.data.length > 0) {
+              const lastRecord = result.data[result.data.length - 1];
+              dbCache[dg] = lastRecord;
+              return lastRecord;
+          } else {
+              historyCooldown[dg] = Date.now();
+          }
+      } catch (e) { 
+          historyCooldown[dg] = Date.now();
+          return null; 
+      }
+      return {}; 
+    }
+
+    function formatNum(num, decimals = 1) {
+      if (num === undefined || num === null || isNaN(num)) return '--';
+      if (num === 0) return decimals > 0 ? '0.0' : '0';
+      return num.toFixed(decimals);
+    }
+
+    // ✅ FUNCTION: Fetch Today's Totals from Database
+    async function fetchDailyAnalytics() {
+        const today = new Date().toISOString().split('T')[0];
+        const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
+
+        for (const dg of dgs) {
+            try {
+                // 1. Ask Server for Today's Data
+                const res = await fetch(`/api/electrical/${dg}?startDate=${today}&endDate=${today}`);
+                const json = await res.json();
+                
+                // 2. Update the Blue Boxes
+                if (json.analytics) {
+                    // Update Time
+                    const tEl = document.getElementById(`${dg}-calc-time`);
+                    if(tEl) tEl.textContent = Math.round(json.analytics.totalMinutes || 0);
+
+                    // Update Fuel
+                    const fEl = document.getElementById(`${dg}-calc-fuel`);
+                    if(fEl) fEl.textContent = (json.analytics.totalFuel || 0).toFixed(2);
+
+                    // Update Cost
+                    const cEl = document.getElementById(`${dg}-calc-cost`);
+                    if(cEl) cEl.textContent = Math.round(json.analytics.totalCost || 0);
+                }
+            } catch (e) { 
+                console.error(`Error updating ${dg} stats:`, e); 
+            }
+        }
+    }
+
+    // ✅ RUN IT: Add these lines at the very bottom of your script
+    fetchDailyAnalytics(); // Run once immediately on load
+    setInterval(fetchDailyAnalytics, 30000); // Refresh every 30 seconds
+
+    // Global variable to remember the last valid level
+    let lastKnownFuel = { dg1: 0, dg2: 0, dg3: 0 };
+
+   // REPLACE your existing 'updateDieselLevels' function with this:
+
+    async function updateDieselLevels(data) {
+      if(!data) return;
+
+      // 1. Check if DGs are running (to identify glitches)
+      const isRunning = {
+        dg1: (data.electrical?.dg1?.activePower > 5 || data.electrical?.dg1?.currentR > 2),
+        dg2: (data.electrical?.dg2?.activePower > 5 || data.electrical?.dg2?.currentR > 2),
+        dg3: (data.electrical?.dg3?.activePower > 5 || data.electrical?.dg3?.currentR > 2)
+      };
+
+      // 2. Get Live Values
+      let levels = { 
+        dg1: data.dg1 || 0, 
+        dg2: data.dg2 || 0, 
+        dg3: data.dg3 || 0 
+      };
+      
+      const dgKeys = ['dg1', 'dg2', 'dg3'];
+
+      for (const dg of dgKeys) {
+          // --- SMART MEMORY LOGIC ---
+
+          // Step A: If we have a VALID live value (> 0), save it to memory
+          if (levels[dg] > 0) {
+              localStorage.setItem(`lastGoodFuel_${dg}`, levels[dg]);
+          }
+
+          // Step B: If live value is 0 (Glitch), try to recover it
+          if (levels[dg] === 0) {
+              
+              // 1. Try Browser Memory first (Fastest)
+              const savedVal = localStorage.getItem(`lastGoodFuel_${dg}`);
+              if (savedVal && parseFloat(savedVal) > 0) {
+                  levels[dg] = parseFloat(savedVal);
+                  console.log(`Using saved memory for ${dg}: ${levels[dg]}`);
+              } 
+              // 2. If memory is empty, try fetching from Database (Slower fallback)
+              else {
+                  const dbLevel = await fetchLastDieselHistory(dg);
+                  if (dbLevel > 0) {
+                      levels[dg] = dbLevel;
+                      localStorage.setItem(`lastGoodFuel_${dg}`, dbLevel); // Save for next time
+                  }
+              }
+          }
+          
+          // --- UI UPDATES ---
+          const card = document.getElementById(`${dg}-diesel-card`);
+          const valueEl = document.getElementById(`${dg}-diesel`);
+          
+          if (valueEl) {
+              // If we managed to find a number, show it. Otherwise keep "--"
+              valueEl.textContent = (levels[dg] > 0) ? formatNum(levels[dg], 0) : "--";
+          }
+
+          if (card) {
+             card.className = 'diesel-card'; 
+             // Only show red/orange if we are SURE it's not a 0 glitch
+             if (levels[dg] > 0 && levels[dg] <= CRITICAL_LEVEL) card.classList.add('critical');
+             else if (levels[dg] > 0 && levels[dg] <= WARNING_LEVEL) card.classList.add('warning');
+             else card.classList.add('normal');
+          }
+      }
+      
+      // Update Total
+      const total = levels.dg1 + levels.dg2 + levels.dg3;
+      document.getElementById('total-diesel').textContent = (total > 0) ? formatNum(total, 0) : "--";
+
+      // Update Alert Banner
+      // Only trigger alert if we have a REAL value that is low
+      const criticalDGs = Object.entries(levels)
+          .filter(([key, value]) => value > 0 && value <= CRITICAL_LEVEL)
+          .map(([key]) => key.toUpperCase().replace('DG', 'DG-'));
+      
+      const container = document.getElementById('alert-container');
+      container.innerHTML = '';
+      if (criticalDGs.length > 0) {
+        container.innerHTML = `<div class="alert-banner show">⚠️ CRITICAL: Low diesel levels in ${criticalDGs.join(', ')}! Refuel immediately.</div>`;
+      }
+    }
+
+    let dgSession = {
+        dg1: { startTime: null, totalFuel: 0, active: false },
+        dg2: { startTime: null, totalFuel: 0, active: false },
+        dg3: { startTime: null, totalFuel: 0, active: false },
+        dg4: { startTime: null, totalFuel: 0, active: false }
+    };
+
+    // --- HELPER: FUEL CONSUMPTION RATE (Liters/Hr) ---
+    function getFuelRate(amps) {
+        if (amps < 5) return 0;
+        // Formula: 4.5L (Idle) to 18L (Full)
+        let loadPct = amps / MAX_AMPS_125KVA;
+        if(loadPct > 1) loadPct = 1;
+        return 4.5 + ((18 - 4.5) * loadPct);
+    }
+
+    // --- REPLACE YOUR EXISTING 'updateElectricalParams' WITH THIS ---
+    async function updateElectricalParams(data) {
+      if (!data || !data.electrical) return;
+      const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
+
+      // Loop through each DG
+      for (const dg of dgs) {
+        const electrical = data.electrical[dg] || {};
+        const amps = electrical.currentAvg || electrical.currentR || 0;
+        const isRunning = amps > 5; // Threshold to say "It is ON"
+
+        // --- 1. SESSION TRACKING LOGIC ---
+        if (isRunning) {
+            // A. If just started, mark the time
+            if (!dgSession[dg].active) {
+                dgSession[dg].startTime = Date.now();
+                dgSession[dg].active = true;
+                dgSession[dg].totalFuel = 0; // Reset session counter
+            }
+
+            // B. Calculate Duration (Minutes)
+            const diffMs = Date.now() - dgSession[dg].startTime;
+            const mins = Math.floor(diffMs / 60000); // Convert ms to minutes
+            
+            // C. Calculate REAL Consumption for this specific moment
+            // (We add a tiny bit of fuel every second based on current load)
+            const currentRateL_Hr = getFuelRate(amps); 
+            const fuelPerSecond = currentRateL_Hr / 3600; 
+            
+            // Note: Since this function runs every ~1 sec (refresh rate), 
+            // we just add the per-second fuel. 
+            // (For perfect accuracy, we'd use time deltas, but this is close enough for UI)
+            dgSession[dg].totalFuel += (fuelPerSecond * 0.5); // Assuming 500ms refresh
+            
+            // --- D. UPDATE UI (ANALYTICS) ---
+            
+            // Time
+            document.getElementById(`${dg}-calc-time`).textContent = mins;
+            
+            // Fuel Used (Session)
+            document.getElementById(`${dg}-calc-fuel`).textContent = dgSession[dg].totalFuel.toFixed(2);
+            
+            // Cost (Session)
+            const cost = dgSession[dg].totalFuel * DIESEL_PRICE;
+            document.getElementById(`${dg}-calc-cost`).textContent = Math.round(cost);
+
+            // Load Efficiency
+            const loadPct = Math.round((amps / MAX_AMPS_125KVA) * 100);
+            const loadEl = document.getElementById(`${dg}-load-pct`);
+            const statusEl = document.getElementById(`${dg}-load-status`);
+            
+            loadEl.textContent = loadPct + "%";
+            
+            if (loadPct > 90) { 
+                statusEl.textContent = "Overload ⚠️"; statusEl.style.color = "red";
+            } else if (loadPct > 40) { 
+                statusEl.textContent = "Efficient ✅"; statusEl.style.color = "green";
+            } else { 
+                statusEl.textContent = "Underloaded ⚠️"; statusEl.style.color = "orange";
+            }
+
+        } else {
+            // DG IS OFF
+            dgSession[dg].active = false;
+            // Optional: Reset display or keep last known run stats?
+            // Let's keep the last stats visible so you can see "Prev Run"
+        }
+
+        // --- 2. STANDARD ELECTRICAL DISPLAY (Keep your existing code here) ---
+        // (Voltages, Currents, etc. - Copy your existing update logic here)
+        ['r', 'y', 'b'].forEach(phase => {
+            const elV = document.getElementById(`${dg}-voltage-${phase}`);
+            if(elV) elV.textContent = (electrical[`voltage${phase.toUpperCase()}`] || 0).toFixed(0);
+            
+            const elC = document.getElementById(`${dg}-current-${phase}`);
+            if(elC) elC.textContent = (electrical[`current${phase.toUpperCase()}`] || 0).toFixed(0);
+        });
+
+        const activePowerEl = document.getElementById(`${dg}-active-power`);
+        if(activePowerEl) activePowerEl.textContent = (electrical.activePower || 0).toFixed(1);
+
+        // Update the PLC Runtime (Hours) as backup
+        const runtimeEl = document.getElementById(`${dg}-runtime`);
+        if(runtimeEl) runtimeEl.textContent = (electrical.runningHours || 0).toFixed(1);
+      }
+    }
+
+// --- SMART UPDATE FUNCTION (With Day/Night Logic) ---
+    async function updateElectricalParams(data) {
+        if (!data || !data.electrical) return;
+        
+        const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
+        const updates = [];
+        
+        // 1. Get Current Time (Hour 0-23)
+        const currentHour = new Date().getHours();
+        const isDayTime = (currentHour >= 6 && currentHour < 18); // 6 AM to 6 PM is "Day"
+        const timeLabel = isDayTime ? "Day" : "Night";
+
+        for (const dg of dgs) {
+            let liveData = data.electrical[dg] || {};
+            const hasVoltage = (liveData.voltageR || 0) > VOLTAGE_THRESHOLD;
+            const amps = (liveData.currentR + liveData.currentY + liveData.currentB) / 3 || 0; 
+            const isRunning = amps > 5; 
+
+            // --- SESSION ANALYTICS ---
+            if (isRunning) {
+                if (!dgSession[dg].active) {
+                    dgSession[dg].startTime = Date.now();
+                    dgSession[dg].active = true;
+                    dgSession[dg].totalFuel = 0; 
+                }
+                const diffMs = Date.now() - dgSession[dg].startTime;
+                const mins = Math.floor(diffMs / 60000); 
+                const currentRateL_Hr = getFuelRate(amps); 
+                const fuelPerSecond = currentRateL_Hr / 3600; 
+                dgSession[dg].totalFuel += (fuelPerSecond * 0.5); 
+
+                // Update Blue Box UI
+                const timeEl = document.getElementById(`${dg}-calc-time`);
+                if(timeEl) timeEl.textContent = mins;
+                
+                const fuelEl = document.getElementById(`${dg}-calc-fuel`);
+                if(fuelEl) fuelEl.textContent = dgSession[dg].totalFuel.toFixed(2);
+                
+                const cost = dgSession[dg].totalFuel * DIESEL_PRICE;
+                const costEl = document.getElementById(`${dg}-calc-cost`);
+                if(costEl) costEl.textContent = Math.round(cost);
+
+                // --- SMART EFFICIENCY LOGIC ---
+                const loadPct = Math.round((amps / MAX_AMPS_125KVA) * 100);
+                const loadEl = document.getElementById(`${dg}-load-pct`);
+                const statusEl = document.getElementById(`${dg}-load-status`);
+                
+                if(loadEl) loadEl.textContent = loadPct + "%";
+                
+                if(statusEl) {
+                    if (loadPct > 90) { 
+                        statusEl.textContent = "Overload ⚠️"; 
+                        statusEl.style.color = "red"; 
+                    } 
+                    else if (loadPct > 40) { 
+                        statusEl.textContent = `Efficient (${timeLabel}) ✅`; 
+                        statusEl.style.color = "green"; 
+                    } 
+                    else { 
+                        // SMART CHECK: Low load is okay at night, but bad in the day
+                        if (isDayTime) {
+                            statusEl.textContent = "Underloaded ⚠️"; 
+                            statusEl.style.color = "orange"; // Warning!
+                        } else {
+                            statusEl.textContent = "Low Load (Night) 🌙"; 
+                            statusEl.style.color = "#6b778c"; // Grey (Normal)
+                        }
+                    }
+                }
+
+            } else {
+                dgSession[dg].active = false;
+                // Reset Efficiency Display if OFF
+                const statusEl = document.getElementById(`${dg}-load-status`);
+                if(statusEl) { statusEl.textContent = "Idle"; statusEl.style.color = "#999"; }
+                const loadEl = document.getElementById(`${dg}-load-pct`);
+                if(loadEl) loadEl.textContent = "0%";
+            }
+
+            // --- STANDARD PARAMS FETCH ---
+            let promise;
+            if (hasVoltage) {
+                dbCache[dg] = null; 
+                historyCooldown[dg] = 0; 
+                promise = Promise.resolve(liveData);
+            } else {
+                promise = fetchLastHistory(dg).then(hist => hist || liveData);
+            }
+            updates.push({ dg, liveData, promise });
+        }
+
+        const results = await Promise.all(updates.map(u => u.promise));
+
+        updates.forEach((item, index) => {
+            const dg = item.dg;
+            const displayData = results[index];
+            const liveData = item.liveData;
+            const isRunning = (liveData.activePower || 0) > DG_RUNNING_THRESHOLD;
+            
+            const statusEl = document.getElementById(`${dg}-status`);
+            if (statusEl) {
+                statusEl.textContent = isRunning ? 'RUNNING' : 'OFF';
+                statusEl.className = 'status-badge ' + (isRunning ? 'status-running' : 'status-off');
+            }
+
+            ['r', 'y', 'b'].forEach(phase => {
+                const elV = document.getElementById(`${dg}-voltage-${phase}`);
+                if (elV) elV.textContent = formatNum(displayData[`voltage${phase.toUpperCase()}`], 0);
+                const elC = document.getElementById(`${dg}-current-${phase}`);
+                if (elC) elC.textContent = formatNum(displayData[`current${phase.toUpperCase()}`], 0);
+            });
+
+            const freqEl = document.getElementById(`${dg}-frequency`);
+            if (freqEl) freqEl.textContent = formatNum(displayData.frequency, 1);
+            
+            const apEl = document.getElementById(`${dg}-active-power`);
+            if (apEl) apEl.textContent = formatNum(displayData.activePower, 1);
+            
+            const pfEl = document.getElementById(`${dg}-power-factor`);
+            if (pfEl) pfEl.textContent = formatNum(displayData.powerFactor || 0, 2);
+            
+            const rtEl = document.getElementById(`${dg}-runtime`);
+            if (rtEl) rtEl.textContent = formatNum(displayData.runningHours || 0, 0);
+        });
+    }
+
+    function updateTimestamp() {
+      const now = new Date();
+      const timestampEl = document.getElementById('last-update');
+      if (timestampEl) {
+        timestampEl.textContent = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' });
+      }
+    }
+
+    async function refresh() {
+      if (isUpdating) return;
+      isUpdating = true;
+
+      try {
+          const data = await fetchData();
+          const indicator = document.getElementById('server-status');
+
+          if (!data) {
+            if (indicator) { indicator.classList.remove('status-online'); indicator.classList.add('status-offline'); }
+            return; 
+          }
+
+          if (indicator) { indicator.classList.remove('status-offline'); indicator.classList.add('status-online'); }
+
+          await updateDieselLevels(data);
+          await updateElectricalParams(data); 
+          updateTimestamp();
+      } catch (e) {
+          console.error("Refresh error:", e);
+      } finally {
+          isUpdating = false;
+      }
+    }
+
+
+    setInterval(refresh, 500);
+    refresh();
+</script>

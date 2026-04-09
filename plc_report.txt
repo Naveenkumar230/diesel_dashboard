@@ -1,0 +1,19 @@
+PLC Register Report - Slave ID: 1
+Generated: 06/04/2026, 17:16:31
+Address | Value | Description
+----------------------------
+4100 | 175 | OK
+4102 | 160 | OK
+4104 | 1679 | OK
+4728 | 0 | OK
+4730 | 0 | OK
+4732 | 0 | OK
+4704 | 0 | OK
+4706 | 0 | OK
+4708 | 0 | OK
+4696 | 61 | OK
+4752 | 0 | OK
+4760 | 0 | OK
+4518 | 21 | OK
+4768 | 0 | OK
+4776 | 0 | OK
