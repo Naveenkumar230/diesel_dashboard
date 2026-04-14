@@ -125,7 +125,7 @@
     </div>
 
     <div class="chart-section">
-      <div class="chart-title" id="consumption-chart-title">📈 Hourly Diesel Consumption</div>
+<div class="chart-title" id="consumption-chart-title">📈 Daily Diesel Consumption</div>
       <div class="chart-container">
         <canvas id="consumptionChart"></canvas>
       </div>
@@ -456,11 +456,12 @@ async function processData(data, startDate, endDate) {
         } catch (e) {}
     }
 
-    let trueConsumption = 0;
-    if (startLevel > 0 || endLevel > 0) {
-        trueConsumption = startLevel - (endLevel - totalRefilled);
-        trueConsumption = Math.max(0, trueConsumption);
-    }
+    // Sum consumption directly from graph data (single source of truth)
+let trueConsumption = 0;
+if (startLevel > 0 && endLevel > 0) {
+    trueConsumption = (startLevel + totalRefilled) - endLevel;
+    trueConsumption = Math.max(0, trueConsumption);
+}
 
     let graphTotal = 0;
     let lastActiveHour = 0;
@@ -471,22 +472,22 @@ async function processData(data, startDate, endDate) {
     if (graphTotal === 0) lastActiveHour = new Date().getHours();
 
     // 🔧 FORCE CONSISTENCY
-    const diff = trueConsumption - graphTotal;
-    if (Math.abs(diff) > 0.5) { 
-        if (diff > 0) {
-            hourlyConsumption[lastActiveHour] += diff;
-        } else {
-            let removeAmount = Math.abs(diff);
-            for (let h = 23; h >= 0; h--) {
-                if (removeAmount <= 0) break;
-                if (hourlyConsumption[h] > 0) {
-                    const deduct = Math.min(hourlyConsumption[h], removeAmount);
-                    hourlyConsumption[h] -= deduct;
-                    removeAmount -= deduct;
-                }
-            }
-        }
-    }
+    // const diff = trueConsumption - graphTotal;
+    // if (Math.abs(diff) > 0.5) { 
+    //     if (diff > 0) {
+    //         hourlyConsumption[lastActiveHour] += diff;
+    //     } else {
+    //         let removeAmount = Math.abs(diff);
+    //         for (let h = 23; h >= 0; h--) {
+    //             if (removeAmount <= 0) break;
+    //             if (hourlyConsumption[h] > 0) {
+    //                 const deduct = Math.min(hourlyConsumption[h], removeAmount);
+    //                 hourlyConsumption[h] -= deduct;
+    //                 removeAmount -= deduct;
+    //             }
+    //         }
+    //     }
+    // }
 
     // Stats
     let runningHours = 0;
@@ -555,8 +556,11 @@ async function processData(data, startDate, endDate) {
 // ✅ UPDATED: Charts with temperature event tooltips
 // ============================================================
 function updateCharts(cleanData, startDate, endDate, refillEvents, temperatureEvents, hourlyConsumption, hourlyLevels) {
-    const isMultiDay = (new Date(endDate) - new Date(startDate)) > 86400000;
-
+// Update title based on view type
+const isMultiDay = (new Date(endDate) - new Date(startDate)) > 86400000;
+document.getElementById('consumption-chart-title').textContent = isMultiDay 
+    ? '📊 Daily Diesel Consumption' 
+    : '📈 Hourly Diesel Consumption';
     let labels = [];
     let consumptionData = [];
     let levelData = [];
@@ -564,28 +568,49 @@ function updateCharts(cleanData, startDate, endDate, refillEvents, temperatureEv
     let pointRadiuses = [];
     let pointLabels = []; // ✅ NEW: Store tooltip info
 
-    if (isMultiDay) {
-        const dailyMap = {};
-        cleanData.forEach(d => {
-            const dateKey = d.dateStr || d.date;
-            if (!dailyMap[dateKey]) dailyMap[dateKey] = { label: dateKey, consumption: 0, levels: [] };
-            dailyMap[dateKey].consumption += d.cleanConsumption;
-            dailyMap[dateKey].levels.push(d.cleanLevel);
-        });
+    // REPLACE WITH:
+if (isMultiDay) {
+    const dailyMap = {};
+    cleanData.forEach(d => {
+        const d2 = new Date(d.timestamp);
+        const dateKey = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
+        if (!dailyMap[dateKey]) dailyMap[dateKey] = {
+            label: dateKey,
+            consumption: 0,
+            levels: [],
+            firstLevel: null,
+            lastLevel: null
+        };
 
-        labels = Object.keys(dailyMap);
-        consumptionData = Object.values(dailyMap).map(t => t.consumption);
-        levelData = Object.values(dailyMap).map(t => {
-            const levels = t.levels.filter(l => l > 0);
-            return levels.length > 0 ? levels[levels.length - 1] : null;
-        });
-        levelData.forEach(() => { 
-            pointColors.push('rgba(0, 135, 90, 1)'); 
-            pointRadiuses.push(3);
-            pointLabels.push(null);
-        });
+        const lvl = d.level || d.cleanLevel || 0;
+        if (lvl > 0) {
+            if (dailyMap[dateKey].firstLevel === null) dailyMap[dateKey].firstLevel = lvl;
+            dailyMap[dateKey].lastLevel = lvl;
+            dailyMap[dateKey].levels.push(lvl);
+        }
+    });
 
-    } else {
+    // Calculate daily consumption as firstLevel - lastLevel per day (clean method)
+    Object.keys(dailyMap).forEach(dateKey => {
+        const day = dailyMap[dateKey];
+        if (day.firstLevel !== null && day.lastLevel !== null) {
+            const consumed = day.firstLevel - day.lastLevel;
+            day.consumption = Math.max(0, consumed); // Never negative
+        }
+    });
+
+    labels = Object.keys(dailyMap).sort();
+    consumptionData = labels.map(k => parseFloat((dailyMap[k].consumption || 0).toFixed(2)));
+    levelData = labels.map(k => {
+        const levels = dailyMap[k].levels.filter(l => l > 0);
+        return levels.length > 0 ? levels[levels.length - 1] : null;
+    });
+    levelData.forEach(() => {
+        pointColors.push('rgba(0, 135, 90, 1)');
+        pointRadiuses.push(3);
+        pointLabels.push(null);
+    });
+} else {
         // Single day view
         for (let h = 0; h <= 23; h++) {
             let ampm = h >= 12 ? 'PM' : 'AM';

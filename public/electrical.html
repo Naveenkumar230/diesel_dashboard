@@ -92,8 +92,7 @@
   /* Split and Combined Charts */
   .chart-grid-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   .chart-container-split { position: relative; height: 350px; }
-  .chart-container-combined { position: relative; height: 450px; }
-
+.chart-container-combined { position: relative; height: 450px; overflow-x: auto; }
   .timeline-section { background: var(--bg-secondary); border: 1px solid var(--border); padding: 25px; border-radius: 12px; margin-bottom: 20px; }
   .timeline-item { display: flex; align-items: center; gap: 15px; padding: 15px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; border-left: 4px solid var(--success); }
   .timeline-item.stopped { border-left-color: var(--danger); }
@@ -525,292 +524,292 @@ function processData(data, startDate, endDate) {
 }
 
 function updateSplitCharts(data) {
-  if (data.length === 0) return;
-  const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-  const commonOptions = { 
-    responsive: true, 
-    maintainAspectRatio: false, 
-    scales: { 
-      x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } }, 
-      y: { beginAtZero: true } 
-    } 
-  };
-  const lineOpts = { tension: 0.1, pointRadius: 2, borderWidth: 2, fill: false };
+    if (data.length === 0) return;
 
-  // Voltage Chart
-  if (voltageChart) voltageChart.destroy();
-  voltageChart = new Chart(document.getElementById('voltageChart'), {
-    type: 'line', 
-    data: { 
-      labels, 
-      datasets: [
-        { label: 'V-R', data: data.map(r => r.voltageR), borderColor: '#fa8231', ...lineOpts },
-        { label: 'V-Y', data: data.map(r => r.voltageY), borderColor: '#f7b731', ...lineOpts },
-        { label: 'V-B', data: data.map(r => r.voltageB), borderColor: '#0052cc', ...lineOpts }
-      ]
-    }, 
-    options: commonOptions
-  });
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    const isMultiDay = startDate !== endDate;
 
-  // Current Chart
-  if (currentChart) currentChart.destroy();
-  currentChart = new Chart(document.getElementById('currentChart'), {
-    type: 'line', 
-    data: { 
-      labels, 
-      datasets: [
-        { label: 'C-R', data: data.map(r => r.currentR), borderColor: '#eb3b5a', ...lineOpts },
-        { label: 'C-Y', data: data.map(r => r.currentY), borderColor: '#a55eea', ...lineOpts },
-        { label: 'C-B', data: data.map(r => r.currentB), borderColor: '#2bcbba', ...lineOpts }
-      ]
-    }, 
-    options: commonOptions
-  });
+    let labels = [];
+    let chartData = {}; // will hold arrays per metric
 
-  // Power Chart
-  if (powerChart) powerChart.destroy();
-  powerChart = new Chart(document.getElementById('powerChart'), {
-    type: 'line', 
-    data: { 
-      labels, 
-      datasets: [
-        { label: 'kW', data: data.map(r => r.activePower), borderColor: '#20bf6b', ...lineOpts, borderWidth: 3 }
-      ]
-    }, 
-    options: commonOptions
-  });
+    if (isMultiDay) {
+        // ✅ GROUP BY DATE - one bar per day
+        const dailyMap = {};
 
-  // Frequency Chart
-  if (freqChart) freqChart.destroy();
-  freqChart = new Chart(document.getElementById('freqChart'), {
-    type: 'line', 
-    data: { 
-      labels, 
-      datasets: [
-        { label: 'Freq (Hz)', data: data.map(r => r.frequency), borderColor: '#8854d0', ...lineOpts }
-      ]
-    }, 
-    options: commonOptions
-  });
+        data.forEach(r => {
+            const dateKey = new Date(r.timestamp).toISOString().split('T')[0];
+            if (!dailyMap[dateKey]) {
+                dailyMap[dateKey] = {
+                    voltageR: [], voltageY: [], voltageB: [],
+                    currentR: [], currentY: [], currentB: [],
+                    activePower: [], frequency: [], powerFactor: [], runningHours: []
+                };
+            }
+            // Push values into daily buckets
+            ['voltageR','voltageY','voltageB','currentR','currentY','currentB',
+             'activePower','frequency','powerFactor','runningHours'].forEach(key => {
+                if (r[key] !== undefined) dailyMap[dateKey][key].push(r[key]);
+            });
+        });
 
-  // ✅ NEW: Power Factor Chart
-  if (powerFactorChart) powerFactorChart.destroy();
-  powerFactorChart = new Chart(document.getElementById('powerFactorChart'), {
-    type: 'line', 
-    data: { 
-      labels, 
-      datasets: [
-        { label: 'Power Factor', data: data.map(r => r.powerFactor || 0), borderColor: '#fd79a8', ...lineOpts, borderWidth: 3 }
-      ]
-    }, 
-    options: {
-      ...commonOptions,
-      scales: {
-        x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } },
-        y: { beginAtZero: true, max: 1 }
-      }
+        // Average each day's values
+        labels = Object.keys(dailyMap).sort();
+        const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0;
+
+        chartData = {
+            voltageR:    labels.map(d => avg(dailyMap[d].voltageR)),
+            voltageY:    labels.map(d => avg(dailyMap[d].voltageY)),
+            voltageB:    labels.map(d => avg(dailyMap[d].voltageB)),
+            currentR:    labels.map(d => avg(dailyMap[d].currentR)),
+            currentY:    labels.map(d => avg(dailyMap[d].currentY)),
+            currentB:    labels.map(d => avg(dailyMap[d].currentB)),
+            activePower: labels.map(d => avg(dailyMap[d].activePower)),
+            frequency:   labels.map(d => avg(dailyMap[d].frequency)),
+            powerFactor: labels.map(d => avg(dailyMap[d].powerFactor)),
+            runningHours:labels.map(d => Math.max(...dailyMap[d].runningHours)) // use max for runtime
+        };
+
+    } else {
+        // ✅ SINGLE DAY - show time labels as before
+        labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { 
+            hour: '2-digit', minute: '2-digit' 
+        }));
+        chartData = {
+            voltageR:    data.map(r => r.voltageR),
+            voltageY:    data.map(r => r.voltageY),
+            voltageB:    data.map(r => r.voltageB),
+            currentR:    data.map(r => r.currentR),
+            currentY:    data.map(r => r.currentY),
+            currentB:    data.map(r => r.currentB),
+            activePower: data.map(r => r.activePower),
+            frequency:   data.map(r => r.frequency),
+            powerFactor: data.map(r => r.powerFactor || 0),
+            runningHours:data.map(r => r.runningHours || 0)
+        };
     }
-  });
 
-  // ✅ NEW: Runtime Chart
-  if (runtimeChart) runtimeChart.destroy();
-  runtimeChart = new Chart(document.getElementById('runtimeChart'), {
-    type: 'line', 
-    data: { 
-      labels, 
-      datasets: [
-        { label: 'Runtime (Hrs)', data: data.map(r => r.runningHours || 0), borderColor: '#00b894', ...lineOpts, borderWidth: 3 }
-      ]
-    }, 
-    options: commonOptions
-  });
-}
+    // ✅ Chart type: bar for multi-day, line for single day
+    const chartType = isMultiDay ? 'bar' : 'line';
+    const lineOpts = isMultiDay 
+        ? { borderWidth: 1 }  // bar style
+        : { tension: 0.1, pointRadius: 2, borderWidth: 2, fill: false }; // line style
 
-function updateCombinedChart(data) {
-  if (data.length === 0) return;
-  const labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-  if (combinedChart) combinedChart.destroy();
-  const lineOpts = { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false };
-
-  combinedChart = new Chart(document.getElementById('combinedChart'), {
-    type: 'line',
-    data: {
-        labels,
-        datasets: [
-            // ✅ VOLTAGE - SEPARATE R, Y, B LINES
-            { 
-                label: 'Voltage-R', 
-                data: data.map(r => r.voltageR), 
-                borderColor: '#fa8231', 
-                backgroundColor: 'rgba(250, 130, 49, 0.1)',
-                yAxisID: 'yV', 
-                ...lineOpts 
-            },
-            { 
-                label: 'Voltage-Y', 
-                data: data.map(r => r.voltageY), 
-                borderColor: '#f7b731', 
-                backgroundColor: 'rgba(247, 183, 49, 0.1)',
-                yAxisID: 'yV', 
-                ...lineOpts 
-            },
-            { 
-                label: 'Voltage-B', 
-                data: data.map(r => r.voltageB), 
-                borderColor: '#0052cc', 
-                backgroundColor: 'rgba(0, 82, 204, 0.1)',
-                yAxisID: 'yV', 
-                ...lineOpts 
-            },
-            
-            // ✅ CURRENT - SEPARATE R, Y, B LINES
-            { 
-                label: 'Current-R', 
-                data: data.map(r => r.currentR), 
-                borderColor: '#eb3b5a', 
-                backgroundColor: 'rgba(235, 59, 90, 0.1)',
-                yAxisID: 'yA', 
-                ...lineOpts 
-            },
-            { 
-                label: 'Current-Y', 
-                data: data.map(r => r.currentY), 
-                borderColor: '#a55eea', 
-                backgroundColor: 'rgba(165, 94, 234, 0.1)',
-                yAxisID: 'yA', 
-                ...lineOpts 
-            },
-            { 
-                label: 'Current-B', 
-                data: data.map(r => r.currentB), 
-                borderColor: '#2bcbba', 
-                backgroundColor: 'rgba(43, 203, 186, 0.1)',
-                yAxisID: 'yA', 
-                ...lineOpts 
-            },
-            
-            // ✅ POWER
-            { 
-                label: 'Power (kW)', 
-                data: data.map(r => r.activePower), 
-                borderColor: '#20bf6b', 
-                backgroundColor: 'rgba(32, 191, 107, 0.1)',
-                yAxisID: 'yP', 
-                ...lineOpts, 
-                borderWidth: 3 
-            },
-            
-            // ✅ FREQUENCY
-            { 
-                label: 'Freq (Hz)', 
-                data: data.map(r => r.frequency), 
-                borderColor: '#8854d0', 
-                backgroundColor: 'rgba(136, 84, 208, 0.1)',
-                yAxisID: 'yF', 
-                ...lineOpts 
-            },
-            
-            // ✅ POWER FACTOR (UPDATED COLOR)
-            { 
-                label: 'Power Factor', 
-                data: data.map(r => r.powerFactor || 0), 
-                borderColor: '#fd79a8', 
-                backgroundColor: 'rgba(253, 121, 168, 0.1)',
-                yAxisID: 'yPF', 
-                ...lineOpts 
-            },
-            
-            // ✅ NEW: RUNTIME HOURS
-            { 
-                label: 'Runtime (Hrs)', 
-                data: data.map(r => r.runningHours || 0), 
-                borderColor: '#00b894', 
-                backgroundColor: 'rgba(0, 184, 148, 0.1)',
-                yAxisID: 'yRT', 
-                ...lineOpts 
-            }
-        ]
-    },
-    options: {
-        responsive: true, 
-        maintainAspectRatio: false, 
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-            legend: {
-                display: true,
-                position: 'top',
-                labels: {
-                    usePointStyle: true,
-                    padding: 15,
-                    font: { size: 11 }
-                }
-            },
-            tooltip: {
-                mode: 'index',
-                intersect: false,
-                callbacks: {
-                    label: function(context) {
-                        let label = context.dataset.label || '';
-                        if (label) {
-                            label += ': ';
-                        }
-                        if (context.parsed.y !== null) {
-                            label += context.parsed.y.toFixed(2);
-                        }
-                        return label;
-                    }
-                }
-            }
-        },
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
         scales: {
-            x: { 
-                ticks: { maxRotation: 45, minRotation: 45 }, 
-                grid: { display: false } 
-            },
-            yV: { 
-                position: 'left', 
-                title: { display: true, text: 'Voltage (V)', color: '#fa8231' },
-                ticks: { color: '#fa8231' }
-            },
-            yA: { 
-                position: 'right', 
-                title: { display: true, text: 'Current (A)', color: '#eb3b5a' }, 
-                grid: { drawOnChartArea: false },
-                ticks: { color: '#eb3b5a' }
-            },
-            yP: { 
-                position: 'right', 
-                title: { display: true, text: 'Power (kW)', color: '#20bf6b' }, 
-                grid: { drawOnChartArea: false }, 
-                offset: true,
-                ticks: { color: '#20bf6b' }
-            },
-            yF: { 
-                position: 'left', 
-                title: { display: true, text: 'Freq (Hz)', color: '#8854d0' }, 
-                grid: { drawOnChartArea: false }, 
-                offset: true,
-                ticks: { color: '#8854d0' }
-            },
-            yPF: { 
-                position: 'right', 
-                title: { display: true, text: 'Power Factor', color: '#fd79a8' }, 
-                min: 0, 
-                max: 1, 
-                grid: { drawOnChartArea: false }, 
-                offset: true,
-                ticks: { color: '#fd79a8' }
-            },
-            yRT: { 
-                position: 'left', 
-                title: { display: true, text: 'Runtime (Hrs)', color: '#00b894' }, 
-                grid: { drawOnChartArea: false }, 
-                offset: true,
-                ticks: { color: '#00b894' }
+            x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } },
+            y: { beginAtZero: true }
+        }
+    };
+
+    // Voltage Chart
+    if (voltageChart) voltageChart.destroy();
+    voltageChart = new Chart(document.getElementById('voltageChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'V-R', data: chartData.voltageR, borderColor: '#fa8231', backgroundColor: 'rgba(250,130,49,0.7)', ...lineOpts },
+                { label: 'V-Y', data: chartData.voltageY, borderColor: '#f7b731', backgroundColor: 'rgba(247,183,49,0.7)', ...lineOpts },
+                { label: 'V-B', data: chartData.voltageB, borderColor: '#0052cc', backgroundColor: 'rgba(0,82,204,0.7)',   ...lineOpts }
+            ]
+        },
+        options: commonOptions
+    });
+
+    // Current Chart
+    if (currentChart) currentChart.destroy();
+    currentChart = new Chart(document.getElementById('currentChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'C-R', data: chartData.currentR, borderColor: '#eb3b5a', backgroundColor: 'rgba(235,59,90,0.7)',  ...lineOpts },
+                { label: 'C-Y', data: chartData.currentY, borderColor: '#a55eea', backgroundColor: 'rgba(165,94,234,0.7)', ...lineOpts },
+                { label: 'C-B', data: chartData.currentB, borderColor: '#2bcbba', backgroundColor: 'rgba(43,203,186,0.7)', ...lineOpts }
+            ]
+        },
+        options: commonOptions
+    });
+
+    // Power Chart
+    if (powerChart) powerChart.destroy();
+    powerChart = new Chart(document.getElementById('powerChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'kW', data: chartData.activePower, borderColor: '#20bf6b', backgroundColor: 'rgba(32,191,107,0.7)', ...lineOpts, borderWidth: isMultiDay ? 1 : 3 }
+            ]
+        },
+        options: commonOptions
+    });
+
+    // Frequency Chart
+    if (freqChart) freqChart.destroy();
+    freqChart = new Chart(document.getElementById('freqChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'Freq (Hz)', data: chartData.frequency, borderColor: '#8854d0', backgroundColor: 'rgba(136,84,208,0.7)', ...lineOpts }
+            ]
+        },
+        options: commonOptions
+    });
+
+    // Power Factor Chart
+    if (powerFactorChart) powerFactorChart.destroy();
+    powerFactorChart = new Chart(document.getElementById('powerFactorChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'Power Factor', data: chartData.powerFactor, borderColor: '#fd79a8', backgroundColor: 'rgba(253,121,168,0.7)', ...lineOpts, borderWidth: isMultiDay ? 1 : 3 }
+            ]
+        },
+        options: {
+            ...commonOptions,
+            scales: {
+                x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } },
+                y: { beginAtZero: true, max: 1 }
             }
         }
+    });
+
+    // Runtime Chart
+    if (runtimeChart) runtimeChart.destroy();
+    runtimeChart = new Chart(document.getElementById('runtimeChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'Runtime (Hrs)', data: chartData.runningHours, borderColor: '#00b894', backgroundColor: 'rgba(0,184,148,0.7)', ...lineOpts, borderWidth: isMultiDay ? 1 : 3 }
+            ]
+        },
+        options: commonOptions
+    });
+}
+
+
+function updateCombinedChart(data) {
+    if (data.length === 0) return;
+
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    const isMultiDay = startDate !== endDate;
+
+    let labels = [];
+    let chartData = {};
+
+    if (isMultiDay) {
+        // ✅ GROUP BY DATE
+        const dailyMap = {};
+        data.forEach(r => {
+            const dateKey = new Date(r.timestamp).toISOString().split('T')[0];
+            if (!dailyMap[dateKey]) {
+                dailyMap[dateKey] = {
+                    voltageR: [], voltageY: [], voltageB: [],
+                    currentR: [], currentY: [], currentB: [],
+                    activePower: [], frequency: [], powerFactor: [], runningHours: []
+                };
+            }
+            ['voltageR','voltageY','voltageB','currentR','currentY','currentB',
+             'activePower','frequency','powerFactor','runningHours'].forEach(key => {
+                if (r[key] !== undefined) dailyMap[dateKey][key].push(r[key]);
+            });
+        });
+
+        labels = Object.keys(dailyMap).sort();
+        const avg = arr => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0;
+
+        chartData = {
+            voltageR:     labels.map(d => avg(dailyMap[d].voltageR)),
+            voltageY:     labels.map(d => avg(dailyMap[d].voltageY)),
+            voltageB:     labels.map(d => avg(dailyMap[d].voltageB)),
+            currentR:     labels.map(d => avg(dailyMap[d].currentR)),
+            currentY:     labels.map(d => avg(dailyMap[d].currentY)),
+            currentB:     labels.map(d => avg(dailyMap[d].currentB)),
+            activePower:  labels.map(d => avg(dailyMap[d].activePower)),
+            frequency:    labels.map(d => avg(dailyMap[d].frequency)),
+            powerFactor:  labels.map(d => avg(dailyMap[d].powerFactor)),
+            runningHours: labels.map(d => Math.max(...dailyMap[d].runningHours))
+        };
+
+    } else {
+        // ✅ SINGLE DAY - time labels
+        labels = data.map(r => new Date(r.timestamp).toLocaleTimeString('en-IN', { 
+            hour: '2-digit', minute: '2-digit' 
+        }));
+        chartData = {
+            voltageR:     data.map(r => r.voltageR),
+            voltageY:     data.map(r => r.voltageY),
+            voltageB:     data.map(r => r.voltageB),
+            currentR:     data.map(r => r.currentR),
+            currentY:     data.map(r => r.currentY),
+            currentB:     data.map(r => r.currentB),
+            activePower:  data.map(r => r.activePower),
+            frequency:    data.map(r => r.frequency),
+            powerFactor:  data.map(r => r.powerFactor || 0),
+            runningHours: data.map(r => r.runningHours || 0)
+        };
     }
-  });
+
+    const chartType = isMultiDay ? 'bar' : 'line';
+    const lineOpts = isMultiDay
+        ? { borderWidth: 1 }
+        : { tension: 0.1, pointRadius: 1, borderWidth: 2, fill: false };
+
+    if (combinedChart) combinedChart.destroy();
+
+    combinedChart = new Chart(document.getElementById('combinedChart'), {
+        type: chartType,
+        data: {
+            labels,
+            datasets: [
+                { label: 'Voltage-R', data: chartData.voltageR,    borderColor: '#fa8231', backgroundColor: 'rgba(250,130,49,0.7)',  yAxisID: 'yV', ...lineOpts },
+                { label: 'Voltage-Y', data: chartData.voltageY,    borderColor: '#f7b731', backgroundColor: 'rgba(247,183,49,0.7)',  yAxisID: 'yV', ...lineOpts },
+                { label: 'Voltage-B', data: chartData.voltageB,    borderColor: '#0052cc', backgroundColor: 'rgba(0,82,204,0.7)',    yAxisID: 'yV', ...lineOpts },
+                { label: 'Current-R', data: chartData.currentR,    borderColor: '#eb3b5a', backgroundColor: 'rgba(235,59,90,0.7)',   yAxisID: 'yA', ...lineOpts },
+                { label: 'Current-Y', data: chartData.currentY,    borderColor: '#a55eea', backgroundColor: 'rgba(165,94,234,0.7)', yAxisID: 'yA', ...lineOpts },
+                { label: 'Current-B', data: chartData.currentB,    borderColor: '#2bcbba', backgroundColor: 'rgba(43,203,186,0.7)', yAxisID: 'yA', ...lineOpts },
+                { label: 'Power(kW)', data: chartData.activePower, borderColor: '#20bf6b', backgroundColor: 'rgba(32,191,107,0.7)', yAxisID: 'yP', ...lineOpts, borderWidth: isMultiDay ? 1 : 3 },
+                { label: 'Freq(Hz)',  data: chartData.frequency,   borderColor: '#8854d0', backgroundColor: 'rgba(136,84,208,0.7)', yAxisID: 'yF', ...lineOpts },
+                { label: 'PF',       data: chartData.powerFactor,  borderColor: '#fd79a8', backgroundColor: 'rgba(253,121,168,0.7)',yAxisID: 'yPF',...lineOpts },
+                { label: 'Runtime',  data: chartData.runningHours, borderColor: '#00b894', backgroundColor: 'rgba(0,184,148,0.7)',  yAxisID: 'yRT',...lineOpts }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { usePointStyle: true, padding: 15, font: { size: 11 } }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2) ?? '--'}`
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { maxRotation: 45, minRotation: 45 }, grid: { display: false } },
+                yV:  { position: 'left',  title: { display: true, text: 'Voltage (V)',   color: '#fa8231' }, ticks: { color: '#fa8231' } },
+                yA:  { position: 'right', title: { display: true, text: 'Current (A)',   color: '#eb3b5a' }, ticks: { color: '#eb3b5a' }, grid: { drawOnChartArea: false } },
+                yP:  { position: 'right', title: { display: true, text: 'Power (kW)',    color: '#20bf6b' }, ticks: { color: '#20bf6b' }, grid: { drawOnChartArea: false }, offset: true },
+                yF:  { position: 'left',  title: { display: true, text: 'Freq (Hz)',     color: '#8854d0' }, ticks: { color: '#8854d0' }, grid: { drawOnChartArea: false }, offset: true },
+                yPF: { position: 'right', title: { display: true, text: 'Power Factor',  color: '#fd79a8' }, ticks: { color: '#fd79a8' }, grid: { drawOnChartArea: false }, offset: true, min: 0, max: 1 },
+                yRT: { position: 'left',  title: { display: true, text: 'Runtime (Hrs)', color: '#00b894' }, ticks: { color: '#00b894' }, grid: { drawOnChartArea: false }, offset: true }
+            }
+        }
+    });
 }
 
 // ============================================================
@@ -830,86 +829,134 @@ function calculateSmartRate(amps) {
 function updateSmartAnalytics(data) {
     if (!data || data.length === 0) return;
 
-    // Arrays for Graphs
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    const isMultiDay = startDate !== endDate;
+
     const labels = [];
     const costData = [];
     const fuelData = [];
 
-    // Totals
     let totalFuel = 0;
     let totalMins = 0;
     let peakAmps = 0;
 
-    // Iterate through history
-    for (let i = 0; i < data.length; i++) {
-        const point = data[i];
-        
-        // Use Average Current
-        const amps = (point.currentR + point.currentY + point.currentB) / 3 || 0;
-        
-        if (amps > peakAmps) peakAmps = amps;
+    if (isMultiDay) {
+        // ✅ GROUP BY DATE
+        const dailyMap = {};
 
-        // Create Label
-        labels.push(new Date(point.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+        for (let i = 0; i < data.length; i++) {
+            const point = data[i];
+            const dateKey = new Date(point.timestamp).toISOString().split('T')[0];
+            const amps = (point.currentR + point.currentY + point.currentB) / 3 || 0;
 
-        // Calculate Instant Rates
-        const fuelRate = calculateSmartRate(amps); // L/hr
-        const costRate = fuelRate * PRICE_PER_LITER; // ₹/hr
+            if (!dailyMap[dateKey]) {
+                dailyMap[dateKey] = { totalFuel: 0, totalMins: 0, peakAmps: 0, count: 0 };
+            }
 
-        fuelData.push(fuelRate.toFixed(2));
-        costData.push(Math.round(costRate));
+            if (amps > peakAmps) peakAmps = amps;
+            if (amps > dailyMap[dateKey].peakAmps) dailyMap[dateKey].peakAmps = amps;
 
-        // --- INTEGRATION (Accumulate Totals) ---
-        // We calculate the time difference from the previous point to determine volume
-        if (i > 0) {
-            const prevTime = new Date(data[i-1].timestamp);
-            const currTime = new Date(point.timestamp);
-            const diffMs = currTime - prevTime;
-            const diffHours = diffMs / (1000 * 60 * 60); // Hours
-            
-            // Only integrate if gap is reasonable (< 15 mins) and DG is running
-            if (diffHours < 0.25 && amps > 5) {
-                totalFuel += (fuelRate * diffHours);
-                totalMins += (diffMs / (1000 * 60));
+            if (i > 0) {
+                const prevTime = new Date(data[i-1].timestamp);
+                const currTime = new Date(point.timestamp);
+                const diffMs = currTime - prevTime;
+                const diffHours = diffMs / (1000 * 60 * 60);
+
+                if (diffHours < 0.25 && amps > 5) {
+                    const fuelRate = calculateSmartRate(amps);
+                    const fuel = fuelRate * diffHours;
+                    dailyMap[dateKey].totalFuel += fuel;
+                    dailyMap[dateKey].totalMins += diffMs / (1000 * 60);
+                    totalFuel += fuel;
+                    totalMins += diffMs / (1000 * 60);
+                }
+            }
+        }
+
+        // Build chart arrays from daily buckets
+        Object.keys(dailyMap).sort().forEach(dateKey => {
+            const d = dailyMap[dateKey];
+            labels.push(new Date(dateKey).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }));
+            const dailyFuelRate = d.totalMins > 0 ? (d.totalFuel / (d.totalMins / 60)) : 0;
+            fuelData.push(dailyFuelRate.toFixed(2));
+            costData.push(Math.round(dailyFuelRate * PRICE_PER_LITER));
+        });
+
+    } else {
+        // ✅ SINGLE DAY - time points
+        for (let i = 0; i < data.length; i++) {
+            const point = data[i];
+            const amps = (point.currentR + point.currentY + point.currentB) / 3 || 0;
+
+            if (amps > peakAmps) peakAmps = amps;
+
+            labels.push(new Date(point.timestamp).toLocaleTimeString('en-IN', { 
+                hour: '2-digit', minute: '2-digit' 
+            }));
+
+            const fuelRate = calculateSmartRate(amps);
+            fuelData.push(fuelRate.toFixed(2));
+            costData.push(Math.round(fuelRate * PRICE_PER_LITER));
+
+            if (i > 0) {
+                const prevTime = new Date(data[i-1].timestamp);
+                const currTime = new Date(point.timestamp);
+                const diffMs = currTime - prevTime;
+                const diffHours = diffMs / (1000 * 60 * 60);
+                if (diffHours < 0.25 && amps > 5) {
+                    totalFuel += calculateSmartRate(amps) * diffHours;
+                    totalMins += diffMs / (1000 * 60);
+                }
             }
         }
     }
 
-    // 3. Update UI Cards
+    // Update summary cards
     document.getElementById('calc-time').textContent = Math.round(totalMins);
     document.getElementById('calc-fuel').textContent = totalFuel.toFixed(1);
     document.getElementById('calc-cost').textContent = Math.round(totalFuel * PRICE_PER_LITER).toLocaleString();
     document.getElementById('calc-peak').textContent = Math.round(peakAmps);
 
-    // 4. Render Graphs
-    renderSmartCharts(labels, costData, fuelData);
+    renderSmartCharts(labels, costData, fuelData, isMultiDay);
 }
 
-// 3. Render the new Charts
-function renderSmartCharts(labels, costData, fuelData) {
+
+function renderSmartCharts(labels, costData, fuelData, isMultiDay) {
     const commonOpts = {
         responsive: true,
         maintainAspectRatio: false,
-        elements: { point: { radius: 0 } }, // Clean line, no dots
+        elements: { point: { radius: 0 } },
         scales: { 
-            x: { display: false }, // Hide X axis labels for clean look
+            x: { 
+                display: true, // ✅ Always show
+                ticks: { 
+                    maxRotation: 45, 
+                    minRotation: 45,
+                    maxTicksLimit: isMultiDay ? undefined : 12,
+                    color: '#6b778c',
+                    font: { size: 11 }
+                }, 
+                grid: { display: false } 
+            }, 
             y: { beginAtZero: true } 
         },
         plugins: { legend: { display: false } }
     };
 
-    // Cost Chart
+    const chartType = isMultiDay ? 'bar' : 'line';
+
     if (costGraphInstance) costGraphInstance.destroy();
     costGraphInstance = new Chart(document.getElementById('costGraph'), {
-        type: 'line',
+        type: chartType,
         data: {
-            labels: labels,
+            labels,
             datasets: [{
                 label: 'Cost (₹/hr)',
                 data: costData,
                 borderColor: '#d97706',
-                backgroundColor: 'rgba(217, 119, 6, 0.1)',
-                fill: true,
+                backgroundColor: isMultiDay ? 'rgba(217,119,6,0.8)' : 'rgba(217,119,6,0.1)',
+                fill: !isMultiDay,
                 tension: 0.4,
                 borderWidth: 2
             }]
@@ -917,18 +964,17 @@ function renderSmartCharts(labels, costData, fuelData) {
         options: commonOpts
     });
 
-    // Fuel Chart
     if (fuelGraphInstance) fuelGraphInstance.destroy();
     fuelGraphInstance = new Chart(document.getElementById('fuelGraph'), {
-        type: 'line',
+        type: chartType,
         data: {
-            labels: labels,
+            labels,
             datasets: [{
                 label: 'Fuel (L/hr)',
                 data: fuelData,
                 borderColor: '#00875a',
-                backgroundColor: 'rgba(0, 135, 90, 0.1)',
-                fill: true,
+                backgroundColor: isMultiDay ? 'rgba(0,135,90,0.8)' : 'rgba(0,135,90,0.1)',
+                fill: !isMultiDay,
                 tension: 0.4,
                 borderWidth: 2
             }]

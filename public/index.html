@@ -217,6 +217,125 @@
     .diesel-grid { grid-template-columns: repeat(2, 1fr); }
     .param-grid { grid-template-columns: repeat(2, 1fr); }
   }
+  /* ===== TEAM FOOTER ===== */
+.team-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 25px;
+    margin-top: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.team-section {
+    flex: 1;
+    min-width: 280px;
+}
+
+.team-section-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+}
+
+.team-cards-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.team-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    flex: 1;
+    min-width: 220px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s;
+}
+
+.team-card:hover {
+    box-shadow: 0 6px 16px rgba(0,82,204,0.1);
+    border-color: var(--primary);
+}
+
+.owner-card {
+    border-left: 4px solid #f59e0b;
+}
+
+.team-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    background: #e0e7ff;
+}
+
+.team-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.team-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.team-position {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.team-email {
+    font-size: 0.78rem;
+    color: var(--primary);
+}
+
+/* ===== BOTTOM COPYRIGHT FOOTER ===== */
+.home-footer {
+    text-align: center;
+    padding: 18px 20px;
+    margin-top: 20px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    border-radius: 0 0 12px 12px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+    .team-footer {
+        flex-direction: column;
+        padding: 18px;
+    }
+    .team-section {
+        min-width: 100%;
+    }
+    .team-card {
+        min-width: 100%;
+    }
+    .team-cards-row {
+        flex-direction: column;
+    }
+}
 </style>
 </head>
 <body>
@@ -487,8 +606,51 @@
         </div>
       </div>
     </div>
+<div class="team-footer">
 
+  <!-- OWNER -->
+  <div class="team-section">
+    <div class="team-section-title">👑 Owner</div>
+    <div class="team-card owner-card">
+      <img src="download (1).png" alt="Owner" class="team-avatar">
+      <div class="team-info">
+        <div class="team-name">Naveen Kumar A K</div>
+        <div class="team-position">Executive - R&D</div>
+        <div class="team-email">📧 naveenkumarak@aquarelle.com</div>
+      </div>
+    </div>
   </div>
+
+  <!-- BNG CHAMPIONS -->
+  <div class="team-section">
+    <div class="team-section-title">🏆 Bannerughatta Champions</div>
+    <div class="team-cards-row">
+      <div class="team-card">
+        <img src="download.png" alt="BNG Champion 1" class="team-avatar">
+        <div class="team-info">
+          <div class="team-name">Vijai</div>
+          <div class="team-position"> Maintenance </div>
+          <div class="team-email">📧 maintenanceaipl2@aquarelleindia.com</div>
+        </div>
+      </div>
+      <div class="team-card">
+        <img src="download.png" alt="BNG Champion 2" class="team-avatar">
+        <div class="team-info">
+          <div class="team-name">RavAnna</div>
+          <div class="team-position"> Maintenance </div>
+          <div class="team-email">📧 maintenanceaipl2@aquarelleindia.com</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- COPYRIGHT FOOTER -->
+<div class="home-footer">
+  DG - Monitoring System &nbsp;·&nbsp; All times in IST &nbsp;·&nbsp;
+  &copy; 2026 Aquarelle India Pvt. Ltd. All rights reserved.
+</div>
 <script>
     // --- CONFIGURATION ---
     const CONFIG = {
@@ -502,11 +664,11 @@
         MAX_FREQ: 70
     };
 
-    // --- STATE MANAGEMENT ---
-    let isUpdating = false;
-    let dailyStats = { dg1: {}, dg2: {}, dg3: {}, dg4: {} };
-    // Store the last "Good" running data to show when DG stops
-    let lastRunningData = { dg1: null, dg2: null, dg3: null, dg4: null };
+// --- STATE MANAGEMENT ---
+let isUpdating = false;
+let dailyStats = { dg1: {}, dg2: {}, dg3: {}, dg4: {} };
+let lastRunningData = { dg1: null, dg2: null, dg3: null, dg4: null };
+let offlineSince = { dg1: null, dg2: null, dg3: null, dg4: null };
 
     // --- UI EXPANSION LOGIC ---
     document.querySelectorAll('.expand-icon').forEach(icon => {
@@ -654,6 +816,104 @@
             }
         }
     }
+
+//     function updateElectricalParams(data) {
+//     if (!data || !data.electrical) return;
+
+//     const dgs = ['dg1', 'dg2', 'dg3', 'dg4'];
+//     const THIRTY_MINUTES = 30 * 60 * 1000;
+
+//     dgs.forEach(dg => {
+//         let d = data.electrical[dg];
+//         if (!d) return;
+
+//         const avgAmps = ((d.currentR || 0) + (d.currentY || 0) + (d.currentB || 0)) / 3;
+//         const isNoise = (d.voltageR > CONFIG.MAX_VOLTAGE) || (d.frequency > CONFIG.MAX_FREQ);
+//         const isLiveRunning = (avgAmps > CONFIG.RUNNING_AMPS) && !isNoise;
+
+//         const statusEl = document.getElementById(`${dg}-status`);
+
+//         if (isLiveRunning) {
+//             // ✅ DG is RUNNING — reset offline timer, save good data
+//             offlineSince[dg] = null;
+//             lastRunningData[dg] = { ...d };
+
+//             if (statusEl) {
+//                 statusEl.textContent = "RUNNING";
+//                 statusEl.className = "status-badge status-running";
+//             }
+
+//             displayParams(dg, d, true); // Show live data
+
+//         } else {
+//             // ❌ DG is OFF
+//             if (offlineSince[dg] === null) {
+//                 offlineSince[dg] = Date.now(); // Start the 30-min timer
+//             }
+
+//             if (statusEl) {
+//                 statusEl.textContent = "OFF";
+//                 statusEl.className = "status-badge status-off";
+//             }
+
+//             const offlineDuration = Date.now() - offlineSince[dg];
+
+//             if (offlineDuration < THIRTY_MINUTES && lastRunningData[dg]) {
+//                 // Under 30 min — show last known data
+//                 displayParams(dg, lastRunningData[dg], false);
+//             } else {
+//                 // Over 30 min — clear everything
+//                 lastRunningData[dg] = null;
+//                 clearParams(dg);
+//             }
+//         }
+//     });
+// }
+
+
+function displayParams(dg, d, isLive) {
+    ['r', 'y', 'b'].forEach(phase => {
+        const P = phase.toUpperCase();
+        const vEl = document.getElementById(`${dg}-voltage-${phase}`);
+        const cEl = document.getElementById(`${dg}-current-${phase}`);
+        if (vEl) vEl.textContent = (d[`voltage${P}`] != null) ? Math.round(d[`voltage${P}`]) : '--';
+        if (cEl) cEl.textContent = (d[`current${P}`] != null) ? Math.round(d[`current${P}`]) : '--';
+    });
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set(`${dg}-frequency`, formatNum(d.frequency, 1));
+    set(`${dg}-active-power`, formatNum(d.activePower, 1));
+    set(`${dg}-power-factor`, formatNum(d.powerFactor, 2));
+    set(`${dg}-runtime`, formatNum(d.runningHours, 0));
+
+    const dispAmps = ((d.currentR || 0) + (d.currentY || 0) + (d.currentB || 0)) / 3;
+    const loadPct = Math.round((dispAmps / CONFIG.MAX_AMPS) * 100);
+    const loadEl = document.getElementById(`${dg}-load-pct`);
+    const statusTextEl = document.getElementById(`${dg}-load-status`);
+    if (loadEl) loadEl.textContent = loadPct + "%";
+    if (statusTextEl) {
+        if (loadPct > 90) { statusTextEl.textContent = "Overload ⚠️"; statusTextEl.style.color = "red"; }
+        else if (loadPct > 40) { statusTextEl.textContent = "Efficient ✅"; statusTextEl.style.color = "green"; }
+        else { statusTextEl.textContent = "Idle"; statusTextEl.style.color = "orange"; }
+    }
+}
+
+function clearParams(dg) {
+    const ids = [
+        `${dg}-voltage-r`, `${dg}-voltage-y`, `${dg}-voltage-b`,
+        `${dg}-current-r`, `${dg}-current-y`, `${dg}-current-b`,
+        `${dg}-frequency`, `${dg}-active-power`, `${dg}-power-factor`, `${dg}-runtime`
+    ];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '--'; });
+
+    const loadEl = document.getElementById(`${dg}-load-pct`);
+    const statusTextEl = document.getElementById(`${dg}-load-status`);
+    if (loadEl) loadEl.textContent = '0%';
+    if (statusTextEl) { statusTextEl.textContent = 'Idle'; statusTextEl.style.color = 'orange'; }
+}
+
+
+
 
     // ✅ COMPLETE FIXED FUNCTION - SMART DISPLAY LOGIC
     function updateElectricalParams(data) {
