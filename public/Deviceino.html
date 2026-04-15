@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Device Info – DG Monitoring System</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET & ROOT ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary:    #0052cc;
+  --primary-lt: #e6f0ff;
+  --accent:     #00b8d9;
+  --success:    #00875a;
+  --warning:    #ffab00;
+  --danger:     #de350b;
+  --bg:         #f0f4f8;
+  --surface:    #ffffff;
+  --border:     #dfe1e6;
+  --text:       #172b4d;
+  --muted:      #6b778c;
+  --radius:     12px;
+  --shadow:     0 4px 20px rgba(0,82,204,0.08);
+}
+
+body {
+  background: var(--bg);
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--text);
+  min-height: 100vh;
+  padding: 0 0 60px;
+}
+
+/* ===== TOP HEADER BAR ===== */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.topbar-logo { height: 42px; }
+
+.topbar-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--primary);
+  flex: 1;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  text-decoration: none;
+  transition: background 0.2s, transform 0.15s;
+}
+.back-btn:hover { background: #003d99; transform: translateX(-2px); }
+
+/* ===== PAGE WRAPPER ===== */
+.page { max-width: 1100px; margin: 0 auto; padding: 36px 24px; }
+
+/* ===== SECTION CARD ===== */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 28px;
+  overflow: hidden;
+}
+
+.card-header {
+  background: linear-gradient(90deg, #0052cc, #0065ff);
+  color: #fff;
+  padding: 16px 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-body { padding: 24px; }
+
+/* ===== ARCHITECTURE IMAGE ===== */
+.arch-img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.arch-caption {
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* ===== BRIEF EXPLANATION PILLS ===== */
+.explain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.explain-pill {
+  background: var(--primary-lt);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.explain-pill .pill-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  margin-bottom: 5px;
+}
+
+.explain-pill .pill-body {
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/* ===== FLOWCHART ===== */
+.flowchart-wrap {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+svg.flowchart {
+  display: block;
+  margin: 0 auto;
+  min-width: 660px;
+  max-width: 100%;
+}
+
+/* Node styles */
+.fc-node rect  { rx: 10; }
+.fc-node-start { fill: #0052cc; }
+.fc-node-proc  { fill: #fff; stroke: #0052cc; stroke-width: 2; }
+.fc-node-cloud { fill: #e6f0ff; stroke: #0052cc; stroke-width: 2; }
+.fc-node-end   { fill: #00875a; }
+.fc-label-w    { fill: #fff; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; }
+.fc-label-b    { fill: #172b4d; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; }
+.fc-sublabel   { fill: #6b778c; font-family: 'Space Grotesk', sans-serif; font-size: 11px; }
+.fc-arrow      { fill: none; stroke: #0052cc; stroke-width: 2; marker-end: url(#arrow); }
+.fc-arrow-label{ fill: #6b778c; font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-style: italic; }
+
+/* ===== STEP LEGEND ===== */
+.step-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.step-num {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-text .step-t { font-weight: 700; font-size: 0.9rem; margin-bottom: 2px; }
+.step-text .step-d { font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+
+/* ===== SPECS TABLE ===== */
+.specs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.specs-table th {
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+}
+.specs-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.specs-table tr:last-child td { border-bottom: none; }
+.specs-table tr:hover td { background: #fafbff; }
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.badge-blue   { background: var(--primary-lt); color: var(--primary); }
+.badge-green  { background: #e3fcef; color: var(--success); }
+.badge-orange { background: #fff3cd; color: #856404; }
+.badge-teal   { background: #e0f7fa; color: #00796b; }
+.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--primary); }
+
+/* ===== FOOTER ===== */
+.page-footer {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 12px;
+}
+
+@media (max-width: 600px) {
+  .topbar { padding: 12px 16px; }
+  .page   { padding: 20px 12px; }
+  .card-body { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== TOPBAR ===== -->
+<div class="topbar">
+  <img src="/logo.png" alt="Aquarelle" class="topbar-logo">
+  <div class="topbar-title">📡 Device Info — DG Monitoring System</div>
+  <a href="/" class="back-btn">← Back to Dashboard</a>
+</div>
+
+<div class="page">
+
+  <!-- ============================
+       SECTION 1 — SYSTEM ARCHITECTURE IMAGE
+  ============================= -->
+  <div class="card">
+    <div class="card-header">🏗️ System Architecture Overview</div>
+    <div class="card-body">
+      <img
+        src="info.png"
+        alt="DG Monitoring System Architecture Diagram"
+        class="arch-img"
+        onerror="this.style.display='none'; document.getElementById('img-fallback').style.display='block';"
+      />
+      <div id="img-fallback" style="display:none; text-align:center; padding:30px; color:var(--muted); background:var(--bg); border-radius:8px; margin-bottom:10px;">
+        ⚠️ Architecture image not found. Place <code>Gemini_Generated_Image_o8iazuo8iazuo8ia.png</code> in the same folder.
+      </div>
+      <p class="arch-caption">
+        End-to-end DG Monitoring &amp; Data Sharing Architecture — from physical sensors to cloud dashboard.
+      </p>
+
+      <!-- 6 Brief Explanation Pills -->
+      <div class="explain-grid">
+        <div class="explain-pill">
+          <div class="pill-title">🔌 Sensors &amp; Control Panel</div>
+          <div class="pill-body">CT clamps and analog sensors measure voltage, current, frequency, fuel level, oil pressure, and engine temperature directly from each DG set's control panel (DSE 7320).</div>
+        </div>
+        <div class="explain-pill">
+          <div class="pill-title">📡 IIoT Gateway (Teltonika)</div>
+          <div class="pill-body">A Teltonika industrial gateway collects RS-485 / Modbus RTU signals from all sensors and forwards pre-processed data to the Raspberry Pi 5 edge node over Ethernet.</div>
+        </div>
+        <div class="explain-pill">
+          <div class="pill-title">🍓 Raspberry Pi 5 Edge Node</div>
+          <div class="pill-body">Acts as the developer edge node — runs Python/C++ scripts, hosts a local MQTT broker, filters noise, and handles local data storage before pushing to the cloud via 4G LTE.</div>
+        </div>
+        <div class="explain-pill">
+          <div class="pill-title">☁️ Cloud Platform</div>
+          <div class="pill-body">Receives telemetry data over 4G LTE cellular. Stores time-series records in a database, runs analytics pipelines, and fires alerts (email / SMS) for critical thresholds.</div>
+        </div>
+        <div class="explain-pill">
+          <div class="pill-title">🖥️ Local PLC (Siemens S7-1200)</div>
+          <div class="pill-body">Optional on-site PLC for relay control, ATS logic, and SCADA integration. Communicates via Ethernet/LAN to the edge node and local workstation.</div>
+        </div>
+        <div class="explain-pill">
+          <div class="pill-title">📱 Mobile / Web Dashboard</div>
+          <div class="pill-body">This web dashboard (and the companion mobile app) display live parameters, daily analytics, fuel consumption, and cost estimates — accessible from any device on any network.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       SECTION 2 — FLOW CHART
+  ============================= -->
+  <div class="card">
+    <div class="card-header">🔄 Data Flow — How It Works</div>
+    <div class="card-body">
+
+      <div class="flowchart-wrap">
+        <svg class="flowchart" viewBox="0 0 760 780" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" markerWidth="9" markerHeight="7"
+                    refX="8" refY="3.5" orient="auto">
+              <polygon points="0 0, 9 3.5, 0 7" fill="#0052cc"/>
+            </marker>
+          </defs>
+
+          <!-- ── NODE 1: DG SET ── -->
+          <g class="fc-node">
+            <rect x="265" y="20" width="230" height="52" rx="10" class="fc-node-start"/>
+            <text x="380" y="41" text-anchor="middle" class="fc-label-w">⚙️ Diesel Generator Sets</text>
+            <text x="380" y="59" text-anchor="middle" class="fc-sublabel" fill="#cde">DG-1 / DG-2 / DG-3 / DG-4</text>
+          </g>
+          <!-- Arrow -->
+          <line x1="380" y1="72" x2="380" y2="108" class="fc-arrow"/>
+          <text x="390" y="94" class="fc-arrow-label">Modbus RTU / RS-485</text>
+
+          <!-- ── NODE 2: SENSORS ── -->
+          <g class="fc-node">
+            <rect x="235" y="110" width="290" height="62" rx="10" class="fc-node-proc"/>
+            <text x="380" y="132" text-anchor="middle" class="fc-label-b">🔌 CT Clamps &amp; Sensors</text>
+            <text x="380" y="150" text-anchor="middle" class="fc-sublabel">Voltage · Current · Freq · Fuel · Temp · Oil Pressure</text>
+            <text x="380" y="164" text-anchor="middle" class="fc-sublabel">Power Factor · Running Hours</text>
+          </g>
+          <line x1="380" y1="172" x2="380" y2="208" class="fc-arrow"/>
+          <text x="390" y="194" class="fc-arrow-label">Serial / Analog signals</text>
+
+          <!-- ── NODE 3: IIoT GATEWAY ── -->
+          <g class="fc-node">
+            <rect x="255" y="210" width="250" height="52" rx="10" class="fc-node-proc"/>
+            <text x="380" y="232" text-anchor="middle" class="fc-label-b">📡 IIoT Gateway (Teltonika)</text>
+            <text x="380" y="250" text-anchor="middle" class="fc-sublabel">Protocol conversion · Pre-processing</text>
+          </g>
+          <line x1="380" y1="262" x2="380" y2="298" class="fc-arrow"/>
+          <text x="390" y="284" class="fc-arrow-label">Ethernet / LAN</text>
+
+          <!-- ── NODE 4: RASPBERRY PI EDGE ── -->
+          <g class="fc-node">
+            <rect x="240" y="300" width="280" height="66" rx="10" class="fc-node-cloud"/>
+            <text x="380" y="322" text-anchor="middle" class="fc-label-b">🍓 Raspberry Pi 5 — Edge Node</text>
+            <text x="380" y="340" text-anchor="middle" class="fc-sublabel">MQTT Broker · Local Storage</text>
+            <text x="380" y="356" text-anchor="middle" class="fc-sublabel">Python Scripts · Noise Filter · GPIO Board</text>
+          </g>
+          <!-- Two arrows from RPi: left → local, right → cloud -->
+          <!-- Left branch: Local PLC -->
+          <line x1="300" y1="366" x2="140" y2="440" class="fc-arrow"/>
+          <text x="172" y="410" class="fc-arrow-label" text-anchor="middle">Ethernet</text>
+          <!-- Right branch: Cloud -->
+          <line x1="460" y1="366" x2="620" y2="440" class="fc-arrow"/>
+          <text x="590" y="410" class="fc-arrow-label" text-anchor="middle">4G LTE</text>
+          <!-- Down: also to local server -->
+          <line x1="380" y1="366" x2="380" y2="440" class="fc-arrow"/>
+          <text x="390" y="408" class="fc-arrow-label">LAN</text>
+
+          <!-- ── NODE 5a: LOCAL PLC ── -->
+          <g class="fc-node">
+            <rect x="30" y="442" width="200" height="52" rx="10" class="fc-node-proc"/>
+            <text x="130" y="462" text-anchor="middle" class="fc-label-b">🖥️ Local PLC</text>
+            <text x="130" y="480" text-anchor="middle" class="fc-sublabel">Siemens S7-1200 · ATS Control</text>
+          </g>
+
+          <!-- ── NODE 5b: LOCAL SERVER / SCADA ── -->
+          <g class="fc-node">
+            <rect x="258" y="442" width="244" height="52" rx="10" class="fc-node-proc"/>
+            <text x="380" y="462" text-anchor="middle" class="fc-label-b">🗄️ Local Server / SCADA</text>
+            <text x="380" y="480" text-anchor="middle" class="fc-sublabel">On-site workstation · Historical logs</text>
+          </g>
+
+          <!-- ── NODE 5c: CLOUD ── -->
+          <g class="fc-node">
+            <rect x="530" y="442" width="200" height="52" rx="10" class="fc-node-cloud"/>
+            <text x="630" y="462" text-anchor="middle" class="fc-label-b">☁️ Cloud Platform</text>
+            <text x="630" y="480" text-anchor="middle" class="fc-sublabel">Database · Analytics · Alerts</text>
+          </g>
+
+          <!-- Arrows from all 3 nodes → WEB DASHBOARD -->
+          <line x1="130" y1="494" x2="310" y2="580" class="fc-arrow"/>
+          <line x1="380" y1="494" x2="380" y2="578" class="fc-arrow"/>
+          <line x1="630" y1="494" x2="450" y2="580" class="fc-arrow"/>
+
+          <!-- ── NODE 6: WEB / MOBILE ── -->
+          <g class="fc-node">
+            <rect x="240" y="580" width="280" height="52" rx="10" class="fc-node-start"/>
+            <text x="380" y="602" text-anchor="middle" class="fc-label-w">📱 Web &amp; Mobile Dashboard</text>
+            <text x="380" y="620" text-anchor="middle" class="fc-sublabel" fill="#cde">Live Params · Fuel · Cost · Alerts</text>
+          </g>
+          <line x1="380" y1="632" x2="380" y2="668" class="fc-arrow"/>
+          <text x="390" y="655" class="fc-arrow-label">User Views &amp; Actions</text>
+
+          <!-- ── NODE 7: ALERT / NOTIFICATION ── -->
+          <g class="fc-node">
+            <rect x="255" y="670" width="250" height="52" rx="10" fill="#de350b"/>
+            <text x="380" y="692" text-anchor="middle" class="fc-label-w">🚨 Alerts &amp; Notifications</text>
+            <text x="380" y="710" text-anchor="middle" class="fc-sublabel" fill="#ffcdd2">Low Fuel · Overload · Sensor Fault</text>
+          </g>
+          <line x1="380" y1="722" x2="380" y2="754" class="fc-arrow"/>
+
+          <!-- ── NODE 8: END ── -->
+          <g class="fc-node">
+            <rect x="295" y="756" width="170" height="16" rx="8" class="fc-node-end"/>
+            <text x="380" y="769" text-anchor="middle" class="fc-label-w" font-size="11">Maintenance Action Taken</text>
+          </g>
+
+        </svg>
+      </div>
+
+      <!-- Step Legend -->
+      <div class="step-legend">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-text">
+            <div class="step-t">Generators produce data</div>
+            <div class="step-d">4 DG sets run and generate electrical &amp; mechanical data continuously.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            <div class="step-t">Sensors capture signals</div>
+            <div class="step-d">CT clamps and analog sensors read voltage, current, frequency, fuel, temp, and oil pressure.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-text">
+            <div class="step-t">Gateway converts protocols</div>
+            <div class="step-d">Teltonika IIoT gateway converts Modbus RTU signals to IP packets and forwards to the edge node.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-text">
+            <div class="step-t">Edge node processes data</div>
+            <div class="step-d">Raspberry Pi 5 filters noise, stores locally via MQTT broker, and sends clean data to cloud over 4G.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-text">
+            <div class="step-t">Cloud stores &amp; analyzes</div>
+            <div class="step-d">Database records every reading. Analytics engine calculates fuel consumption, cost, and efficiency.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">6</div>
+          <div class="step-text">
+            <div class="step-t">Dashboard displays live data</div>
+            <div class="step-d">This web dashboard refreshes every second — showing parameters, daily stats, and fuel levels.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">7</div>
+          <div class="step-text">
+            <div class="step-t">Alerts fire on thresholds</div>
+            <div class="step-d">Low fuel (&lt;50 L), overload (&gt;90%), or sensor faults trigger instant banner alerts.</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">8</div>
+          <div class="step-text">
+            <div class="step-t">Team takes action</div>
+            <div class="step-d">Maintenance team refuels, inspects, or resets the DG based on the alert and logged data.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       SECTION 3 — DEVICE SPECS TABLE
+  ============================= -->
+  <div class="card">
+    <div class="card-header">📋 Key Hardware Specifications</div>
+    <div class="card-body" style="padding: 0;">
+      <table class="specs-table">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Model / Type</th>
+            <th>Role</th>
+            <th>Interface</th>
+            <th>Layer</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Diesel Generator</strong></td>
+            <td>500 kVA Cummins Engine</td>
+            <td>Power generation</td>
+            <td>Control Panel</td>
+            <td><span class="badge badge-orange">Field</span></td>
+          </tr>
+          <tr>
+            <td><strong>Control Panel</strong></td>
+            <td>Deep Sea Electronics DSE 7320</td>
+            <td>DG control &amp; monitoring</td>
+            <td>RS-485 / Modbus RTU</td>
+            <td><span class="badge badge-orange">Field</span></td>
+          </tr>
+          <tr>
+            <td><strong>CT Clamps</strong></td>
+            <td>Current Transformers</td>
+            <td>Measure Voltage, Current, PF, Freq</td>
+            <td>Analog / Digital</td>
+            <td><span class="badge badge-orange">Field</span></td>
+          </tr>
+          <tr>
+            <td><strong>Analog Sensors</strong></td>
+            <td>Temperature / Pressure / Fuel probes</td>
+            <td>Engine temp, oil pressure, fuel level</td>
+            <td>4–20 mA / 0–10 V</td>
+            <td><span class="badge badge-orange">Field</span></td>
+          </tr>
+          <tr>
+            <td><strong>IIoT Gateway</strong></td>
+            <td>Teltonika (RUT / TRB series)</td>
+            <td>Protocol conversion &amp; forwarding</td>
+            <td>RS-485 → Ethernet / 4G</td>
+            <td><span class="badge badge-blue">Edge</span></td>
+          </tr>
+          <tr>
+            <td><strong>Edge Node</strong></td>
+            <td>Raspberry Pi 5 SBC</td>
+            <td>Data processing, MQTT broker, storage</td>
+            <td>Ethernet / GPIO / USB</td>
+            <td><span class="badge badge-blue">Edge</span></td>
+          </tr>
+          <tr>
+            <td><strong>GPIO Board</strong></td>
+            <td>RS-485 Breakout &amp; Interface Board</td>
+            <td>Relay &amp; signal interface</td>
+            <td>GPIO / RS-485</td>
+            <td><span class="badge badge-blue">Edge</span></td>
+          </tr>
+          <tr>
+            <td><strong>Local PLC</strong></td>
+            <td>Siemens S7-1200</td>
+            <td>ATS control, local automation</td>
+            <td>Ethernet / PROFINET</td>
+            <td><span class="badge badge-blue">Edge</span></td>
+          </tr>
+          <tr>
+            <td><strong>Cloud Database</strong></td>
+            <td>Time-series DB (Server)</td>
+            <td>Store all telemetry &amp; logs</td>
+            <td>REST API / MQTT</td>
+            <td><span class="badge badge-green">Cloud</span></td>
+          </tr>
+          <tr>
+            <td><strong>Web Dashboard</strong></td>
+            <td class="mono">index.html (Node.js server)</td>
+            <td>Live monitoring for operators</td>
+            <td>HTTPS / WebSocket</td>
+            <td><span class="badge badge-teal">UI</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    DG Monitoring System &nbsp;·&nbsp; Device Info &nbsp;·&nbsp;
+    &copy; 2026 Aquarelle India Pvt. Ltd. All rights reserved.
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>
