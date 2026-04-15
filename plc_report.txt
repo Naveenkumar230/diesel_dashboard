@@ -17,3 +17,18 @@ Address | Value | Description
 4518 | 21 | OK
 4768 | 0 | OK
 4776 | 0 | OK
+
+
+/home/pi/start-dg-monitor.sh
+crontab -e
+@reboot sleep 30 && /home/pi/start-dg-monitor.sh
+
+
+# Install converter
+sudo apt install webp -y
+
+# Convert your PNG to WebP (much smaller file size)
+cwebp -q 80 public/Gemini_Generated_Image_o8iazuo8iazuo8ia.png -o public/arch.webp
+
+# Check the size difference
+ls -lh public/info.png public/arch.webp
