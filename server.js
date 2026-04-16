@@ -33,6 +33,7 @@ const httpsPort = 3001; // Internal Secure Port
 
 // -------------------- Express Setup --------------------
 const app = express();
+app.set('trust proxy', 1);
 app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
