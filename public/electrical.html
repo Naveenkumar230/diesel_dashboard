@@ -983,74 +983,11 @@ function renderSmartCharts(labels, costData, fuelData, isMultiDay) {
     });
 }
 
-// REPLACE your existing 'exportElectricalData' function with this:
-
-async function exportElectricalData() {
+// ✅ NEW - Calls server Excel route with ALL parameters
+function exportElectricalData() {
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
-    
-    // 1. Notify User
-    const btn = document.querySelector('.btn-success');
-    const originalText = btn.textContent;
-    btn.textContent = "⏳ Generating Report...";
-    
-    try {
-        // 2. Fetch Raw Data
-        const response = await fetch(`/api/electrical/${dgType}?startDate=${startDate}&endDate=${endDate}`);
-        const result = await response.json();
-        
-        if (!result.data || result.data.length === 0) {
-            alert("No data to export for this date range.");
-            btn.textContent = originalText;
-            return;
-        }
-
-        // 3. Create CSV Content with NEW Calculated Columns
-        // Headers
-        let csvContent = "Date,Time,Amps (Avg),kW,Fuel Rate (L/hr),Est. Cost (INR)\n";
-
-        // Rows
-        result.data.forEach(row => {
-            const dateObj = new Date(row.timestamp);
-            const date = dateObj.toLocaleDateString('en-IN');
-            const time = dateObj.toLocaleTimeString('en-IN');
-            
-            // Get Amps
-            const amps = (row.currentR + row.currentY + row.currentB) / 3 || 0;
-            
-            // --- SMART CALCULATION ---
-            let fuelRate = 0;
-            let cost = 0;
-            
-            if (amps > 5) {
-                // Same formula as the dashboard
-                const loadPct = amps / MAX_AMPS_125KVA;
-                const factor = (loadPct > 1) ? 1 : loadPct;
-                fuelRate = 4.5 + ((18 - 4.5) * factor);
-                cost = fuelRate * PRICE_PER_LITER;
-            }
-            // -------------------------
-
-            // Append Row
-            csvContent += `${date},${time},${amps.toFixed(1)},${row.activePower.toFixed(1)},${fuelRate.toFixed(2)},${cost.toFixed(2)}\n`;
-        });
-
-        // 4. Trigger Download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `${dgType}_Report_${startDate}_to_${endDate}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-    } catch (err) {
-        console.error("Export failed:", err);
-        alert("Failed to export data.");
-    } finally {
-        btn.textContent = originalText;
-    }
+    window.location.href = `/api/export/electrical/${dgType}?startDate=${startDate}&endDate=${endDate}`;
 }
 
 loadData();

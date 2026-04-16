@@ -540,53 +540,180 @@ async function setupExcelSheet(workbook, worksheet, title) {
     worksheet.addRow([]); worksheet.addRow([]); worksheet.addRow([]); worksheet.addRow([]);
 }
 
+// ✅ REPLACE the existing router.get('/export/consumption') with this:
 router.get('/export/consumption', async (req, res) => {
     try {
         const { dg, startDate, endDate } = req.query;
         const start = new Date(startDate); start.setHours(0, 0, 0, 0);
         const end = new Date(endDate); end.setHours(23, 59, 59, 999);
 
-        // Fetch Both
-        const dieselRecords = await DieselConsumption.find({ timestamp: { $gte: start, $lte: end } }).sort({ timestamp: 1 }).lean();
+        const dieselRecords = await DieselConsumption.find({ 
+            timestamp: { $gte: start, $lte: end } 
+        }).sort({ timestamp: 1 }).lean();
+
         const dgKey = dg || 'dg1';
-        
         let electricalRecords = [];
         if (dgKey !== 'total') {
-            electricalRecords = await ElectricalReading.find({ dg: dgKey, timestamp: { $gte: start, $lte: end } }).lean();
+            electricalRecords = await ElectricalReading.find({ 
+                dg: dgKey, timestamp: { $gte: start, $lte: end } 
+            }).lean();
         }
 
         const result = calculateVerifiedConsumption(dieselRecords, electricalRecords, dgKey);
-        
+        const data = result.processedData;
+
+        if (!data || data.length === 0) {
+            return res.status(404).send('No data found for this date range');
+        }
+
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Consumption');
-        await setupExcelSheet(workbook, worksheet, `Aquarelle India - ${dg.toUpperCase()} Verified Report`);
 
-        worksheet.addRow(['Timestamp', 'Fuel Level (L)', 'Verified Consumption (L)', 'Electrical Status', 'Notes']);
-        
-        const headerRow = worksheet.lastRow;
-        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        headerRow.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } }; });
+        // ─────────────────────────────────────────
+        // SHEET 1: SUMMARY
+        // ─────────────────────────────────────────
+        const summarySheet = workbook.addWorksheet('Summary');
+        await setupExcelSheet(workbook, summarySheet, 
+            `Aquarelle India - ${dgKey.toUpperCase()} Diesel Report`);
 
-        result.processedData.forEach(r => {
-            worksheet.addRow([
-                new Date(r.timestamp).toLocaleString('en-IN'),
-                r.cleanLevel, 
-                r.consumption > 0 ? r.consumption.toFixed(2) : '-',
-                r.electricalInfo || (r.isRunning ? 'ON' : 'OFF'),
-                r.note
-            ]);
+        // Key summary stats
+        const startLevel = data.find(d => d.cleanLevel > 0)?.cleanLevel || 0;
+        const endLevel = data[data.length - 1]?.cleanLevel || 0;
+        const totalRefilled = result.events
+            .filter(e => e.type === 'refill')
+            .reduce((sum, e) => sum + e.amount, 0);
+        const refillCount = result.events.filter(e => e.type === 'refill').length;
+
+        summarySheet.addRow(['Field', 'Value', 'Unit']);
+        const summaryHeaderRow = summarySheet.lastRow;
+        summaryHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        summaryHeaderRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } };
         });
 
-        worksheet.columns = [{ width: 25 }, { width: 15 }, { width: 25 }, { width: 20 }, { width: 25 }];
+        const summaryRows = [
+            ['DG Unit',             dgKey.toUpperCase(),                        ''],
+            ['Report Period',       `${startDate}  to  ${endDate}`,             ''],
+            ['Start Fuel Level',    startLevel.toFixed(2),                      'Liters'],
+            ['End Fuel Level',      endLevel.toFixed(2),                        'Liters'],
+            ['Total Consumption',   result.totalConsumption.toFixed(2),         'Liters'],
+            ['Total Refilled',      totalRefilled.toFixed(2),                   'Liters'],
+            ['Number of Refills',   refillCount,                                'Events'],
+            ['Net Consumption',     (result.totalConsumption).toFixed(2),       'Liters'],
+            ['Generated On',        new Date().toLocaleString('en-IN'),         ''],
+        ];
 
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="Aquarelle_India_${dg}_Verified.xlsx"`);
+        summaryRows.forEach((row, i) => {
+            const r = summarySheet.addRow(row);
+            if (i % 2 === 0) {
+                r.eachCell(cell => {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4F5F7' } };
+                });
+            }
+        });
+
+        summarySheet.columns = [{ width: 25 }, { width: 30 }, { width: 15 }];
+
+        // ─────────────────────────────────────────
+        // SHEET 2: REFILL EVENTS
+        // ─────────────────────────────────────────
+        const refillSheet = workbook.addWorksheet('Refill Events');
+        await setupExcelSheet(workbook, refillSheet, 'Refill Events Log');
+
+        refillSheet.addRow(['#', 'Date & Time', 'Refill Amount (L)', 'Fuel Level After (L)']);
+        const refillHeader = refillSheet.lastRow;
+        refillHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        refillHeader.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } };
+        });
+
+        const refillEvents = result.events.filter(e => e.type === 'refill');
+        if (refillEvents.length === 0) {
+            refillSheet.addRow(['', 'No refill events found in this period', '', '']);
+        } else {
+            refillEvents.forEach((e, idx) => {
+                // Find the fuel level at the time of refill
+                const matchRecord = data.find(d => 
+                    new Date(d.timestamp).getTime() === new Date(e.time).getTime()
+                );
+                const levelAfter = matchRecord?.cleanLevel || '--';
+                refillSheet.addRow([
+                    idx + 1,
+                    new Date(e.time).toLocaleString('en-IN'),
+                    e.amount.toFixed(2),
+                    typeof levelAfter === 'number' ? levelAfter.toFixed(2) : levelAfter
+                ]);
+            });
+        }
+
+        refillSheet.columns = [{ width: 8 }, { width: 25 }, { width: 22 }, { width: 22 }];
+
+        // ─────────────────────────────────────────
+        // SHEET 3: FULL DETAILED DATA
+        // ─────────────────────────────────────────
+        const dataSheet = workbook.addWorksheet('Detailed Data');
+        await setupExcelSheet(workbook, dataSheet, 
+            `${dgKey.toUpperCase()} Detailed Consumption Log`);
+
+        dataSheet.addRow([
+            'Timestamp',
+            'Fuel Level (L)',
+            'Consumption (L)',
+            'Generator Status',
+            'Electrical Info',
+            'Notes'
+        ]);
+
+        const dataHeader = dataSheet.lastRow;
+        dataHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        dataHeader.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } };
+        });
+
+        data.forEach((r, i) => {
+            const isRefillRow = r.note === 'Refill Detected';
+            const row = dataSheet.addRow([
+                new Date(r.timestamp).toLocaleString('en-IN'),
+                r.cleanLevel?.toFixed(2) || '0',
+                r.consumption > 0 ? r.consumption.toFixed(2) : '-',
+                r.isRunning ? 'RUNNING' : 'STOPPED',
+                r.electricalInfo || '--',
+                r.note || '--'
+            ]);
+
+            // Highlight refill rows in blue
+            if (isRefillRow) {
+                row.eachCell(cell => {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3F2FD' } };
+                    cell.font = { color: { argb: 'FF0052CC' }, bold: true };
+                });
+            }
+            // Highlight consumption rows in light red
+            else if (r.consumption > 0) {
+                row.getCell(3).fill = { 
+                    type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE8E8' } 
+                };
+                row.getCell(3).font = { color: { argb: 'FFDE350B' } };
+            }
+        });
+
+        dataSheet.columns = [
+            { width: 25 }, { width: 18 }, { width: 22 },
+            { width: 18 }, { width: 25 }, { width: 25 }
+        ];
+
+        // ─────────────────────────────────────────
+        // SEND FILE
+        // ─────────────────────────────────────────
+        res.setHeader('Content-Type', 
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 
+            `attachment; filename="Aquarelle_${dgKey.toUpperCase()}_Diesel_${startDate}_to_${endDate}.xlsx"`);
         await workbook.xlsx.write(res);
         res.end();
 
     } catch (err) {
         console.error('Export Error:', err);
-        res.status(500).send('Export Error');
+        res.status(500).send('Export Error: ' + err.message);
     }
 });
 
