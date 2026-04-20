@@ -65,7 +65,7 @@ let lastGoodValues = {
 
 // --- DIESEL REGISTERS ---
 const dgRegisters = {
-  dg1: { primary: 4104, fallback: [], name: 'DG-1 Diesel (D8)' },
+  dg1: { primary: 4104, fallback: [], name: 'DG-1 Diesel (D8)', hardcodedLevel: 150 },
   dg2: { primary: 4100, fallback: [], name: 'DG-2 Diesel (D4)' },
   dg3: { primary: 4102, fallback: [], name: 'DG-3 Diesel (D6)' }
 };
@@ -142,6 +142,13 @@ async function readWithRetry(fn, retries = RETRY_ATTEMPTS) {
 }
 
 async function readSingleRegister(registerConfig, dataKey) {
+  // ✅ SENSOR OVERRIDE: If hardcodedLevel is set, always return that value
+  if (registerConfig.hardcodedLevel !== undefined) {
+    systemData.dataQuality[dataKey + '_stale'] = false;
+    systemData.dataQuality.lastSuccessfulRead = new Date().toISOString();
+    return registerConfig.hardcodedLevel;
+  }
+
   const address = registerConfig.primary;
   try {
     const data = await readWithRetry(() => client.readHoldingRegisters(address, 1));
