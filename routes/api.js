@@ -522,6 +522,32 @@ router.get('/export/electrical/:dg', async (req, res) => {
         res.status(500).send('Export Error: ' + err.message);
     }
 });
+
+
+router.get('/debug/electrical/:dg', async (req, res) => {
+    try {
+        const { dg } = req.params;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const count = await ElectricalReading.countDocuments({});
+        const dgCount = await ElectricalReading.countDocuments({ dg });
+        const sample = await ElectricalReading.findOne({ dg }).sort({ timestamp: -1 }).lean();
+        const todayCount = await ElectricalReading.countDocuments({ 
+            dg, timestamp: { $gte: today, $lte: endOfDay } 
+        });
+        const distinctDGs = await ElectricalReading.distinct('dg');
+
+        res.json({ count, dgCount, todayCount, distinctDGs, sample });
+    } catch (err) {
+        res.status(500).json({ error: err.message, stack: err.stack });
+    }
+});
+
+
+
 // ============================================================
 // 4. EXCEL EXPORT (Updated with Verification Columns)
 // ============================================================
